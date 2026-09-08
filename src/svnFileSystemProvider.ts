@@ -112,19 +112,15 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
       throw FileSystemError.FileNotFound;
     }
 
-    let size = 0;
-    let mtime = new Date().getTime();
+    // Avoid `svn list` here. VS Code may call stat() multiple times when
+    // opening a diff, and `svn list` can be very slow on large working copies.
+    //
+    // The virtual SVN document does not require an accurate size/mtime for
+    // diff rendering. If metadata becomes necessary, prefer a cheaper local
+    // source (for example `svn info`) or cache the result instead of calling
+    // `svn list` on every stat().
 
-    try {
-      const listResults = await repository.list(fsPath);
-
-      if (listResults.length) {
-        size = Number(listResults[0].size) as number;
-        mtime = Date.parse(listResults[0].commit.date);
-      }
-    } catch {}
-
-    return { type: FileType.File, size, mtime, ctime: 0 };
+    return { type: FileType.File, size: 0, mtime: 0, ctime: 0 };
   }
 
   readDirectory(): Thenable<[string, FileType][]> {
