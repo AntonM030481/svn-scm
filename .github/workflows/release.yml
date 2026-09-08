@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install Subversion
+        run: sudo apt-get update && sudo apt-get install -y subversion
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Verify tag matches package version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          test "v$VERSION" = "$GITHUB_REF_NAME" || {
+            echo "Tag $GITHUB_REF_NAME does not match package version $VERSION"
+            exit 1
+          }
+
+      - name: Compile tests
+        run: yarn test-compile
+
+      - name: Run integration tests
+        run: xvfb-run -a yarn test
+        env:
+          CODE_VERSION: 1.109.2
+
+      - name: Package extension
+        run: npx @vscode/vsce package --allow-star-activation -o svn-scm-${{ github.ref_name }}.vsix
+
+      - name: Create GitHub release
+        run: gh release create "$GITHUB_REF_NAME" "svn-scm-$GITHUB_REF_NAME.vsix" --generate-notes --title "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ github.token }}
