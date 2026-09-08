@@ -33,8 +33,7 @@
     ],
     "main": "./out/extension",
     "scripts": {
-        "build": "yarn run build:ts",
-        "build:ts": "webpack --mode production",
+        "build": "webpack --mode production",
         "compile": "webpack --mode development --watch",
         "lint": "eslint \"src/**/*.ts\"",
         "lint:fix": "eslint \"src/**/*.ts\" --fix",
