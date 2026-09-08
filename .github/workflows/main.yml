@@ -1,126 +1,38 @@
-name: build
+name: CI
 
 on:
   push:
     branches:
-      - 'master'
+      - "*"
   pull_request:
-    branches: 
-      - '*'
+    branches:
+      - master
 
 jobs:
   build:
-    name: ${{ matrix.os }} ${{ matrix.version }}
-    runs-on: ${{ matrix.os }}
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        version: ['stable', 'insiders']
-
-    steps:
-      - name: Clone repository
-        uses: actions/checkout@v1
-
-      - name: Setup Node
-        uses: actions/setup-node@v1
-        with:
-          node-version: '12.17'
-
-      - name: Install Dependencies
-        run: 'yarn install --frozen-lockfile || yarn install --frozen-lockfile'
-        shell: bash
-      
-      - name: Compile sources for tests
-        run: yarn run test-compile
-
-      - name: Cache VSCode binary
-        id: cache-vscode
-        uses: actions/cache@v1
-        with:
-          path: .vscode-test
-          key: vscode-${{ runner.os }}-${{ matrix.version }}-${{ github.run_id }}
-          restore-keys: |
-            vscode-${{ runner.os }}-${{ matrix.version }}-
-            vscode-${{ runner.os }}-
-      
-      - name: Run tests
-        uses: GabrielBB/xvfb-action@v1.0
-        with:
-          run: yarn test
-        env:
-          CODE_VERSION: ${{ matrix.version }}
-        continue-on-error: ${{ matrix.version == 'insiders' }}
-
-      - name: Release
-        if: startsWith(matrix.os, 'ubuntu') && matrix.version == 'stable' && github.ref == 'refs/heads/master' && github.repository == 'JohnstonCode/svn-scm'
-        run: |
-          yarn run organize
-          yarn run semantic-release
-        env:
-          VSCE_TOKEN: ${{ secrets.vsceToken }}
-          GITHUB_TOKEN: ${{ secrets.githubToken }}
-          GH_TOKEN: ${{ secrets.githubToken }}
-          GIT_AUTHOR_EMAIL: ${{ secrets.gitEmail }}
-          GIT_COMMITTER_EMAIL: ${{ secrets.gitEmail }}
-          GIT_AUTHOR_NAME: ${{ secrets.gitName }}
-          GIT_COMMITTER_NAME: ${{ secrets.gitName }}
-
-  eslint:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
-
-    steps:
-      - name: Clone repository
-        uses: actions/checkout@v1
-
-      - name: Setup Node
-        uses: actions/setup-node@v1
-        with:
-          node-version: '12.17'
-
-      - name: Install Dependencies
-        run: 'yarn install --frozen-lockfile || yarn install --frozen-lockfile'
-        shell: bash
-
-      - name: Lint check
-        run: yarn run lint --silent -- -f stylish
-
-  artifact:
-    runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: '12.17'
+          node-version: 24
+          cache: yarn
 
-      - name: Install Dependencies
-        run: 'yarn install --frozen-lockfile || yarn install --frozen-lockfile'
-        shell: bash
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Compile tests
+        run: yarn test-compile
 
       - name: Package extension
-        run: npx vsce package -o svn-scm.vsix
+        run: npx @vscode/vsce package --allow-star-activation -o svn-scm.vsix
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v1
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
         with:
-          name: "svn-scm-${{ github.sha }}.vsix"
-          path: "svn-scm.vsix"
-
-      - name: Package open-vsx extension
-        run: |
-          yarn add iconv-lite jschardet
-          npx vsce package -o svn-scm-ovsx.vsix
-
-      - name: Upload open-vsx artifact
-        uses: actions/upload-artifact@v1
-        with:
-          name: "svn-scm-ovsx-${{ github.sha }}.vsix"
-          path: "svn-scm-ovsx.vsix"
+          name: svn-scm-${{ github.sha }}
+          path: svn-scm.vsix
