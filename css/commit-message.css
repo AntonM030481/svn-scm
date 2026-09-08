@@ -1,0 +1,107 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-weight: var(--vscode-font-weight);
+}
+
+.container {
+  width: 100%;
+  max-width: 112rem;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 6rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.8rem;
+
+  resize: vertical;
+
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  outline: none;
+
+  font: inherit;
+}
+
+textarea:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+button {
+  min-height: 2.4rem;
+  padding: 0.4rem 1rem;
+
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
+  border: 1px solid transparent;
+  cursor: pointer;
+
+  font: inherit;
+}
+
+button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.button-outline {
+  color: var(--vscode-button-secondaryForeground);
+  background-color: var(--vscode-button-secondaryBackground);
+}
+
+.button-outline:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.float-right {
+  float: right;
+}
+
+a {
+  color: var(--vscode-textLink-foreground);
+}
+
+a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.file-list {
+  margin-bottom: 1rem;
+}
+
+.file-list ul {
+  padding-left: 2rem;
+}
