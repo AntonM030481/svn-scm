@@ -36,3 +36,30 @@ jobs:
         with:
           name: svn-scm-${{ github.sha }}
           path: svn-scm.vsix
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install Subversion
+        run: sudo apt-get update && sudo apt-get install -y subversion
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Compile tests
+        run: yarn test-compile
+
+      - name: Run integration tests
+        run: xvfb-run -a yarn test
+        env:
+          CODE_VERSION: 1.109.2
