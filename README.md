@@ -1,14 +1,11 @@
 # Subversion source control for VS Code
 
-![Visual Studio Marketplace Release Date](https://img.shields.io/visual-studio-marketplace/release-date/johnstoncode.svn-scm)
-![Visual Studio Marketplace Last Updated](https://img.shields.io/visual-studio-marketplace/last-updated/johnstoncode.svn-scm)
-![Visual Studio Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/johnstoncode.svn-scm)
-![Visual Studio Marketplace Rating](https://img.shields.io/visual-studio-marketplace/r/johnstoncode.svn-scm)
+> Maintained fork of [JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm).
+>
+> This fork continues maintenance of the original extension and provides
+> downloadable VSIX releases through GitHub.
 
-![GitHub Workflow Status (with branch)](https://img.shields.io/github/actions/workflow/status/JohnstonCode/svn-scm/main.yml?branch=master)
-[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
-
-[![Known Vulnerabilities](https://snyk.io/test/github/JohnstonCode/svn-scm/badge.svg)](https://snyk.io/test/github/JohnstonCode/svn-scm)
+![CI](https://github.com/AntonM030481/svn-scm/actions/workflows/main.yml/badge.svg)
 
 # Prerequisites
 
@@ -24,11 +21,11 @@ If you use [TortoiseSVN](https://tortoisesvn.net/), make sure the option
 ## Feedback & Contributing
 
 * Please report any bugs, suggestions or documentation requests via the
-  [Issues](https://github.com/JohnstonCode/svn-scm/issues)
+  [Issues](https://github.com/AntonM030481/svn-scm/issues)
 * Feel free to submit
-  [pull requests](https://github.com/JohnstonCode/svn-scm/pulls)
+  [pull requests](https://github.com/AntonM030481/svn-scm/pulls)
 
-## [Contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors)
+## [Original contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors)
 
 # Features
 
