@@ -1,10 +1,12 @@
 # [2.18.0](https://github.com/AntonM030481/svn-scm/compare/v2.17.0...v2.18.0) (2026-09-09)
 
+First maintained release of this fork. Changes below are relative to upstream v2.17.0.
+
 ### Performance Improvements
 
-* Significantly improved diff opening performance, especially for large SVN working copies
+* Fix severe diff opening delays present in upstream v2.17.0, especially on large SVN working copies ([#1](https://github.com/AntonM030481/svn-scm/issues/1))
 * Avoid repeated `svn list` calls when VS Code requests virtual file metadata
-* Avoid unnecessary repository state refreshes after read-only `svn list` operations
+* Avoid unnecessary full repository status scans after read-only `svn list` operations
 
 ### Maintenance
 
