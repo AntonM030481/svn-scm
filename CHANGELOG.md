@@ -1,3 +1,17 @@
+# [2.18.0](https://github.com/AntonM030481/svn-scm/compare/v2.17.0...v2.18.0) (2026-09-09)
+
+### Performance Improvements
+
+* Significantly improved diff opening performance, especially for large SVN working copies
+* Avoid repeated `svn list` calls when VS Code requests virtual file metadata
+* Avoid unnecessary repository state refreshes after read-only `svn list` operations
+
+### Maintenance
+
+* Modernized build and CI infrastructure
+* Migrated integration tests to `@vscode/test-electron`
+* Added automated GitHub Releases with VSIX packages
+
 # [2.17.0](https://github.com/JohnstonCode/svn-scm/compare/v2.16.1...v2.17.0) (2023-06-22)
 
 
