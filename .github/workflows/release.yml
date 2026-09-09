@@ -47,7 +47,23 @@ jobs:
       - name: Package extension
         run: npx @vscode/vsce package --allow-star-activation -o svn-scm-${{ github.ref_name }}.vsix
 
+      - name: Prepare release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v version="$VERSION" '
+            $0 ~ "^#+ \\[" version "\\]" { found = 1; next }
+            found && /^#+ \[[0-9]+\.[0-9]+\.[0-9]+\]/ { exit }
+            found { print }
+            END { if (!found) exit 1 }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
+
       - name: Create GitHub release
-        run: gh release create "$GITHUB_REF_NAME" "svn-scm-$GITHUB_REF_NAME.vsix" --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "svn-scm-$GITHUB_REF_NAME.vsix" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md
         env:
           GH_TOKEN: ${{ github.token }}
