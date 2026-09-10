@@ -62,9 +62,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y subversion
 
-      - name: Install Subversion
+      - name: Verify Subversion
         if: runner.os == 'Windows'
-        run: choco install svn --no-progress --yes
+        run: svn --version --quiet
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
