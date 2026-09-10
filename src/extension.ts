@@ -25,6 +25,7 @@ import { IsSvn19orGreater } from "./contexts/isSvn19orGreater";
 import { IsSvn18orGreater } from "./contexts/isSvn18orGreater";
 import { tempSvnFs } from "./temp_svn_fs";
 import { SvnFileSystemProvider } from "./svnFileSystemProvider";
+import { enableIncrementalStatusRefresh } from "./incrementalStatus";
 
 async function init(
   extensionContext: ExtensionContext,
@@ -42,6 +43,7 @@ async function init(
     extensionContext
   );
 
+  enableIncrementalStatusRefresh(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables);
 
   disposables.push(
