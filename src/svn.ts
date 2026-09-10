@@ -239,11 +239,13 @@ export class Svn {
     if (options.log !== false && stderr.length > 0) {
       const errorTime = formatOutputTime(new Date());
       const err = stderr
-        .split("\n")
-        .filter((line: string) => line)
+        .split(/\r?\n/)
+        .filter((line: string) => line.trim().length > 0)
         .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
-      this.logOutput(err + "\n");
+      if (err) {
+        this.logOutput(err + "\n");
+      }
     }
 
     if (exitCode) {
@@ -372,11 +374,13 @@ export class Svn {
     if (options.log !== false && stderr.length > 0) {
       const errorTime = formatOutputTime(new Date());
       const err = stderr
-        .split("\n")
-        .filter((line: string) => line)
+        .split(/\r?\n/)
+        .filter((line: string) => line.trim().length > 0)
         .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
-      this.logOutput(err + "\n");
+      if (err) {
+        this.logOutput(err + "\n");
+      }
     }
 
     return { exitCode, stdout, stderr };
