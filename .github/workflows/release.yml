@@ -45,7 +45,7 @@ jobs:
           CODE_VERSION: 1.109.2
 
       - name: Package extension
-        run: npx @vscode/vsce package --allow-star-activation -o svn-scm-${{ github.ref_name }}.vsix
+        run: yarn vsce package --allow-star-activation -o svn-scm-${{ github.ref_name }}.vsix
 
       - name: Prepare release notes
         run: |

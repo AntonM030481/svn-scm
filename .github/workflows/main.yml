@@ -29,7 +29,7 @@ jobs:
         run: yarn test-compile
 
       - name: Package extension
-        run: npx @vscode/vsce package --allow-star-activation -o svn-scm.vsix
+        run: yarn vsce package --allow-star-activation -o svn-scm.vsix
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v6
