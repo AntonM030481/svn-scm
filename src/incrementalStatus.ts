@@ -233,6 +233,29 @@ function resourceToStatus(
   };
 }
 
+export function preserveRepositoryStateInSnapshot(
+  statuses: IFileStatus[],
+  isIncomplete: boolean,
+  needCleanUp: boolean
+): IFileStatus[] {
+  if (!isIncomplete && !needCleanUp) {
+    return statuses;
+  }
+
+  return [
+    ...statuses,
+    {
+      path: ".",
+      status: isIncomplete ? Status.INCOMPLETE : Status.NORMAL,
+      props: PropStatus.NONE,
+      wcStatus: {
+        locked: needCleanUp,
+        switched: false
+      }
+    }
+  ];
+}
+
 function snapshotStatuses(repository: Repository): IFileStatus[] {
   const statuses: IFileStatus[] = filterWorkspaceStatuses(
     repository.workspaceRoot,
@@ -259,7 +282,11 @@ function snapshotStatuses(repository: Repository): IFileStatus[] {
     append(group.resourceStates, changelist);
   });
 
-  return statuses;
+  return preserveRepositoryStateInSnapshot(
+    statuses,
+    repository.isIncomplete,
+    repository.needCleanUp
+  );
 }
 
 async function getTargetedStatus(
