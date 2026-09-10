@@ -1,5 +1,5 @@
 import { Event, Uri, workspace, EventEmitter, RelativePattern } from "vscode";
-import { watch } from "fs";
+import { statSync, watch } from "original-fs";
 import { exists } from "../fs";
 import { join } from "path";
 import { debounce } from "../decorators";
@@ -11,6 +11,16 @@ import {
   fixPathSeparator,
   getSvnDir
 } from "../util";
+
+export function isWorkspaceFileChange(uri: Uri): boolean {
+  try {
+    return !statSync(uri.fsPath).isDirectory();
+  } catch {
+    // The path can disappear between the change event and this check. Keep the
+    // event in that case so status can remove stale state if necessary.
+    return true;
+  }
+}
 
 export class RepositoryFilesWatcher implements IDisposable {
   private disposables: IDisposable[] = [];
@@ -77,8 +87,10 @@ export class RepositoryFilesWatcher implements IDisposable {
     const isTmp = (uri: Uri) => /[\\\/](\.svn|_svn)[\\\/]tmp/.test(uri.path);
 
     const isRelevant = (uri: Uri) => !isInternalVirtualFs(uri) && !isTmp(uri);
+    const isRelevantChange = (uri: Uri) =>
+      isRelevant(uri) && isWorkspaceFileChange(uri);
 
-    this.onDidChange = filterEvent(fsWatcher.onDidChange, isRelevant);
+    this.onDidChange = filterEvent(fsWatcher.onDidChange, isRelevantChange);
     this.onDidCreate = filterEvent(fsWatcher.onDidCreate, isRelevant);
     this.onDidDelete = filterEvent(fsWatcher.onDidDelete, isRelevant);
 
