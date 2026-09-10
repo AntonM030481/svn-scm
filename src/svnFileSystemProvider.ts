@@ -45,7 +45,9 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   private changedRepositoryRoots = new Set<string>();
 
   constructor(
-    sourceControlManager: SourceControlManager | PromiseLike<SourceControlManager>
+    sourceControlManager:
+      | SourceControlManager
+      | PromiseLike<SourceControlManager>
   ) {
     this.sourceControlManagerPromise = Promise.resolve(sourceControlManager);
 
