@@ -1,3 +1,18 @@
+# [2.19.0](https://github.com/AntonM030481/svn-scm/compare/v2.18.0...v2.19.0) (2026-09-10)
+
+### Performance Improvements
+
+* Add incremental targeted status refreshes for changed files and local SVN operations, including batching, multi-root isolation, filesystem echo suppression, and working-copy state preservation ([#2](https://github.com/AntonM030481/svn-scm/issues/2))
+* Reduce redundant SVN commands during startup and model refreshes ([#3](https://github.com/AntonM030481/svn-scm/issues/3))
+
+### Bug Fixes
+
+* Prevent watcher and virtual filesystem noise from causing unnecessary status refreshes or SVN queries ([#4](https://github.com/AntonM030481/svn-scm/issues/4))
+
+### Diagnostics
+
+* Add timestamped SVN command logging with slow-command durations and reason prefixes ([#5](https://github.com/AntonM030481/svn-scm/issues/5))
+
 # [2.18.0](https://github.com/AntonM030481/svn-scm/compare/v2.17.0...v2.18.0) (2026-09-09)
 
 First maintained release of this fork. Changes below are relative to upstream v2.17.0.

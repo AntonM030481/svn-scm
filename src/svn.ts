@@ -6,6 +6,7 @@ import {
   ConstructorPolicy,
   ICpOptions,
   IExecutionResult,
+  ISvnInfo,
   ISvnOptions
 } from "./common/types";
 import * as encodeUtil from "./encoding";
@@ -15,6 +16,62 @@ import SvnError from "./svnError";
 import { Repository } from "./svnRepository";
 import { dispose, IDisposable, toDisposable } from "./util";
 import { iconv } from "./vscodeModules";
+
+const SLOW_COMMAND_LOG_MS = 250;
+
+function pad(value: number, width: number = 2): string {
+  return value.toString().padStart(width, "0");
+}
+
+function formatOutputTime(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds()
+  )}.${pad(date.getMilliseconds(), 3)}`;
+}
+
+function formatDuration(milliseconds: number): string {
+  if (milliseconds < 1000) {
+    return `${milliseconds} ms`;
+  }
+
+  return `${(milliseconds / 1000).toFixed(3)} s`;
+}
+
+export function getSvnLogReason(args: any[], explicitReason?: string): string {
+  if (explicitReason) {
+    return explicitReason;
+  }
+
+  const command = String(args[0] || "svn").toLowerCase();
+
+  if (command === "info") {
+    const hasTarget = args
+      .slice(1)
+      .some(arg => typeof arg === "string" && !arg.startsWith("-"));
+    return hasTarget ? "path-info" : "repository-info";
+  }
+
+  if (command === "stat" || command === "status") {
+    if (args.includes("--show-updates")) {
+      return "remote-status";
+    }
+
+    const hasTarget = args
+      .slice(1)
+      .some(arg => typeof arg === "string" && !arg.startsWith("-"));
+    return hasTarget ? "targeted-status" : "status";
+  }
+
+  if (command === "cat") {
+    return "quick-diff";
+  }
+
+  return command;
+}
+
+function formatLogPrefix(date: Date, name: string | undefined, reason: string) {
+  return `[${formatOutputTime(date)}] [${name}] [${reason}]$`;
+}
 
 export const svnErrorCodes: { [key: string]: string } = {
   AuthorizationFailed: "E170001",
@@ -69,6 +126,7 @@ export class Svn {
 
   private svnPath: string;
   private lastCwd: string = "";
+  private initialRepositoryInfo = new Map<string, ISvnInfo>();
 
   private _onOutput = new EventEmitter();
   get onOutput(): EventEmitter {
@@ -87,17 +145,23 @@ export class Svn {
   public async exec(
     cwd: string,
     args: any[],
-    options: ICpOptions = {}
+    options: ICpOptions = {},
+    explicitReason?: string
   ): Promise<IExecutionResult> {
     if (cwd) {
       this.lastCwd = cwd;
       options.cwd = cwd;
     }
 
+    const startedAt = new Date();
+    const command = args[0];
+    const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+    const reason = getSvnLogReason(args, explicitReason || options.logReason);
+
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${this.lastCwd.split(/[\\\/]+/).pop()}]$ svn ${argsOut.join(" ")}\n`
+        `${formatLogPrefix(startedAt, name, reason)} svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -145,20 +209,20 @@ export class Svn {
 
     const once = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.once(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.once(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const on = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.on(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.on(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const [exitCode, stdout, stderr] = await Promise.all<any>([
@@ -184,6 +248,18 @@ export class Svn {
 
     dispose(disposables);
 
+    const duration = Date.now() - startedAt.getTime();
+    if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      const completedAt = new Date();
+      this.logOutput(
+        `${formatLogPrefix(
+          completedAt,
+          name,
+          reason
+        )} svn ${command} completed in ${formatDuration(duration)}\n`
+      );
+    }
+
     if (!encoding) {
       encoding = encodeUtil.detectEncoding(stdout);
     }
@@ -203,13 +279,18 @@ export class Svn {
     const decodedStdout = iconv.decode(stdout, encoding);
 
     if (options.log !== false && stderr.length > 0) {
-      const name = this.lastCwd.split(/[\\\/]+/).pop();
+      const errorTime = new Date();
       const err = stderr
-        .split("\n")
-        .filter((line: string) => line)
-        .map((line: string) => `[${name}]$ ${line}`)
+        .split(/\r?\n/)
+        .filter((line: string) => line.trim().length > 0)
+        .map(
+          (line: string) =>
+            `${formatLogPrefix(errorTime, name, reason)} ${line}`
+        )
         .join("\n");
-      this.logOutput(err);
+      if (err) {
+        this.logOutput(err + "\n");
+      }
     }
 
     if (exitCode) {
@@ -232,17 +313,23 @@ export class Svn {
   public async execBuffer(
     cwd: string,
     args: any[],
-    options: ICpOptions = {}
+    options: ICpOptions = {},
+    explicitReason?: string
   ): Promise<BufferResult> {
     if (cwd) {
       this.lastCwd = cwd;
       options.cwd = cwd;
     }
 
+    const startedAt = new Date();
+    const command = args[0];
+    const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+    const reason = getSvnLogReason(args, explicitReason || options.logReason);
+
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${this.lastCwd.split(/[\\\/]+/).pop()}]$ svn ${argsOut.join(" ")}\n`
+        `${formatLogPrefix(startedAt, name, reason)} svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -282,20 +369,20 @@ export class Svn {
 
     const once = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.once(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.once(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const on = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.on(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.on(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const [exitCode, stdout, stderr] = await Promise.all<any>([
@@ -321,14 +408,31 @@ export class Svn {
 
     dispose(disposables);
 
+    const duration = Date.now() - startedAt.getTime();
+    if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      const completedAt = new Date();
+      this.logOutput(
+        `${formatLogPrefix(
+          completedAt,
+          name,
+          reason
+        )} svn ${command} completed in ${formatDuration(duration)}\n`
+      );
+    }
+
     if (options.log !== false && stderr.length > 0) {
-      const name = this.lastCwd.split(/[\\\/]+/).pop();
+      const errorTime = new Date();
       const err = stderr
-        .split("\n")
-        .filter((line: string) => line)
-        .map((line: string) => `[${name}]$ ${line}`)
+        .split(/\r?\n/)
+        .filter((line: string) => line.trim().length > 0)
+        .map(
+          (line: string) =>
+            `${formatLogPrefix(errorTime, name, reason)} ${line}`
+        )
         .join("\n");
-      this.logOutput(err);
+      if (err) {
+        this.logOutput(err + "\n");
+      }
     }
 
     return { exitCode, stdout, stderr };
@@ -336,9 +440,15 @@ export class Svn {
 
   public async getRepositoryRoot(path: string) {
     try {
-      const result = await this.exec(path, ["info", "--xml"]);
+      const result = await this.exec(
+        path,
+        ["info", "--xml"],
+        {},
+        "repository-detect"
+      );
 
       const info = await parseInfoXml(result.stdout);
+      this.initialRepositoryInfo.set(path, info);
 
       if (info && info.wcInfo && info.wcInfo.wcrootAbspath) {
         return info.wcInfo.wcrootAbspath;
@@ -359,11 +469,15 @@ export class Svn {
     repositoryRoot: string,
     workspaceRoot: string
   ): Promise<Repository> {
+    const info = this.initialRepositoryInfo.get(workspaceRoot);
+    this.initialRepositoryInfo.delete(workspaceRoot);
+
     return new Repository(
       this,
       repositoryRoot,
       workspaceRoot,
-      ConstructorPolicy.Async
+      ConstructorPolicy.Async,
+      info
     );
   }
 }

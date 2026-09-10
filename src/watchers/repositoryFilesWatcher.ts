@@ -1,4 +1,5 @@
 import { Event, Uri, workspace, EventEmitter, RelativePattern } from "vscode";
+import { statSync } from "original-fs";
 import { watch } from "fs";
 import { exists } from "../fs";
 import { join } from "path";
@@ -11,6 +12,16 @@ import {
   fixPathSeparator,
   getSvnDir
 } from "../util";
+
+export function isWorkspaceFileChange(uri: Uri): boolean {
+  try {
+    return !statSync(uri.fsPath).isDirectory();
+  } catch {
+    // The path can disappear between the change event and this check. Keep the
+    // event in that case so status can remove stale state if necessary.
+    return true;
+  }
+}
 
 export class RepositoryFilesWatcher implements IDisposable {
   private disposables: IDisposable[] = [];
@@ -66,12 +77,21 @@ export class RepositoryFilesWatcher implements IDisposable {
 
     this.disposables.push(fsWatcher);
 
+    // Ignore changes emitted by our own virtual SVN filesystem. Quick Diff uses
+    // svn: URIs whose paths intentionally end in ".svn"; treating those as
+    // working-copy files causes bogus status calls such as "file.cpp.svn" and
+    // can trigger another refresh cycle after every model update.
+    const isInternalVirtualFs = (uri: Uri) =>
+      uri.scheme === "svn" || uri.scheme === "tempsvnfs";
+
     //https://subversion.apache.org/docs/release-notes/1.3.html#_svn-hack
     const isTmp = (uri: Uri) => /[\\\/](\.svn|_svn)[\\\/]tmp/.test(uri.path);
 
-    const isRelevant = (uri: Uri) => !isTmp(uri);
+    const isRelevant = (uri: Uri) => !isInternalVirtualFs(uri) && !isTmp(uri);
+    const isRelevantChange = (uri: Uri) =>
+      isRelevant(uri) && isWorkspaceFileChange(uri);
 
-    this.onDidChange = filterEvent(fsWatcher.onDidChange, isRelevant);
+    this.onDidChange = filterEvent(fsWatcher.onDidChange, isRelevantChange);
     this.onDidCreate = filterEvent(fsWatcher.onDidCreate, isRelevant);
     this.onDidDelete = filterEvent(fsWatcher.onDidDelete, isRelevant);
 

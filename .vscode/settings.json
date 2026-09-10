@@ -2,5 +2,10 @@
 {
   "prettier.semi": true,
   "prettier.singleQuote": false,
-  "prettier.trailingComma": "none"
+  "prettier.trailingComma": "none",
+
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  }
 }

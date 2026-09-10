@@ -35,6 +35,8 @@ interface CacheRow {
 export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   private disposables: Disposable[] = [];
   private cache = new Map<string, CacheRow>();
+  private disposed = false;
+  private readonly sourceControlManagerPromise: Promise<SourceControlManager>;
 
   private _onDidChangeFile = new EventEmitter<FileChangeEvent[]>();
   readonly onDidChangeFile: Event<FileChangeEvent[]> = this._onDidChangeFile
@@ -42,19 +44,41 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
 
   private changedRepositoryRoots = new Set<string>();
 
-  constructor(private sourceControlManager: SourceControlManager) {
+  constructor(
+    sourceControlManager:
+      | SourceControlManager
+      | PromiseLike<SourceControlManager>
+  ) {
+    this.sourceControlManagerPromise = Promise.resolve(sourceControlManager);
+
+    // Register the svn: scheme immediately. VS Code can restore virtual SVN
+    // documents before repository discovery has finished during activation.
     this.disposables.push(
-      sourceControlManager.onDidChangeRepository(
-        this.onDidChangeRepository,
-        this
-      ),
       workspace.registerFileSystemProvider("svn", this, {
         isReadonly: true,
         isCaseSensitive: true
       })
     );
 
+    void this.sourceControlManagerPromise
+      .then(manager => {
+        if (this.disposed) {
+          return;
+        }
+
+        this.disposables.push(
+          manager.onDidChangeRepository(this.onDidChangeRepository, this)
+        );
+      })
+      .catch(() => undefined);
+
     setInterval(() => this.cleanup(), FIVE_MINUTES);
+  }
+
+  private async getSourceControlManager(): Promise<SourceControlManager> {
+    const sourceControlManager = await this.sourceControlManagerPromise;
+    await sourceControlManager.isInitialized;
+    return sourceControlManager;
   }
 
   private onDidChangeRepository({ repository }: RepositoryChangeEvent): void {
@@ -102,11 +126,11 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   }
 
   async stat(uri: Uri): Promise<FileStat> {
-    await this.sourceControlManager.isInitialized;
+    const sourceControlManager = await this.getSourceControlManager();
 
     const { fsPath } = fromSvnUri(uri);
 
-    const repository = this.sourceControlManager.getRepository(fsPath);
+    const repository = sourceControlManager.getRepository(fsPath);
 
     if (!repository) {
       throw FileSystemError.FileNotFound;
@@ -132,11 +156,11 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   }
 
   async readFile(uri: Uri): Promise<Uint8Array> {
-    await this.sourceControlManager.isInitialized;
+    const sourceControlManager = await this.getSourceControlManager();
 
     const { fsPath, extra, action } = fromSvnUri(uri);
 
-    const repository = this.sourceControlManager.getRepository(fsPath);
+    const repository = sourceControlManager.getRepository(fsPath);
 
     if (!repository) {
       throw FileSystemError.FileNotFound();
@@ -203,6 +227,7 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.disposables.forEach(d => d.dispose());
   }
 }

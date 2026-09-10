@@ -25,29 +25,48 @@ import { IsSvn19orGreater } from "./contexts/isSvn19orGreater";
 import { IsSvn18orGreater } from "./contexts/isSvn18orGreater";
 import { tempSvnFs } from "./temp_svn_fs";
 import { SvnFileSystemProvider } from "./svnFileSystemProvider";
+import { enableIncrementalStatusRefresh } from "./incrementalStatus";
+import { enableTargetedStatusLogReasons } from "./svnLogReasons";
+
+type SourceControlManagerResolver = (
+  value: SourceControlManager | PromiseLike<SourceControlManager>
+) => void;
 
 async function init(
   extensionContext: ExtensionContext,
   outputChannel: OutputChannel,
-  disposables: Disposable[]
+  disposables: Disposable[],
+  resolveSourceControlManager: SourceControlManagerResolver
 ) {
   const pathHint = configuration.get<string>("path");
   const svnFinder = new SvnFinder();
 
   const info = await svnFinder.findSvn(pathHint);
   const svn = new Svn({ svnPath: info.path, version: info.version });
+
+  const onOutput = (str: string) => outputChannel.append(str);
+  svn.onOutput.addListener("log", onOutput);
+  disposables.push(
+    toDisposable(() => svn.onOutput.removeListener("log", onOutput))
+  );
+
+  outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
+
   const sourceControlManager = await new SourceControlManager(
     svn,
     ConstructorPolicy.Async,
     extensionContext
   );
 
+  resolveSourceControlManager(sourceControlManager);
+
+  enableIncrementalStatusRefresh(sourceControlManager, disposables);
+  enableTargetedStatusLogReasons(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables);
 
   disposables.push(
     sourceControlManager,
     tempSvnFs,
-    new SvnFileSystemProvider(sourceControlManager),
     new SvnProvider(sourceControlManager),
     new RepoLogProvider(sourceControlManager),
     new ItemLogProvider(sourceControlManager),
@@ -58,13 +77,6 @@ async function init(
     new IsSvn19orGreater(info.version)
   );
 
-  outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
-
-  const onOutput = (str: string) => outputChannel.append(str);
-  svn.onOutput.addListener("log", onOutput);
-  disposables.push(
-    toDisposable(() => svn.onOutput.removeListener("log", onOutput))
-  );
   disposables.push(toDisposable(messages.dispose));
 }
 
@@ -72,6 +84,17 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   const outputChannel = window.createOutputChannel("Svn");
   commands.registerCommand("svn.showOutput", () => outputChannel.show());
   disposables.push(outputChannel);
+
+  // Register the svn: scheme before any asynchronous initialization. VS Code
+  // can restore BASE/diff editors immediately when the window opens, even while
+  // the SVN executable is still being discovered.
+  let resolveSourceControlManager!: SourceControlManagerResolver;
+  const sourceControlManagerReady = new Promise<SourceControlManager>(
+    resolve => {
+      resolveSourceControlManager = resolve;
+    }
+  );
+  disposables.push(new SvnFileSystemProvider(sourceControlManagerReady));
 
   const showOutput = configuration.get<boolean>("showOutput");
 
@@ -81,7 +104,12 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
 
   const tryInit = async () => {
     try {
-      await init(context, outputChannel, disposables);
+      await init(
+        context,
+        outputChannel,
+        disposables,
+        resolveSourceControlManager
+      );
     } catch (err) {
       if (!/Svn installation not found/.test(err.message || "")) {
         throw err;
