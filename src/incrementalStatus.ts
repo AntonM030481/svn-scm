@@ -85,7 +85,9 @@ function filterWorkspaceStatuses(
   workspaceRoot: string,
   statuses: IFileStatus[]
 ): IFileStatus[] {
-  return statuses.filter(status => isTargetInWorkspace(workspaceRoot, status.path));
+  return statuses.filter(status =>
+    isTargetInWorkspace(workspaceRoot, status.path)
+  );
 }
 
 function resourceToStatus(
@@ -119,7 +121,10 @@ function snapshotStatuses(repository: Repository): IFileStatus[] {
   const append = (resources: Resource[], changelist?: string) => {
     resources
       .filter(resource =>
-        isTargetInWorkspace(repository.workspaceRoot, resource.resourceUri.fsPath)
+        isTargetInWorkspace(
+          repository.workspaceRoot,
+          resource.resourceUri.fsPath
+        )
       )
       .forEach(resource => {
         statuses.push(resourceToStatus(repository, resource, changelist));
