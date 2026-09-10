@@ -76,6 +76,26 @@ suite("Repository Tests", () => {
     assert.equal(name, "trunk");
   });
 
+  test("No quick diff for unversioned file", async () => {
+    const repository: Repository | null = sourceControlManager.getRepository(
+      checkoutDir.fsPath
+    );
+    if (!repository) {
+      return;
+    }
+
+    const file = path.join(checkoutDir.fsPath, "unversioned.txt");
+    fs.writeFileSync(file, "test");
+
+    try {
+      await repository.status();
+      assert.equal(repository.provideOriginalResource(Uri.file(file)), undefined);
+    } finally {
+      fs.unlinkSync(file);
+      await repository.status();
+    }
+  });
+
   test("Try commit file", async function () {
     this.timeout(60000);
     const repository: Repository | null = sourceControlManager.getRepository(
