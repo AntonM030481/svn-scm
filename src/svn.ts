@@ -37,10 +37,7 @@ function formatDuration(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(3)} s`;
 }
 
-export function getSvnLogReason(
-  args: any[],
-  explicitReason?: string
-): string {
+export function getSvnLogReason(args: any[], explicitReason?: string): string {
   if (explicitReason) {
     return explicitReason;
   }
@@ -255,9 +252,11 @@ export class Svn {
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
       const completedAt = new Date();
       this.logOutput(
-        `${formatLogPrefix(completedAt, name, reason)} svn ${command} completed in ${formatDuration(
-          duration
-        )}\n`
+        `${formatLogPrefix(
+          completedAt,
+          name,
+          reason
+        )} svn ${command} completed in ${formatDuration(duration)}\n`
       );
     }
 
@@ -413,9 +412,11 @@ export class Svn {
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
       const completedAt = new Date();
       this.logOutput(
-        `${formatLogPrefix(completedAt, name, reason)} svn ${command} completed in ${formatDuration(
-          duration
-        )}\n`
+        `${formatLogPrefix(
+          completedAt,
+          name,
+          reason
+        )} svn ${command} completed in ${formatDuration(duration)}\n`
       );
     }
 

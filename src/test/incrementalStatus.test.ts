@@ -4,7 +4,9 @@ import {
   fileSnapshotsEqual,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
-  mergeStatuses
+  mergeStatuses,
+  preserveRepositoryStateInSnapshot,
+  shouldPreserveRepositoryState
 } from "../incrementalStatus";
 
 function status(path: string, item: Status): IFileStatus {
@@ -73,6 +75,50 @@ suite("Incremental Status Tests", () => {
       result.map(item => item.path).sort(),
       ["src/feature/c.ts", "src/other.ts"]
     );
+  });
+
+  test("preserves working copy state on a targeted refresh", () => {
+    const merged = mergeStatuses(
+      "/repo",
+      [
+        status("src/a.ts", Status.MODIFIED),
+        status("src/b.ts", Status.MODIFIED)
+      ],
+      ["/repo/src/a.ts"],
+      [status("src/a.ts", Status.MODIFIED)]
+    );
+    const result = preserveRepositoryStateInSnapshot(merged, true, true);
+    const repositoryState = result.find(item => item.path === ".");
+
+    assert.ok(repositoryState);
+    assert.equal(repositoryState.status, Status.INCOMPLETE);
+    assert.equal(repositoryState.wcStatus.locked, true);
+  });
+
+  test("does not mix preserved state into a real root status", () => {
+    const rootStatus = status(".", Status.NORMAL);
+    rootStatus.props = Status.MODIFIED;
+
+    const result = preserveRepositoryStateInSnapshot(
+      [rootStatus, status("src/a.ts", Status.MODIFIED)],
+      true,
+      true
+    );
+    const rootStatuses = result.filter(item => item.path === ".");
+
+    assert.equal(rootStatuses.length, 2);
+    assert.equal(rootStatuses[0].props, Status.MODIFIED);
+    assert.equal(rootStatuses[1].status, Status.INCOMPLETE);
+    assert.equal(rootStatuses[1].wcStatus.locked, true);
+  });
+
+  test("uses root refresh as authoritative working copy state", () => {
+    assert.equal(
+      shouldPreserveRepositoryState("/repo", ["/repo/src/a.ts"]),
+      true
+    );
+    assert.equal(shouldPreserveRepositoryState("/repo", ["/repo"]), false);
+    assert.equal(shouldPreserveRepositoryState("/repo", ["."]), false);
   });
 
   test("scopes targets to one workspace folder", () => {
