@@ -243,7 +243,7 @@ export class Svn {
         .filter((line: string) => line)
         .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
-      this.logOutput(err);
+      this.logOutput(err + "\n");
     }
 
     if (exitCode) {
@@ -376,7 +376,7 @@ export class Svn {
         .filter((line: string) => line)
         .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
-      this.logOutput(err);
+      this.logOutput(err + "\n");
     }
 
     return { exitCode, stdout, stderr };
