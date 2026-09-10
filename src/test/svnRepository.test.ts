@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { ConstructorPolicy, ICpOptions, ISvnOptions } from "../common/types";
+import { parseStatusXml } from "../parser/statusParser";
 import { Svn } from "../svn";
 import { Repository } from "../svnRepository";
 
@@ -39,6 +40,26 @@ suite("Svn Repository Tests", () => {
     assert.equal(status[0].path, "test.php");
     assert.equal(status[1].path, "newfiletester.php");
     assert.equal(status[2].path, "added.php");
+  });
+
+  test("Test multiple status targets", async () => {
+    const status = await parseStatusXml(`<?xml version="1.0" encoding="UTF-8"?>
+      <status>
+        <target path="first.cpp">
+          <entry path="first.cpp">
+            <wc-status item="modified" revision="19" props="none" />
+          </entry>
+        </target>
+        <target path="second.cpp">
+          <entry path="second.cpp">
+            <wc-status item="modified" revision="19" props="none" />
+          </entry>
+        </target>
+      </status>`);
+
+    assert.equal(status.length, 2);
+    assert.equal(status[0].path, "first.cpp");
+    assert.equal(status[1].path, "second.cpp");
   });
 
   test("Test rename", async () => {
