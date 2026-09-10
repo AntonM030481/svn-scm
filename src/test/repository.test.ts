@@ -1,7 +1,8 @@
 import * as assert from "assert";
 import * as fs from "original-fs";
 import * as path from "path";
-import { commands, Uri, window, workspace } from "vscode";
+import { commands, EventEmitter, Uri, window, workspace } from "vscode";
+import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { SourceControlManager } from "../source_control_manager";
 import { Repository } from "../repository";
 import * as testUtil from "./testUtil";
@@ -100,6 +101,45 @@ suite("Repository Tests", () => {
     }
   });
 
+  test("File history skips info for unversioned file", async () => {
+    const repository: Repository | null = sourceControlManager.getRepository(
+      checkoutDir.fsPath
+    );
+    if (!repository) {
+      return;
+    }
+
+    const file = path.join(checkoutDir.fsPath, "unversioned-history.txt");
+    fs.writeFileSync(file, "test");
+    await repository.status();
+
+    const originalGetInfo = repository.getInfo;
+    let getInfoCalls = 0;
+    (repository as any).getInfo = async (...args: any[]) => {
+      getInfoCalls += 1;
+      return originalGetInfo.apply(repository, args);
+    };
+
+    const itemLogProvider = Object.create(
+      ItemLogProvider.prototype
+    ) as ItemLogProvider;
+    const changeEmitter = new EventEmitter<any>();
+    (itemLogProvider as any).sourceControlManager = sourceControlManager;
+    (itemLogProvider as any)._onDidChangeTreeData = changeEmitter;
+
+    try {
+      await itemLogProvider.refresh(undefined, {
+        document: { uri: Uri.file(file) }
+      } as any);
+      assert.equal(getInfoCalls, 0);
+    } finally {
+      (repository as any).getInfo = originalGetInfo;
+      changeEmitter.dispose();
+      fs.unlinkSync(file);
+      await repository.status();
+    }
+  });
+
   test("Try commit file", async function () {
     this.timeout(60000);
     const repository: Repository | null = sourceControlManager.getRepository(
@@ -138,7 +178,6 @@ suite("Repository Tests", () => {
     );
 
     await sourceControlManager.tryOpenRepository(newCheckoutDir.fsPath);
-
     const newRepository: Repository | null = sourceControlManager.getRepository(
       newCheckoutDir.fsPath
     );
@@ -149,7 +188,6 @@ suite("Repository Tests", () => {
 
     await newRepository.newBranch("branches/test");
     const currentBranch = await newRepository.getCurrentBranch();
-
     assert.equal(currentBranch, "branches/test");
   });
 });
