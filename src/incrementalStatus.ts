@@ -1,6 +1,7 @@
 import * as path from "path";
 import { Disposable } from "vscode";
 import { IFileStatus, PropStatus, Status } from "./common/types";
+import { stat } from "./fs";
 import { configuration } from "./helpers/configuration";
 import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
@@ -15,10 +16,23 @@ interface StatusParams {
   checkRemoteChanges?: boolean;
 }
 
+interface FileSnapshot {
+  exists: boolean;
+  mtime?: number;
+  ctime?: number;
+  size?: number;
+}
+
+interface ExpectedFsEcho {
+  snapshot: FileSnapshot;
+  expiresAt: number;
+}
+
 interface IncrementalStatusState {
   statuses: IFileStatus[];
   pendingTargets?: string[];
   mutatingTargets?: string[];
+  expectedFsEchoes: Map<string, ExpectedFsEcho>;
   fsTargets: Set<string>;
   svnRefreshPending: boolean;
 }
@@ -29,6 +43,7 @@ interface WorkingCopyMutationState {
 }
 
 const SELF_SVN_METADATA_GRACE_MS = 2000;
+const SELF_FS_ECHO_GRACE_MS = 5000;
 const workingCopyMutations = new Map<string, WorkingCopyMutationState>();
 
 function pathApi(workspaceRoot: string) {
@@ -88,6 +103,46 @@ function absolutePath(workspaceRoot: string, file: string): string {
   return paths.isAbsolute(file)
     ? paths.resolve(file)
     : paths.resolve(workspaceRoot, file);
+}
+
+function absolutePathKey(workspaceRoot: string, file: string): string {
+  const resolved = absolutePath(workspaceRoot, file);
+  return /^[a-zA-Z]:[\\/]/.test(resolved) || /^\\\\/.test(resolved)
+    ? resolved.toLowerCase()
+    : resolved;
+}
+
+async function getFileSnapshot(file: string): Promise<FileSnapshot> {
+  try {
+    const fileStat = await stat(file);
+    return {
+      exists: true,
+      mtime: fileStat.mtime.getTime(),
+      ctime: fileStat.ctime.getTime(),
+      size: fileStat.size
+    };
+  } catch {
+    return { exists: false };
+  }
+}
+
+export function fileSnapshotsEqual(
+  expected: FileSnapshot,
+  actual: FileSnapshot
+): boolean {
+  if (expected.exists !== actual.exists) {
+    return false;
+  }
+
+  if (!expected.exists) {
+    return true;
+  }
+
+  return (
+    expected.mtime === actual.mtime &&
+    expected.ctime === actual.ctime &&
+    expected.size === actual.size
+  );
 }
 
 export function isTargetInWorkspace(
@@ -307,8 +362,44 @@ function patchRepository(repository: Repository): Disposable {
   const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
   const state: IncrementalStatusState = {
     statuses: snapshotStatuses(repository),
+    expectedFsEchoes: new Map<string, ExpectedFsEcho>(),
     fsTargets: new Set<string>(),
     svnRefreshPending: false
+  };
+
+  const rememberFsEchoes = async (targets: string[]) => {
+    await Promise.all(
+      targets.map(async target => {
+        const absoluteTarget = absolutePath(repository.workspaceRoot, target);
+        const snapshot = await getFileSnapshot(absoluteTarget);
+        state.expectedFsEchoes.set(
+          absolutePathKey(repository.workspaceRoot, absoluteTarget),
+          {
+            snapshot,
+            expiresAt: Date.now() + SELF_FS_ECHO_GRACE_MS
+          }
+        );
+      })
+    );
+  };
+
+  const consumeFsEcho = async (eventTarget: string): Promise<boolean> => {
+    const key = absolutePathKey(repository.workspaceRoot, eventTarget);
+    const expected = state.expectedFsEchoes.get(key);
+    if (!expected) {
+      return false;
+    }
+
+    if (Date.now() >= expected.expiresAt) {
+      state.expectedFsEchoes.delete(key);
+      return false;
+    }
+
+    const actual = await getFileSnapshot(
+      absolutePath(repository.workspaceRoot, eventTarget)
+    );
+    state.expectedFsEchoes.delete(key);
+    return fileSnapshotsEqual(expected.snapshot, actual);
   };
 
   svnRepository.getStatus = async (params: StatusParams) => {
@@ -375,10 +466,16 @@ function patchRepository(repository: Repository): Disposable {
         beginWorkingCopyMutation(repository.root);
       }
 
+      let succeeded = false;
       try {
-        return await original(...args);
+        const result = await original(...args);
+        succeeded = true;
+        return result;
       } finally {
         state.pendingTargets = undefined;
+        if (succeeded && targets) {
+          await rememberFsEchoes(targets);
+        }
         state.mutatingTargets = undefined;
         if (targets) {
           endWorkingCopyMutation(repository.root);
@@ -404,7 +501,10 @@ function patchRepository(repository: Repository): Disposable {
     [oldFile, newFile].filter(file => typeof file === "string")
   );
 
-  const collectFsTarget = (target: string, eventTarget: string = target) => {
+  const collectFsTarget = async (
+    target: string,
+    eventTarget: string = target
+  ) => {
     const autorefresh = configuration.get<boolean>("autorefresh");
     if (!autorefresh) {
       return;
@@ -422,6 +522,10 @@ function patchRepository(repository: Repository): Disposable {
         state.mutatingTargets
       )
     ) {
+      return;
+    }
+
+    if (await consumeFsEcho(eventTarget)) {
       return;
     }
 
@@ -444,15 +548,15 @@ function patchRepository(repository: Repository): Disposable {
 
   let fsDisposables: Disposable[] = [];
   fsDisposables.push(
-    repository.fsWatcher.onDidWorkspaceChange(uri =>
-      collectFsTarget(uri.fsPath)
-    ),
-    repository.fsWatcher.onDidWorkspaceCreate(uri =>
-      collectFsTarget(uri.fsPath)
-    ),
-    repository.fsWatcher.onDidWorkspaceDelete(uri =>
-      collectFsTarget(path.dirname(uri.fsPath), uri.fsPath)
-    ),
+    repository.fsWatcher.onDidWorkspaceChange(uri => {
+      void collectFsTarget(uri.fsPath);
+    }),
+    repository.fsWatcher.onDidWorkspaceCreate(uri => {
+      void collectFsTarget(uri.fsPath);
+    }),
+    repository.fsWatcher.onDidWorkspaceDelete(uri => {
+      void collectFsTarget(path.dirname(uri.fsPath), uri.fsPath);
+    }),
     repository.fsWatcher.onDidSvnAny(collectSvnChange)
   );
 
