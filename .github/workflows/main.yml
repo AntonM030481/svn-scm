@@ -66,15 +66,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $package = Join-Path $env:RUNNER_TEMP "svn.1.8.15.nupkg"
-          Invoke-WebRequest -Uri "https://community.chocolatey.org/api/v2/package/svn/1.8.15" -OutFile $package
-          choco install svn --source $env:RUNNER_TEMP --no-progress --yes
+          $archive = Join-Path $env:RUNNER_TEMP "sliksvn.zip"
+          $destination = Join-Path $env:RUNNER_TEMP "sliksvn"
+          Invoke-WebRequest -Uri "https://sliksvn.com/download/slik-subversion-1-14-5-x64/" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $destination
 
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install Subversion"
+          $svn = Get-ChildItem -Path $destination -Filter svn.exe -Recurse | Select-Object -First 1
+          if (-not $svn) {
+            throw "svn.exe was not found in the SlikSVN archive"
           }
 
-          svn --version --quiet
+          $svn.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $svn.FullName --version --quiet
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
