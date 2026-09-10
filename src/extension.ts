@@ -31,6 +31,7 @@ import { enableTargetedStatusLogReasons } from "./svnLogReasons";
 type SourceControlManagerResolver = (
   value: SourceControlManager | PromiseLike<SourceControlManager>
 ) => void;
+type SourceControlManagerRejecter = (reason?: any) => void;
 
 async function init(
   extensionContext: ExtensionContext,
@@ -89,9 +90,11 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   // can restore BASE/diff editors immediately when the window opens, even while
   // the SVN executable is still being discovered.
   let resolveSourceControlManager!: SourceControlManagerResolver;
+  let rejectSourceControlManager!: SourceControlManagerRejecter;
   const sourceControlManagerReady = new Promise<SourceControlManager>(
-    resolve => {
+    (resolve, reject) => {
       resolveSourceControlManager = resolve;
+      rejectSourceControlManager = reject;
     }
   );
   disposables.push(new SvnFileSystemProvider(sourceControlManagerReady));
@@ -112,6 +115,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
       );
     } catch (err) {
       if (!/Svn installation not found/.test(err.message || "")) {
+        rejectSourceControlManager(err);
         throw err;
       }
 
@@ -119,6 +123,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
         configuration.get<boolean>("ignoreMissingSvnWarning") === true;
 
       if (shouldIgnore) {
+        rejectSourceControlManager(err);
         return;
       }
 
@@ -161,7 +166,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
           await configuration.update("path", file);
 
           // Try Re-init after select the executable
-          await tryInit();
+          return tryInit();
         }
       } else if (choice === download) {
         commands.executeCommand(
@@ -171,6 +176,10 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
       } else if (choice === neverShowAgain) {
         await configuration.update("ignoreMissingSvnWarning", true);
       }
+
+      // No further initialization attempt will be made during this activation.
+      // Reject restored svn: documents instead of leaving them loading forever.
+      rejectSourceControlManager(err);
     }
   };
 
