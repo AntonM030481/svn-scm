@@ -14,7 +14,7 @@ import {
 } from "vscode";
 import { ISvnLogEntry } from "../common/types";
 import { SourceControlManager } from "../source_control_manager";
-import { dispose, unwrap } from "../util";
+import { dispose, pathEquals, unwrap } from "../util";
 import {
   copyCommitToClipboard,
   fetchMore,
@@ -123,21 +123,30 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
-          try {
-            const info = await repo.getInfo(uri.fsPath);
-            this.currentItem = {
-              isComplete: false,
-              entries: [],
-              repo,
-              svnTarget: Uri.parse(info.url),
-              persisted: {
-                commitFrom: "HEAD",
-                baseRevision: parseInt(info.revision, 10)
-              },
-              order: 0
-            };
-          } catch (e) {
-            // doesn't belong to this repo
+          const isUnversioned = repo.unversioned.resourceStates.some(resource =>
+            pathEquals(resource.resourceUri.fsPath, uri.fsPath)
+          );
+
+          if (isUnversioned) {
+            this.currentItem = undefined;
+          } else {
+            try {
+              const info = await repo.getInfo(uri.fsPath);
+              this.currentItem = {
+                isComplete: false,
+                entries: [],
+                repo,
+                svnTarget: Uri.parse(info.url),
+                persisted: {
+                  commitFrom: "HEAD",
+                  baseRevision: parseInt(info.revision, 10)
+                },
+                order: 0
+              };
+            } catch (e) {
+              // doesn't belong to this repo
+              this.currentItem = undefined;
+            }
           }
         }
       }
