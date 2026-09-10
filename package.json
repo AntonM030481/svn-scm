@@ -41,7 +41,7 @@
         "style-check": "prettier --check \"src/**/*.ts\"",
         "style-fix": "prettier --write \"src/**/*.ts\"",
         "test": "yarn test:unit && yarn test:integration",
-        "test:unit": "mocha --ui tdd ./out/test/unit.js",
+        "test:unit": "node ./out/test/unit.js",
         "test:integration": "node ./out/test/runTest.js",
         "test-compile": "tsc -p ./",
         "tools:genReadme": "node ./out/tools/generateConfigSectionForReadme.js",
