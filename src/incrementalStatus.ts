@@ -318,7 +318,7 @@ function patchRepository(repository: Repository): Disposable {
 
   const collectFsTarget = (target: string) => {
     const autorefresh = configuration.get<boolean>("autorefresh");
-    if (!autorefresh || !repository.operations.isIdle()) {
+    if (!autorefresh) {
       return;
     }
 
@@ -327,6 +327,7 @@ function patchRepository(repository: Repository): Disposable {
     }
 
     state.fsTargets.add(target);
+    (repository as any).eventuallyUpdateWhenIdleAndWait();
   };
 
   const collectSvnChange = () => {
@@ -371,6 +372,20 @@ function patchRepository(repository: Repository): Disposable {
         originalEventuallyUpdate();
       }
     }, 0);
+  };
+
+  const originalUpdateWhenIdleAndWait = (repository as any).updateWhenIdleAndWait.bind(
+    repository
+  );
+  originals.set("updateWhenIdleAndWait", originalUpdateWhenIdleAndWait);
+  (repository as any).updateWhenIdleAndWait = async () => {
+    await repository.whenIdleAndFocused();
+
+    if (!state.fsTargets.size && !state.svnRefreshPending) {
+      return;
+    }
+
+    await (repository as any).status();
   };
 
   const originalStatus = repository.status.bind(repository);
