@@ -23,7 +23,9 @@ interface IncrementalStatusState {
 }
 
 function absolutePath(workspaceRoot: string, file: string): string {
-  return path.isAbsolute(file) ? path.resolve(file) : path.resolve(workspaceRoot, file);
+  return path.isAbsolute(file)
+    ? path.resolve(file)
+    : path.resolve(workspaceRoot, file);
 }
 
 export function isTargetInWorkspace(
@@ -247,10 +249,7 @@ function patchRepository(repository: Repository): Disposable {
 
     (repository as any)[name] = async (...args: any[]) => {
       state.statuses = snapshotStatuses(repository);
-      state.pendingTargets = operationTargets(
-        repository,
-        getTargets(...args)
-      );
+      state.pendingTargets = operationTargets(repository, getTargets(...args));
 
       try {
         return await original(...args);
