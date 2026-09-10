@@ -19,6 +19,18 @@ interface IncrementalStatusState {
   statuses: IFileStatus[];
   pendingTargets?: string[];
   fsTargets: Set<string>;
+  svnRefreshPending: boolean;
+}
+
+function absolutePath(workspaceRoot: string, file: string): string {
+  return path.isAbsolute(file) ? path.resolve(file) : path.resolve(workspaceRoot, file);
+}
+
+export function isTargetInWorkspace(
+  workspaceRoot: string,
+  target: string
+): boolean {
+  return isDescendant(workspaceRoot, absolutePath(workspaceRoot, target));
 }
 
 function relativePath(workspaceRoot: string, file: string): string {
@@ -35,6 +47,10 @@ function statusBelongsToTarget(
   statusPath: string,
   target: string
 ): boolean {
+  if (!isTargetInWorkspace(workspaceRoot, target)) {
+    return false;
+  }
+
   const normalizedStatus = normalizePath(statusPath);
   const normalizedTarget = normalizePath(relativePath(workspaceRoot, target));
 
@@ -94,6 +110,14 @@ async function getTargetedStatus(
   params: StatusParams,
   targets: string[]
 ): Promise<IFileStatus[]> {
+  if (
+    targets.some(
+      target => !isTargetInWorkspace(repository.workspaceRoot, target)
+    )
+  ) {
+    throw new Error("Incremental status target is outside workspace root");
+  }
+
   const args = ["stat", "--xml"];
 
   if (params.includeIgnored) {
@@ -146,7 +170,9 @@ export function mergeStatuses(
 
   const byPath = new Map<string, IFileStatus>();
   statuses.forEach(status => byPath.set(normalizePath(status.path), status));
-  updated.forEach(status => byPath.set(normalizePath(status.path), status));
+  updated
+    .filter(status => isTargetInWorkspace(workspaceRoot, status.path))
+    .forEach(status => byPath.set(normalizePath(status.path), status));
 
   return Array.from(byPath.values());
 }
@@ -159,12 +185,28 @@ function targetList(value: unknown): string[] {
   return value.filter(item => typeof item === "string") as string[];
 }
 
+function operationTargets(
+  repository: Repository,
+  targets: string[]
+): string[] | undefined {
+  if (!targets.length) {
+    return undefined;
+  }
+
+  return targets.every(target =>
+    isTargetInWorkspace(repository.workspaceRoot, target)
+  )
+    ? targets
+    : undefined;
+}
+
 function patchRepository(repository: Repository): Disposable {
   const svnRepository = repository.repository;
   const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
   const state: IncrementalStatusState = {
     statuses: snapshotStatuses(repository),
-    fsTargets: new Set<string>()
+    fsTargets: new Set<string>(),
+    svnRefreshPending: false
   };
 
   svnRepository.getStatus = async (params: StatusParams) => {
@@ -188,8 +230,6 @@ function patchRepository(repository: Repository): Disposable {
       );
       return state.statuses;
     } catch (error) {
-      // A targeted status can fail for paths that disappeared or changed shape.
-      // Fall back to the existing full scan to preserve correctness.
       const statuses = await originalGetStatus(params);
       state.statuses = statuses;
       return statuses;
@@ -206,10 +246,11 @@ function patchRepository(repository: Repository): Disposable {
     originals.set(name, original);
 
     (repository as any)[name] = async (...args: any[]) => {
-      // Capture the current model immediately before the SVN operation.
-      // This preserves unrelated changes while refreshing only its targets.
       state.statuses = snapshotStatuses(repository);
-      state.pendingTargets = getTargets(...args);
+      state.pendingTargets = operationTargets(
+        repository,
+        getTargets(...args)
+      );
 
       try {
         return await original(...args);
@@ -236,16 +277,26 @@ function patchRepository(repository: Repository): Disposable {
     [oldFile, newFile].filter(file => typeof file === "string")
   );
 
-  // The repository watcher already knows which path changed, but the original
-  // auto-refresh discards that information and calls status() for the whole WC.
-  // Collect targets here and let the existing debounced status() consume them.
   const collectFsTarget = (target: string) => {
     const autorefresh = configuration.get<boolean>("autorefresh");
     if (!autorefresh || !repository.operations.isIdle()) {
       return;
     }
 
+    if (!isTargetInWorkspace(repository.workspaceRoot, target)) {
+      return;
+    }
+
     state.fsTargets.add(target);
+  };
+
+  const collectSvnChange = () => {
+    const autorefresh = configuration.get<boolean>("autorefresh");
+    if (!autorefresh || !repository.operations.isIdle()) {
+      return;
+    }
+
+    state.svnRefreshPending = true;
   };
 
   let fsDisposables: Disposable[] = [];
@@ -258,13 +309,39 @@ function patchRepository(repository: Repository): Disposable {
     ),
     repository.fsWatcher.onDidWorkspaceDelete(uri =>
       collectFsTarget(path.dirname(uri.fsPath))
-    )
+    ),
+    repository.fsWatcher.onDidSvnAny(collectSvnChange)
   );
+
+  const originalEventuallyUpdate = (repository as any).eventuallyUpdateWhenIdleAndWait.bind(
+    repository
+  );
+  originals.set("eventuallyUpdateWhenIdleAndWait", originalEventuallyUpdate);
+
+  let fsRefreshCheckScheduled = false;
+  (repository as any).eventuallyUpdateWhenIdleAndWait = () => {
+    if (fsRefreshCheckScheduled) {
+      return;
+    }
+
+    fsRefreshCheckScheduled = true;
+    setTimeout(() => {
+      fsRefreshCheckScheduled = false;
+
+      if (state.fsTargets.size || state.svnRefreshPending) {
+        originalEventuallyUpdate();
+      }
+    }, 0);
+  };
 
   const originalStatus = repository.status.bind(repository);
   originals.set("status", originalStatus);
   (repository as any).status = async () => {
-    if (state.fsTargets.size) {
+    if (state.svnRefreshPending) {
+      state.svnRefreshPending = false;
+      state.fsTargets.clear();
+      state.pendingTargets = undefined;
+    } else if (state.fsTargets.size) {
       state.statuses = snapshotStatuses(repository);
       state.pendingTargets = Array.from(state.fsTargets);
       state.fsTargets.clear();
