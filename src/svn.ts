@@ -16,6 +16,26 @@ import { Repository } from "./svnRepository";
 import { dispose, IDisposable, toDisposable } from "./util";
 import { iconv } from "./vscodeModules";
 
+const SLOW_COMMAND_LOG_MS = 250;
+
+function pad(value: number, width: number = 2): string {
+  return value.toString().padStart(width, "0");
+}
+
+function formatOutputTime(date: Date): string {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds()
+  )}.${pad(date.getMilliseconds(), 3)}`;
+}
+
+function formatDuration(milliseconds: number): string {
+  if (milliseconds < 1000) {
+    return `${milliseconds} ms`;
+  }
+
+  return `${(milliseconds / 1000).toFixed(3)} s`;
+}
+
 export const svnErrorCodes: { [key: string]: string } = {
   AuthorizationFailed: "E170001",
   RepositoryIsLocked: "E155004",
@@ -94,10 +114,14 @@ export class Svn {
       options.cwd = cwd;
     }
 
+    const startedAt = new Date();
+    const command = args[0];
+    const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${this.lastCwd.split(/[\\\/]+/).pop()}]$ svn ${argsOut.join(" ")}\n`
+        `[${formatOutputTime(startedAt)}] [${name}]$ svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -145,20 +169,20 @@ export class Svn {
 
     const once = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.once(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.once(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const on = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.on(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.on(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const [exitCode, stdout, stderr] = await Promise.all<any>([
@@ -184,6 +208,15 @@ export class Svn {
 
     dispose(disposables);
 
+    const duration = Date.now() - startedAt.getTime();
+    if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      this.logOutput(
+        `[${formatOutputTime(new Date())}] [${name}]$ svn ${command} completed in ${formatDuration(
+          duration
+        )}\n`
+      );
+    }
+
     if (!encoding) {
       encoding = encodeUtil.detectEncoding(stdout);
     }
@@ -203,11 +236,13 @@ export class Svn {
     const decodedStdout = iconv.decode(stdout, encoding);
 
     if (options.log !== false && stderr.length > 0) {
-      const name = this.lastCwd.split(/[\\\/]+/).pop();
       const err = stderr
         .split("\n")
         .filter((line: string) => line)
-        .map((line: string) => `[${name}]$ ${line}`)
+        .map(
+          (line: string) =>
+            `[${formatOutputTime(new Date())}] [${name}]$ ${line}`
+        )
         .join("\n");
       this.logOutput(err);
     }
@@ -239,10 +274,14 @@ export class Svn {
       options.cwd = cwd;
     }
 
+    const startedAt = new Date();
+    const command = args[0];
+    const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${this.lastCwd.split(/[\\\/]+/).pop()}]$ svn ${argsOut.join(" ")}\n`
+        `[${formatOutputTime(startedAt)}] [${name}]$ svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -282,20 +321,20 @@ export class Svn {
 
     const once = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.once(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.once(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const on = (
       ee: NodeJS.EventEmitter,
-      name: string,
+      eventName: string,
       fn: (...args: any[]) => void
     ) => {
-      ee.on(name, fn);
-      disposables.push(toDisposable(() => ee.removeListener(name, fn)));
+      ee.on(eventName, fn);
+      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
     };
 
     const [exitCode, stdout, stderr] = await Promise.all<any>([
@@ -321,12 +360,23 @@ export class Svn {
 
     dispose(disposables);
 
+    const duration = Date.now() - startedAt.getTime();
+    if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      this.logOutput(
+        `[${formatOutputTime(new Date())}] [${name}]$ svn ${command} completed in ${formatDuration(
+          duration
+        )}\n`
+      );
+    }
+
     if (options.log !== false && stderr.length > 0) {
-      const name = this.lastCwd.split(/[\\\/]+/).pop();
       const err = stderr
         .split("\n")
         .filter((line: string) => line)
-        .map((line: string) => `[${name}]$ ${line}`)
+        .map(
+          (line: string) =>
+            `[${formatOutputTime(new Date())}] [${name}]$ ${line}`
+        )
         .join("\n");
       this.logOutput(err);
     }
