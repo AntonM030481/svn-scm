@@ -37,6 +37,45 @@ function formatDuration(milliseconds: number): string {
   return `${(milliseconds / 1000).toFixed(3)} s`;
 }
 
+export function getSvnLogReason(
+  args: any[],
+  explicitReason?: string
+): string {
+  if (explicitReason) {
+    return explicitReason;
+  }
+
+  const command = String(args[0] || "svn").toLowerCase();
+
+  if (command === "info") {
+    const hasTarget = args
+      .slice(1)
+      .some(arg => typeof arg === "string" && !arg.startsWith("-"));
+    return hasTarget ? "path-info" : "repository-info";
+  }
+
+  if (command === "stat" || command === "status") {
+    if (args.includes("--show-updates")) {
+      return "remote-status";
+    }
+
+    const hasTarget = args
+      .slice(1)
+      .some(arg => typeof arg === "string" && !arg.startsWith("-"));
+    return hasTarget ? "targeted-status" : "status";
+  }
+
+  if (command === "cat") {
+    return "quick-diff";
+  }
+
+  return command;
+}
+
+function formatLogPrefix(date: Date, name: string | undefined, reason: string) {
+  return `[${formatOutputTime(date)}] [${name}] [${reason}]$`;
+}
+
 export const svnErrorCodes: { [key: string]: string } = {
   AuthorizationFailed: "E170001",
   RepositoryIsLocked: "E155004",
@@ -109,7 +148,8 @@ export class Svn {
   public async exec(
     cwd: string,
     args: any[],
-    options: ICpOptions = {}
+    options: ICpOptions = {},
+    explicitReason?: string
   ): Promise<IExecutionResult> {
     if (cwd) {
       this.lastCwd = cwd;
@@ -119,11 +159,12 @@ export class Svn {
     const startedAt = new Date();
     const command = args[0];
     const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+    const reason = getSvnLogReason(args, explicitReason);
 
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${formatOutputTime(startedAt)}] [${name}]$ svn ${argsOut.join(" ")}\n`
+        `${formatLogPrefix(startedAt, name, reason)} svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -212,9 +253,9 @@ export class Svn {
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
-      const completedAt = formatOutputTime(new Date());
+      const completedAt = new Date();
       this.logOutput(
-        `[${completedAt}] [${name}]$ svn ${command} completed in ${formatDuration(
+        `${formatLogPrefix(completedAt, name, reason)} svn ${command} completed in ${formatDuration(
           duration
         )}\n`
       );
@@ -239,11 +280,14 @@ export class Svn {
     const decodedStdout = iconv.decode(stdout, encoding);
 
     if (options.log !== false && stderr.length > 0) {
-      const errorTime = formatOutputTime(new Date());
+      const errorTime = new Date();
       const err = stderr
         .split(/\r?\n/)
         .filter((line: string) => line.trim().length > 0)
-        .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
+        .map(
+          (line: string) =>
+            `${formatLogPrefix(errorTime, name, reason)} ${line}`
+        )
         .join("\n");
       if (err) {
         this.logOutput(err + "\n");
@@ -270,7 +314,8 @@ export class Svn {
   public async execBuffer(
     cwd: string,
     args: any[],
-    options: ICpOptions = {}
+    options: ICpOptions = {},
+    explicitReason?: string
   ): Promise<BufferResult> {
     if (cwd) {
       this.lastCwd = cwd;
@@ -280,11 +325,12 @@ export class Svn {
     const startedAt = new Date();
     const command = args[0];
     const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
+    const reason = getSvnLogReason(args, explicitReason);
 
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
       this.logOutput(
-        `[${formatOutputTime(startedAt)}] [${name}]$ svn ${argsOut.join(" ")}\n`
+        `${formatLogPrefix(startedAt, name, reason)} svn ${argsOut.join(" ")}\n`
       );
     }
 
@@ -365,20 +411,23 @@ export class Svn {
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
-      const completedAt = formatOutputTime(new Date());
+      const completedAt = new Date();
       this.logOutput(
-        `[${completedAt}] [${name}]$ svn ${command} completed in ${formatDuration(
+        `${formatLogPrefix(completedAt, name, reason)} svn ${command} completed in ${formatDuration(
           duration
         )}\n`
       );
     }
 
     if (options.log !== false && stderr.length > 0) {
-      const errorTime = formatOutputTime(new Date());
+      const errorTime = new Date();
       const err = stderr
         .split(/\r?\n/)
         .filter((line: string) => line.trim().length > 0)
-        .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
+        .map(
+          (line: string) =>
+            `${formatLogPrefix(errorTime, name, reason)} ${line}`
+        )
         .join("\n");
       if (err) {
         this.logOutput(err + "\n");
@@ -390,7 +439,12 @@ export class Svn {
 
   public async getRepositoryRoot(path: string) {
     try {
-      const result = await this.exec(path, ["info", "--xml"]);
+      const result = await this.exec(
+        path,
+        ["info", "--xml"],
+        {},
+        "repository-detect"
+      );
 
       const info = await parseInfoXml(result.stdout);
       this.initialRepositoryInfo.set(path, info);
