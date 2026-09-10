@@ -47,15 +47,20 @@ export class Repository {
     private svn: Svn,
     public root: string,
     public workspaceRoot: string,
-    policy: ConstructorPolicy
+    policy: ConstructorPolicy,
+    initialInfo?: ISvnInfo
   ) {
+    this._info = initialInfo;
+
     if (policy === ConstructorPolicy.LateInit) {
       return ((async (): Promise<Repository> => {
         return this;
       })() as unknown) as Repository;
     }
     return ((async (): Promise<Repository> => {
-      await this.updateInfo();
+      if (!this._info) {
+        await this.updateInfo();
+      }
       return this;
     })() as unknown) as Repository;
   }
@@ -503,7 +508,7 @@ export class Repository {
       }
       return [file];
     };
-    files = (await Promise.all(files.map(file => allFiles(file)))).flat();
+    files = (await Promise.all(files.map(file => allFiles(file))).flat();
     files = files.map(file => this.removeAbsolutePath(file));
     return this.exec(["add", "--depth=empty", ...files]);
   }
@@ -528,7 +533,7 @@ export class Repository {
   }
 
   public async getCurrentBranch(): Promise<string> {
-    const info = await this.getInfo();
+    const info = this.info;
 
     const branch = getBranchName(info.url);
 
@@ -660,6 +665,7 @@ export class Repository {
     );
 
     this.resetInfoCache();
+    await this.updateInfo();
     return true;
   }
 
