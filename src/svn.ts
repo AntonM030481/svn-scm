@@ -159,7 +159,7 @@ export class Svn {
     const startedAt = new Date();
     const command = args[0];
     const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
-    const reason = getSvnLogReason(args, explicitReason);
+    const reason = getSvnLogReason(args, explicitReason || options.logReason);
 
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
@@ -325,7 +325,7 @@ export class Svn {
     const startedAt = new Date();
     const command = args[0];
     const name = (cwd || this.lastCwd).split(/[\\\/]+/).pop();
-    const reason = getSvnLogReason(args, explicitReason);
+    const reason = getSvnLogReason(args, explicitReason || options.logReason);
 
     if (options.log !== false) {
       const argsOut = args.map(arg => (/ |^$/.test(arg) ? `'${arg}'` : arg));
