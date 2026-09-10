@@ -1,5 +1,5 @@
 import * as path from "path";
-import { Disposable } from "vscode";
+import { Disposable, Uri } from "vscode";
 import { IFileStatus, PropStatus, Status } from "./common/types";
 import { stat } from "./fs";
 import { configuration } from "./helpers/configuration";
@@ -551,6 +551,14 @@ function patchRepository(repository: Repository): Disposable {
         state.mutatingTargets = undefined;
         if (targets) {
           endWorkingCopyMutation(repository.root);
+        }
+        if (succeeded && targets) {
+          try {
+            await svnRepository.updateInfo();
+          } catch (error) {
+            console.error(error);
+          }
+          repository.notifyRepositoryChanged(Uri.file(repository.root));
         }
       }
     };
