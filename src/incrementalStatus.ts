@@ -22,10 +22,64 @@ interface IncrementalStatusState {
   svnRefreshPending: boolean;
 }
 
+interface WorkingCopyMutationState {
+  active: number;
+  suppressUntil: number;
+}
+
+const SELF_SVN_METADATA_GRACE_MS = 2000;
+const workingCopyMutations = new Map<string, WorkingCopyMutationState>();
+
 function pathApi(workspaceRoot: string) {
   return /^[a-zA-Z]:[\\/]/.test(workspaceRoot) || /^\\\\/.test(workspaceRoot)
     ? path.win32
     : path;
+}
+
+function workingCopyKey(root: string): string {
+  const paths = pathApi(root);
+  const resolved = paths.resolve(root);
+  return /^[a-zA-Z]:[\\/]/.test(root) || /^\\\\/.test(root)
+    ? resolved.toLowerCase()
+    : resolved;
+}
+
+function beginWorkingCopyMutation(root: string): void {
+  const key = workingCopyKey(root);
+  const state = workingCopyMutations.get(key) || {
+    active: 0,
+    suppressUntil: 0
+  };
+
+  state.active += 1;
+  workingCopyMutations.set(key, state);
+}
+
+function endWorkingCopyMutation(root: string): void {
+  const key = workingCopyKey(root);
+  const state = workingCopyMutations.get(key);
+  if (!state) {
+    return;
+  }
+
+  state.active = Math.max(0, state.active - 1);
+  state.suppressUntil = Date.now() + SELF_SVN_METADATA_GRACE_MS;
+
+  setTimeout(() => {
+    const current = workingCopyMutations.get(key);
+    if (
+      current === state &&
+      current.active === 0 &&
+      Date.now() >= current.suppressUntil
+    ) {
+      workingCopyMutations.delete(key);
+    }
+  }, SELF_SVN_METADATA_GRACE_MS + 50);
+}
+
+function isSelfGeneratedSvnMetadataChange(root: string): boolean {
+  const state = workingCopyMutations.get(workingCopyKey(root));
+  return !!state && (state.active > 0 || Date.now() < state.suppressUntil);
 }
 
 function absolutePath(workspaceRoot: string, file: string): string {
@@ -280,6 +334,18 @@ function patchRepository(repository: Repository): Disposable {
 
   const originals = new Map<string, (...args: any[]) => any>();
 
+  const originalOnDidAnyFileChanged = (repository as any).onDidAnyFileChanged.bind(
+    repository
+  );
+  originals.set("onDidAnyFileChanged", originalOnDidAnyFileChanged);
+  (repository as any).onDidAnyFileChanged = (...args: any[]) => {
+    if (isSelfGeneratedSvnMetadataChange(repository.root)) {
+      return;
+    }
+
+    return originalOnDidAnyFileChanged(...args);
+  };
+
   const patchOperation = (
     name: string,
     getTargets: (...args: any[]) => string[]
@@ -289,12 +355,20 @@ function patchRepository(repository: Repository): Disposable {
 
     (repository as any)[name] = async (...args: any[]) => {
       state.statuses = snapshotStatuses(repository);
-      state.pendingTargets = operationTargets(repository, getTargets(...args));
+      const targets = operationTargets(repository, getTargets(...args));
+      state.pendingTargets = targets;
+
+      if (targets) {
+        beginWorkingCopyMutation(repository.root);
+      }
 
       try {
         return await original(...args);
       } finally {
         state.pendingTargets = undefined;
+        if (targets) {
+          endWorkingCopyMutation(repository.root);
+        }
       }
     };
   };
@@ -332,7 +406,11 @@ function patchRepository(repository: Repository): Disposable {
 
   const collectSvnChange = () => {
     const autorefresh = configuration.get<boolean>("autorefresh");
-    if (!autorefresh || !repository.operations.isIdle()) {
+    if (
+      !autorefresh ||
+      !repository.operations.isIdle() ||
+      isSelfGeneratedSvnMetadataChange(repository.root)
+    ) {
       return;
     }
 
