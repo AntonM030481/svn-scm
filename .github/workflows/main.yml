@@ -38,7 +38,15 @@ jobs:
           path: svn-scm.vsix
 
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
 
     steps:
       - name: Checkout
@@ -51,7 +59,12 @@ jobs:
           cache: yarn
 
       - name: Install Subversion
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y subversion
+
+      - name: Install Subversion
+        if: runner.os == 'Windows'
+        run: choco install svn --no-progress --yes
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -60,6 +73,13 @@ jobs:
         run: yarn test-compile
 
       - name: Run integration tests
+        if: runner.os == 'Linux'
         run: xvfb-run -a yarn test
+        env:
+          CODE_VERSION: 1.109.2
+
+      - name: Run integration tests
+        if: runner.os == 'Windows'
+        run: yarn test
         env:
           CODE_VERSION: 1.109.2
