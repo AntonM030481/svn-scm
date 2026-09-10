@@ -87,9 +87,11 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   // can restore BASE/diff editors immediately when the window opens, even while
   // the SVN executable is still being discovered.
   let resolveSourceControlManager!: SourceControlManagerResolver;
-  const sourceControlManagerReady = new Promise<SourceControlManager>(resolve => {
-    resolveSourceControlManager = resolve;
-  });
+  const sourceControlManagerReady = new Promise<SourceControlManager>(
+    resolve => {
+      resolveSourceControlManager = resolve;
+    }
+  );
   disposables.push(new SvnFileSystemProvider(sourceControlManagerReady));
 
   const showOutput = configuration.get<boolean>("showOutput");
