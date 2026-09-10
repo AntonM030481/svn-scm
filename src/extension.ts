@@ -105,7 +105,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
     outputChannel.show();
   }
 
-  const tryInit = async () => {
+  const tryInit = async (): Promise<void> => {
     try {
       await init(
         context,
