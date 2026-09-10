@@ -52,8 +52,13 @@ function processEntry(
 
 function xmlToStatus(xml: any) {
   const statusList: IFileStatus[] = [];
-  if (xml.target && xml.target.entry) {
-    statusList.push(...processEntry(xml.target.entry));
+  if (xml.target) {
+    const targets = Array.isArray(xml.target) ? xml.target : [xml.target];
+    targets.forEach((target: any) => {
+      if (target.entry) {
+        statusList.push(...processEntry(target.entry));
+      }
+    });
   }
 
   if (xml.changelist) {
