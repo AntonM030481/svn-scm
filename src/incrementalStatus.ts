@@ -129,7 +129,7 @@ async function getTargetedStatus(
   return statuses;
 }
 
-function mergeStatuses(
+export function mergeStatuses(
   workspaceRoot: string,
   current: IFileStatus[],
   targets: string[],
