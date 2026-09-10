@@ -1,12 +1,13 @@
 import * as path from "path";
 import { Disposable } from "vscode";
 import { IFileStatus, PropStatus, Status } from "./common/types";
+import { configuration } from "./helpers/configuration";
 import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
 import { SourceControlManager } from "./source_control_manager";
 import { Repository as SvnRepository } from "./svnRepository";
-import { isDescendant, normalizePath, toDisposable } from "./util";
+import { dispose, isDescendant, normalizePath, toDisposable } from "./util";
 
 interface StatusParams {
   includeIgnored?: boolean;
@@ -17,6 +18,7 @@ interface StatusParams {
 interface IncrementalStatusState {
   statuses: IFileStatus[];
   pendingTargets?: string[];
+  fsTargets: Set<string>;
 }
 
 function relativePath(workspaceRoot: string, file: string): string {
@@ -161,7 +163,8 @@ function patchRepository(repository: Repository): Disposable {
   const svnRepository = repository.repository;
   const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
   const state: IncrementalStatusState = {
-    statuses: snapshotStatuses(repository)
+    statuses: snapshotStatuses(repository),
+    fsTargets: new Set<string>()
   };
 
   svnRepository.getStatus = async (params: StatusParams) => {
@@ -204,8 +207,7 @@ function patchRepository(repository: Repository): Disposable {
 
     (repository as any)[name] = async (...args: any[]) => {
       // Capture the current model immediately before the SVN operation.
-      // This preserves unrelated changes even if the initial full status
-      // completed before this repository was patched.
+      // This preserves unrelated changes while refreshing only its targets.
       state.statuses = snapshotStatuses(repository);
       state.pendingTargets = getTargets(...args);
 
@@ -234,11 +236,49 @@ function patchRepository(repository: Repository): Disposable {
     [oldFile, newFile].filter(file => typeof file === "string")
   );
 
+  // The repository watcher already knows which path changed, but the original
+  // auto-refresh discards that information and calls status() for the whole WC.
+  // Collect targets here and let the existing debounced status() consume them.
+  const collectFsTarget = (target: string) => {
+    const autorefresh = configuration.get<boolean>("autorefresh");
+    if (!autorefresh || !repository.operations.isIdle()) {
+      return;
+    }
+
+    state.fsTargets.add(target);
+  };
+
+  let fsDisposables: Disposable[] = [];
+  fsDisposables.push(
+    repository.fsWatcher.onDidWorkspaceChange(uri => collectFsTarget(uri.fsPath)),
+    repository.fsWatcher.onDidWorkspaceCreate(uri => collectFsTarget(uri.fsPath)),
+    repository.fsWatcher.onDidWorkspaceDelete(uri =>
+      collectFsTarget(path.dirname(uri.fsPath))
+    )
+  );
+
+  const originalStatus = repository.status.bind(repository);
+  originals.set("status", originalStatus);
+  (repository as any).status = async () => {
+    if (state.fsTargets.size) {
+      state.statuses = snapshotStatuses(repository);
+      state.pendingTargets = Array.from(state.fsTargets);
+      state.fsTargets.clear();
+    }
+
+    try {
+      return await originalStatus();
+    } finally {
+      state.pendingTargets = undefined;
+    }
+  };
+
   return toDisposable(() => {
     svnRepository.getStatus = originalGetStatus;
     originals.forEach((original, name) => {
       (repository as any)[name] = original;
     });
+    fsDisposables = dispose(fsDisposables);
   });
 }
 
