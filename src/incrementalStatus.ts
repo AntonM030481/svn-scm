@@ -28,10 +28,16 @@ interface ExpectedFsEcho {
   expiresAt: number;
 }
 
+interface RepositoryStateSnapshot {
+  isIncomplete: boolean;
+  needCleanUp: boolean;
+}
+
 interface IncrementalStatusState {
   statuses: IFileStatus[];
   pendingTargets?: string[];
   mutatingTargets?: string[];
+  repositoryState?: RepositoryStateSnapshot;
   expectedFsEchoes: Map<string, ExpectedFsEcho>;
   fsTargets: Set<string>;
   svnRefreshPending: boolean;
@@ -202,6 +208,15 @@ export function isTargetCoveredByTargets(
   );
 }
 
+export function shouldPreserveRepositoryState(
+  workspaceRoot: string,
+  targets: string[]
+): boolean {
+  return !targets.some(
+    target => normalizePath(relativePath(workspaceRoot, target)) === "."
+  );
+}
+
 function filterWorkspaceStatuses(
   workspaceRoot: string,
   statuses: IFileStatus[]
@@ -282,11 +297,28 @@ function snapshotStatuses(repository: Repository): IFileStatus[] {
     append(group.resourceStates, changelist);
   });
 
-  return preserveRepositoryStateInSnapshot(
-    statuses,
-    repository.isIncomplete,
-    repository.needCleanUp
-  );
+  return statuses;
+}
+
+function captureRepositoryState(repository: Repository): RepositoryStateSnapshot {
+  return {
+    isIncomplete: repository.isIncomplete,
+    needCleanUp: repository.needCleanUp
+  };
+}
+
+function getRepositoryStateForTargets(
+  repository: Repository,
+  targets: string[] | undefined
+): RepositoryStateSnapshot | undefined {
+  if (
+    !targets ||
+    !shouldPreserveRepositoryState(repository.workspaceRoot, targets)
+  ) {
+    return;
+  }
+
+  return captureRepositoryState(repository);
 }
 
 async function getTargetedStatus(
@@ -451,6 +483,15 @@ function patchRepository(repository: Repository): Disposable {
         targets,
         updated
       );
+
+      if (state.repositoryState) {
+        return preserveRepositoryStateInSnapshot(
+          state.statuses,
+          state.repositoryState.isIncomplete,
+          state.repositoryState.needCleanUp
+        );
+      }
+
       return state.statuses;
     } catch (error) {
       const statuses = filterWorkspaceStatuses(
@@ -488,6 +529,7 @@ function patchRepository(repository: Repository): Disposable {
       const targets = operationTargets(repository, getTargets(...args));
       state.pendingTargets = targets;
       state.mutatingTargets = targets;
+      state.repositoryState = getRepositoryStateForTargets(repository, targets);
 
       if (targets) {
         beginWorkingCopyMutation(repository.root);
@@ -500,6 +542,7 @@ function patchRepository(repository: Repository): Disposable {
         return result;
       } finally {
         state.pendingTargets = undefined;
+        state.repositoryState = undefined;
         if (succeeded && targets) {
           await rememberFsEchoes(targets);
         }
@@ -629,9 +672,14 @@ function patchRepository(repository: Repository): Disposable {
       state.svnRefreshPending = false;
       state.fsTargets.clear();
       state.pendingTargets = undefined;
+      state.repositoryState = undefined;
     } else if (state.fsTargets.size) {
       state.statuses = snapshotStatuses(repository);
       state.pendingTargets = Array.from(state.fsTargets);
+      state.repositoryState = getRepositoryStateForTargets(
+        repository,
+        state.pendingTargets
+      );
       state.fsTargets.clear();
     }
 
@@ -639,6 +687,7 @@ function patchRepository(repository: Repository): Disposable {
       return await originalStatus();
     } finally {
       state.pendingTargets = undefined;
+      state.repositoryState = undefined;
     }
   };
 
