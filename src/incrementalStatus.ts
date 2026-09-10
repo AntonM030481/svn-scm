@@ -203,6 +203,10 @@ function patchRepository(repository: Repository): Disposable {
     originals.set(name, original);
 
     (repository as any)[name] = async (...args: any[]) => {
+      // Capture the current model immediately before the SVN operation.
+      // This preserves unrelated changes even if the initial full status
+      // completed before this repository was patched.
+      state.statuses = snapshotStatuses(repository);
       state.pendingTargets = getTargets(...args);
 
       try {
