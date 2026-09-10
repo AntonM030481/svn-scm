@@ -22,25 +22,43 @@ interface IncrementalStatusState {
   svnRefreshPending: boolean;
 }
 
+function pathApi(workspaceRoot: string): path.PlatformPath {
+  return /^[a-zA-Z]:[\\/]/.test(workspaceRoot) || /^\\\\/.test(workspaceRoot)
+    ? path.win32
+    : path;
+}
+
 function absolutePath(workspaceRoot: string, file: string): string {
-  return path.isAbsolute(file)
-    ? path.resolve(file)
-    : path.resolve(workspaceRoot, file);
+  const paths = pathApi(workspaceRoot);
+  return paths.isAbsolute(file)
+    ? paths.resolve(file)
+    : paths.resolve(workspaceRoot, file);
 }
 
 export function isTargetInWorkspace(
   workspaceRoot: string,
   target: string
 ): boolean {
-  return isDescendant(workspaceRoot, absolutePath(workspaceRoot, target));
+  const paths = pathApi(workspaceRoot);
+  const root = paths.resolve(workspaceRoot);
+  const targetPath = absolutePath(workspaceRoot, target);
+  const relative = paths.relative(root, targetPath);
+
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${paths.sep}`) &&
+      !paths.isAbsolute(relative))
+  );
 }
 
 function relativePath(workspaceRoot: string, file: string): string {
-  if (!path.isAbsolute(file)) {
+  const paths = pathApi(workspaceRoot);
+  if (!paths.isAbsolute(file)) {
     return file;
   }
 
-  const relative = path.relative(workspaceRoot, file);
+  const relative = paths.relative(workspaceRoot, file);
   return relative || ".";
 }
 
@@ -61,6 +79,13 @@ function statusBelongsToTarget(
     normalizedStatus === normalizedTarget ||
     isDescendant(normalizedTarget, normalizedStatus)
   );
+}
+
+function filterWorkspaceStatuses(
+  workspaceRoot: string,
+  statuses: IFileStatus[]
+): IFileStatus[] {
+  return statuses.filter(status => isTargetInWorkspace(workspaceRoot, status.path));
 }
 
 function resourceToStatus(
@@ -86,15 +111,19 @@ function resourceToStatus(
 }
 
 function snapshotStatuses(repository: Repository): IFileStatus[] {
-  const statuses: IFileStatus[] = [
-    ...repository.statusExternal,
-    ...repository.statusIgnored
-  ];
+  const statuses: IFileStatus[] = filterWorkspaceStatuses(
+    repository.workspaceRoot,
+    [...repository.statusExternal, ...repository.statusIgnored]
+  );
 
   const append = (resources: Resource[], changelist?: string) => {
-    resources.forEach(resource => {
-      statuses.push(resourceToStatus(repository, resource, changelist));
-    });
+    resources
+      .filter(resource =>
+        isTargetInWorkspace(repository.workspaceRoot, resource.resourceUri.fsPath)
+      )
+      .forEach(resource => {
+        statuses.push(resourceToStatus(repository, resource, changelist));
+      });
   };
 
   append(repository.changes.resourceStates);
@@ -154,7 +183,7 @@ async function getTargetedStatus(
     }
   }
 
-  return statuses;
+  return filterWorkspaceStatuses(repository.workspaceRoot, statuses);
 }
 
 export function mergeStatuses(
@@ -163,7 +192,7 @@ export function mergeStatuses(
   targets: string[],
   updated: IFileStatus[]
 ): IFileStatus[] {
-  const statuses = current.filter(
+  const statuses = filterWorkspaceStatuses(workspaceRoot, current).filter(
     status =>
       !targets.some(target =>
         statusBelongsToTarget(workspaceRoot, status.path, target)
@@ -172,9 +201,9 @@ export function mergeStatuses(
 
   const byPath = new Map<string, IFileStatus>();
   statuses.forEach(status => byPath.set(normalizePath(status.path), status));
-  updated
-    .filter(status => isTargetInWorkspace(workspaceRoot, status.path))
-    .forEach(status => byPath.set(normalizePath(status.path), status));
+  filterWorkspaceStatuses(workspaceRoot, updated).forEach(status =>
+    byPath.set(normalizePath(status.path), status)
+  );
 
   return Array.from(byPath.values());
 }
@@ -215,7 +244,10 @@ function patchRepository(repository: Repository): Disposable {
     const targets = state.pendingTargets;
 
     if (!targets || !targets.length || params.checkRemoteChanges) {
-      const statuses = await originalGetStatus(params);
+      const statuses = filterWorkspaceStatuses(
+        repository.workspaceRoot,
+        await originalGetStatus(params)
+      );
       state.statuses = statuses;
       return statuses;
     }
@@ -232,7 +264,10 @@ function patchRepository(repository: Repository): Disposable {
       );
       return state.statuses;
     } catch (error) {
-      const statuses = await originalGetStatus(params);
+      const statuses = filterWorkspaceStatuses(
+        repository.workspaceRoot,
+        await originalGetStatus(params)
+      );
       state.statuses = statuses;
       return statuses;
     }
