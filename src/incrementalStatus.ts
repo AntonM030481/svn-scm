@@ -250,8 +250,12 @@ function patchRepository(repository: Repository): Disposable {
 
   let fsDisposables: Disposable[] = [];
   fsDisposables.push(
-    repository.fsWatcher.onDidWorkspaceChange(uri => collectFsTarget(uri.fsPath)),
-    repository.fsWatcher.onDidWorkspaceCreate(uri => collectFsTarget(uri.fsPath)),
+    repository.fsWatcher.onDidWorkspaceChange(uri =>
+      collectFsTarget(uri.fsPath)
+    ),
+    repository.fsWatcher.onDidWorkspaceCreate(uri =>
+      collectFsTarget(uri.fsPath)
+    ),
     repository.fsWatcher.onDidWorkspaceDelete(uri =>
       collectFsTarget(path.dirname(uri.fsPath))
     )
