@@ -208,6 +208,7 @@ export interface ICpOptions extends SpawnOptions {
   cwd?: string;
   encoding?: string | null;
   log?: boolean;
+  logReason?: string;
   username?: string;
   password?: string;
 }
