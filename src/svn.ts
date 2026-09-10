@@ -236,13 +236,11 @@ export class Svn {
     const decodedStdout = iconv.decode(stdout, encoding);
 
     if (options.log !== false && stderr.length > 0) {
+      const errorTime = formatOutputTime(new Date());
       const err = stderr
         .split("\n")
         .filter((line: string) => line)
-        .map(
-          (line: string) =>
-            `[${formatOutputTime(new Date())}] [${name}]$ ${line}`
-        )
+        .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
       this.logOutput(err);
     }
@@ -370,13 +368,11 @@ export class Svn {
     }
 
     if (options.log !== false && stderr.length > 0) {
+      const errorTime = formatOutputTime(new Date());
       const err = stderr
         .split("\n")
         .filter((line: string) => line)
-        .map(
-          (line: string) =>
-            `[${formatOutputTime(new Date())}] [${name}]$ ${line}`
-        )
+        .map((line: string) => `[${errorTime}] [${name}]$ ${line}`)
         .join("\n");
       this.logOutput(err);
     }
