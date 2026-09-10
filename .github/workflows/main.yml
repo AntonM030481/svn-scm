@@ -62,9 +62,24 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y subversion
 
-      - name: Verify Subversion
+      - name: Install Subversion
         if: runner.os == 'Windows'
-        run: svn --version --quiet
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            choco install svn --no-progress --yes
+
+            if ($LASTEXITCODE -eq 0 -and (Get-Command svn -ErrorAction SilentlyContinue)) {
+              svn --version --quiet
+              exit 0
+            }
+
+            if ($attempt -lt 3) {
+              Start-Sleep -Seconds 10
+            }
+          }
+
+          throw "Failed to install Subversion after 3 attempts"
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
