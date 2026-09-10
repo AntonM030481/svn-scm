@@ -37,6 +37,15 @@ async function init(
 
   const info = await svnFinder.findSvn(pathHint);
   const svn = new Svn({ svnPath: info.path, version: info.version });
+
+  const onOutput = (str: string) => outputChannel.append(str);
+  svn.onOutput.addListener("log", onOutput);
+  disposables.push(
+    toDisposable(() => svn.onOutput.removeListener("log", onOutput))
+  );
+
+  outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
+
   const sourceControlManager = await new SourceControlManager(
     svn,
     ConstructorPolicy.Async,
@@ -60,13 +69,6 @@ async function init(
     new IsSvn19orGreater(info.version)
   );
 
-  outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
-
-  const onOutput = (str: string) => outputChannel.append(str);
-  svn.onOutput.addListener("log", onOutput);
-  disposables.push(
-    toDisposable(() => svn.onOutput.removeListener("log", onOutput))
-  );
   disposables.push(toDisposable(messages.dispose));
 }
 
