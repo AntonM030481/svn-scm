@@ -89,6 +89,10 @@ suite("Repository Tests", () => {
 
     try {
       await repository.status();
+      const repositoryFromUri = await sourceControlManager.getRepositoryFromUri(
+        Uri.file(file)
+      );
+      assert.equal(repositoryFromUri, repository);
       assert.equal(repository.provideOriginalResource(Uri.file(file)), undefined);
     } finally {
       fs.unlinkSync(file);
