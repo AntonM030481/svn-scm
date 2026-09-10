@@ -5,7 +5,8 @@ import {
   isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses,
-  preserveRepositoryStateInSnapshot
+  preserveRepositoryStateInSnapshot,
+  shouldPreserveRepositoryState
 } from "../incrementalStatus";
 
 function status(path: string, item: Status): IFileStatus {
@@ -77,21 +78,16 @@ suite("Incremental Status Tests", () => {
   });
 
   test("preserves working copy state on a targeted refresh", () => {
-    const current = preserveRepositoryStateInSnapshot(
+    const merged = mergeStatuses(
+      "/repo",
       [
         status("src/a.ts", Status.MODIFIED),
         status("src/b.ts", Status.MODIFIED)
       ],
-      true,
-      true
-    );
-
-    const result = mergeStatuses(
-      "/repo",
-      current,
       ["/repo/src/a.ts"],
       [status("src/a.ts", Status.MODIFIED)]
     );
+    const result = preserveRepositoryStateInSnapshot(merged, true, true);
     const repositoryState = result.find(item => item.path === ".");
 
     assert.ok(repositoryState);
@@ -99,24 +95,30 @@ suite("Incremental Status Tests", () => {
     assert.equal(repositoryState.wcStatus.locked, true);
   });
 
-  test("replaces preserved working copy state on a root refresh", () => {
-    const current = preserveRepositoryStateInSnapshot(
-      [status("src/a.ts", Status.MODIFIED)],
+  test("does not mix preserved state into a real root status", () => {
+    const rootStatus = status(".", Status.NORMAL);
+    rootStatus.props = Status.MODIFIED;
+
+    const result = preserveRepositoryStateInSnapshot(
+      [rootStatus, status("src/a.ts", Status.MODIFIED)],
       true,
       true
     );
+    const rootStatuses = result.filter(item => item.path === ".");
 
-    const result = mergeStatuses(
-      "/repo",
-      current,
-      ["/repo"],
-      [status("src/a.ts", Status.MODIFIED)]
-    );
+    assert.equal(rootStatuses.length, 2);
+    assert.equal(rootStatuses[0].props, Status.MODIFIED);
+    assert.equal(rootStatuses[1].status, Status.INCOMPLETE);
+    assert.equal(rootStatuses[1].wcStatus.locked, true);
+  });
 
+  test("uses root refresh as authoritative working copy state", () => {
     assert.equal(
-      result.some(item => item.path === "."),
-      false
+      shouldPreserveRepositoryState("/repo", ["/repo/src/a.ts"]),
+      true
     );
+    assert.equal(shouldPreserveRepositoryState("/repo", ["/repo"]), false);
+    assert.equal(shouldPreserveRepositoryState("/repo", ["."]), false);
   });
 
   test("scopes targets to one workspace folder", () => {
