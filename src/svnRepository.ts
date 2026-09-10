@@ -508,7 +508,7 @@ export class Repository {
       }
       return [file];
     };
-    files = (await Promise.all(files.map(file => allFiles(file))).flat();
+    files = (await Promise.all(files.map(file => allFiles(file)))).flat();
     files = files.map(file => this.removeAbsolutePath(file));
     return this.exec(["add", "--depth=empty", ...files]);
   }
