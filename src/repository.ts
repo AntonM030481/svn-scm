@@ -748,6 +748,11 @@ export class Repository implements IRemoteRepository {
       return;
     }
 
+    const resource = this.getResourceFromFile(uri);
+    if (resource && resource.type === Status.UNVERSIONED) {
+      return;
+    }
+
     // Not has original resource for content of ".svn" folder
     if (isDescendant(path.join(this.root, getSvnDir()), uri.fsPath)) {
       return;
