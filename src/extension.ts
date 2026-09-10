@@ -46,11 +46,21 @@ async function init(
 
   outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
 
-  const sourceControlManager = await new SourceControlManager(
+  const sourceControlManagerPromise = (new SourceControlManager(
     svn,
     ConstructorPolicy.Async,
     extensionContext
+  ) as unknown) as Promise<SourceControlManager>;
+
+  // VS Code can restore svn: diff editors while repository discovery is still
+  // running. Register the provider immediately so those requests wait for the
+  // manager instead of failing because the scheme has no provider yet.
+  const svnFileSystemProvider = new SvnFileSystemProvider(
+    sourceControlManagerPromise
   );
+  disposables.push(svnFileSystemProvider);
+
+  const sourceControlManager = await sourceControlManagerPromise;
 
   enableIncrementalStatusRefresh(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables);
@@ -58,7 +68,6 @@ async function init(
   disposables.push(
     sourceControlManager,
     tempSvnFs,
-    new SvnFileSystemProvider(sourceControlManager),
     new SvnProvider(sourceControlManager),
     new RepoLogProvider(sourceControlManager),
     new ItemLogProvider(sourceControlManager),
