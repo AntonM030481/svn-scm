@@ -22,7 +22,7 @@ interface IncrementalStatusState {
   svnRefreshPending: boolean;
 }
 
-function pathApi(workspaceRoot: string): path.PlatformPath {
+function pathApi(workspaceRoot: string) {
   return /^[a-zA-Z]:[\\/]/.test(workspaceRoot) || /^\\\\/.test(workspaceRoot)
     ? path.win32
     : path;
