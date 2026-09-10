@@ -300,7 +300,9 @@ function snapshotStatuses(repository: Repository): IFileStatus[] {
   return statuses;
 }
 
-function captureRepositoryState(repository: Repository): RepositoryStateSnapshot {
+function captureRepositoryState(
+  repository: Repository
+): RepositoryStateSnapshot {
   return {
     isIncomplete: repository.isIncomplete,
     needCleanUp: repository.needCleanUp
