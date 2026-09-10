@@ -29,7 +29,8 @@
         "subversion"
     ],
     "activationEvents": [
-        "*"
+        "*",
+        "onFileSystem:svn"
     ],
     "main": "./out/extension",
     "scripts": {
