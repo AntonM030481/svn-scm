@@ -103,4 +103,40 @@ suite("Incremental Status Tests", () => {
       ["src/a.ts"]
     );
   });
+
+  test("isolates Windows workspace folders from the same working copy", () => {
+    const programming = "D:\\WOT\\programming";
+    const bigworldScripts = "D:\\WOT\\game\\res\\bigworld\\scripts";
+    const avatarFilter =
+      "D:\\WOT\\programming\\bigworld_client\\client\\avatar_filter.cpp";
+    const siblingRelative =
+      "..\\..\\..\\..\\programming\\bigworld_client\\client\\avatar_filter.cpp";
+
+    assert.equal(isTargetInWorkspace(programming, avatarFilter), true);
+    assert.equal(isTargetInWorkspace(bigworldScripts, avatarFilter), false);
+    assert.equal(isTargetInWorkspace(bigworldScripts, siblingRelative), false);
+  });
+
+  test("drops an already polluted sibling status from a workspace snapshot", () => {
+    const workspaceRoot = "D:\\WOT\\game\\res\\bigworld\\scripts";
+    const current = [
+      status(
+        "..\\..\\..\\..\\programming\\bigworld_client\\client\\avatar_filter.cpp",
+        Status.MODIFIED
+      ),
+      status("server\\base.py", Status.MODIFIED)
+    ];
+
+    const result = mergeStatuses(
+      workspaceRoot,
+      current,
+      ["server\\base.py"],
+      [status("server\\base.py", Status.MODIFIED)]
+    );
+
+    assert.deepEqual(
+      result.map(item => item.path),
+      ["server\\base.py"]
+    );
+  });
 });
