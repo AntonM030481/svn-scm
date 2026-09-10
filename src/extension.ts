@@ -26,6 +26,7 @@ import { IsSvn18orGreater } from "./contexts/isSvn18orGreater";
 import { tempSvnFs } from "./temp_svn_fs";
 import { SvnFileSystemProvider } from "./svnFileSystemProvider";
 import { enableIncrementalStatusRefresh } from "./incrementalStatus";
+import { enableTargetedStatusLogReasons } from "./svnLogReasons";
 
 type SourceControlManagerResolver = (
   value: SourceControlManager | PromiseLike<SourceControlManager>
@@ -60,6 +61,7 @@ async function init(
   resolveSourceControlManager(sourceControlManager);
 
   enableIncrementalStatusRefresh(sourceControlManager, disposables);
+  enableTargetedStatusLogReasons(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables);
 
   disposables.push(
