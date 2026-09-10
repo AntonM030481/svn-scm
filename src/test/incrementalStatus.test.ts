@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { IFileStatus, Status } from "../common/types";
 import {
+  isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses
 } from "../incrementalStatus";
@@ -137,6 +138,35 @@ suite("Incremental Status Tests", () => {
     assert.deepEqual(
       result.map(item => item.path),
       ["server\\base.py"]
+    );
+  });
+
+  test("recognizes filesystem echoes from an active targeted operation", () => {
+    const workspaceRoot = "D:\\WOT\\programming";
+    const avatarFilter =
+      "D:\\WOT\\programming\\bigworld_client\\client\\avatar_filter.cpp";
+    const otherFile =
+      "D:\\WOT\\programming\\bigworld_client\\client\\boids_filter.cpp";
+
+    assert.equal(
+      isTargetCoveredByTargets(workspaceRoot, avatarFilter, [avatarFilter]),
+      true
+    );
+    assert.equal(
+      isTargetCoveredByTargets(workspaceRoot, otherFile, [avatarFilter]),
+      false
+    );
+  });
+
+  test("recognizes filesystem echoes below a targeted directory", () => {
+    const workspaceRoot = "D:\\WOT\\programming";
+    const directory = "D:\\WOT\\programming\\bigworld_client\\client";
+    const file =
+      "D:\\WOT\\programming\\bigworld_client\\client\\avatar_filter.cpp";
+
+    assert.equal(
+      isTargetCoveredByTargets(workspaceRoot, file, [directory]),
+      true
     );
   });
 });
