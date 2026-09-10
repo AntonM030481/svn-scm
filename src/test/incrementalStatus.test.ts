@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { IFileStatus, Status } from "../common/types";
 import {
+  fileSnapshotsEqual,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses
@@ -167,6 +168,26 @@ suite("Incremental Status Tests", () => {
     assert.equal(
       isTargetCoveredByTargets(workspaceRoot, file, [directory]),
       true
+    );
+  });
+
+  test("matches a delayed filesystem echo when file metadata is unchanged", () => {
+    assert.equal(
+      fileSnapshotsEqual(
+        { exists: true, mtime: 10, ctime: 20, size: 30 },
+        { exists: true, mtime: 10, ctime: 20, size: 30 }
+      ),
+      true
+    );
+  });
+
+  test("does not suppress a real edit after an svn operation", () => {
+    assert.equal(
+      fileSnapshotsEqual(
+        { exists: true, mtime: 10, ctime: 20, size: 30 },
+        { exists: true, mtime: 11, ctime: 21, size: 30 }
+      ),
+      false
     );
   });
 });
