@@ -165,13 +165,27 @@ suite("Repository Tests", () => {
 
     assert.equal(repository.changes.resourceStates.length, 1);
 
-    const message = await repository.commitFiles("First Commit", [file]);
-    assert.ok(/1 file commited: revision (.*)\./i.test(message));
+    let repositoryChangeEvents = 0;
+    const repositoryChangeListener = sourceControlManager.onDidChangeRepository(
+      event => {
+        if (event.repository === repository) {
+          repositoryChangeEvents += 1;
+        }
+      }
+    );
 
-    assert.equal(repository.changes.resourceStates.length, 0);
+    try {
+      const message = await repository.commitFiles("First Commit", [file]);
+      assert.ok(/1 file commited: revision (.*)\./i.test(message));
 
-    const remoteContent = await repository.show(file, "HEAD");
-    assert.equal(remoteContent, "test");
+      assert.equal(repository.changes.resourceStates.length, 0);
+      assert.equal(repositoryChangeEvents, 1);
+
+      const remoteContent = await repository.show(file, "HEAD");
+      assert.equal(remoteContent, "test");
+    } finally {
+      repositoryChangeListener.dispose();
+    }
   });
 
   test("Try switch branch", async function () {

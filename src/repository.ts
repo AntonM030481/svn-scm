@@ -303,7 +303,11 @@ export class Repository implements IRemoteRepository {
   @debounce(1000)
   private async onDidAnyFileChanged(e: Uri) {
     await this.repository.updateInfo();
-    this._onDidChangeRepository.fire(e);
+    this.notifyRepositoryChanged(e);
+  }
+
+  public notifyRepositoryChanged(uri: Uri): void {
+    this._onDidChangeRepository.fire(uri);
   }
 
   private createRemoteChangedInterval() {

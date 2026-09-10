@@ -76,9 +76,15 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   }
 
   private async getSourceControlManager(): Promise<SourceControlManager> {
-    const sourceControlManager = await this.sourceControlManagerPromise;
-    await sourceControlManager.isInitialized;
-    return sourceControlManager;
+    try {
+      const sourceControlManager = await this.sourceControlManagerPromise;
+      await sourceControlManager.isInitialized;
+      return sourceControlManager;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "SVN initialization failed";
+      throw FileSystemError.Unavailable(message);
+    }
   }
 
   private onDidChangeRepository({ repository }: RepositoryChangeEvent): void {
