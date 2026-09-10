@@ -27,10 +27,15 @@ import { tempSvnFs } from "./temp_svn_fs";
 import { SvnFileSystemProvider } from "./svnFileSystemProvider";
 import { enableIncrementalStatusRefresh } from "./incrementalStatus";
 
+type SourceControlManagerResolver = (
+  value: SourceControlManager | PromiseLike<SourceControlManager>
+) => void;
+
 async function init(
   extensionContext: ExtensionContext,
   outputChannel: OutputChannel,
-  disposables: Disposable[]
+  disposables: Disposable[],
+  resolveSourceControlManager: SourceControlManagerResolver
 ) {
   const pathHint = configuration.get<string>("path");
   const svnFinder = new SvnFinder();
@@ -46,21 +51,13 @@ async function init(
 
   outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
 
-  const sourceControlManagerPromise = (new SourceControlManager(
+  const sourceControlManager = await new SourceControlManager(
     svn,
     ConstructorPolicy.Async,
     extensionContext
-  ) as unknown) as Promise<SourceControlManager>;
-
-  // VS Code can restore svn: diff editors while repository discovery is still
-  // running. Register the provider immediately so those requests wait for the
-  // manager instead of failing because the scheme has no provider yet.
-  const svnFileSystemProvider = new SvnFileSystemProvider(
-    sourceControlManagerPromise
   );
-  disposables.push(svnFileSystemProvider);
 
-  const sourceControlManager = await sourceControlManagerPromise;
+  resolveSourceControlManager(sourceControlManager);
 
   enableIncrementalStatusRefresh(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables);
@@ -86,6 +83,15 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   commands.registerCommand("svn.showOutput", () => outputChannel.show());
   disposables.push(outputChannel);
 
+  // Register the svn: scheme before any asynchronous initialization. VS Code
+  // can restore BASE/diff editors immediately when the window opens, even while
+  // the SVN executable is still being discovered.
+  let resolveSourceControlManager!: SourceControlManagerResolver;
+  const sourceControlManagerReady = new Promise<SourceControlManager>(resolve => {
+    resolveSourceControlManager = resolve;
+  });
+  disposables.push(new SvnFileSystemProvider(sourceControlManagerReady));
+
   const showOutput = configuration.get<boolean>("showOutput");
 
   if (showOutput) {
@@ -94,7 +100,12 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
 
   const tryInit = async () => {
     try {
-      await init(context, outputChannel, disposables);
+      await init(
+        context,
+        outputChannel,
+        disposables,
+        resolveSourceControlManager
+      );
     } catch (err) {
       if (!/Svn installation not found/.test(err.message || "")) {
         throw err;
