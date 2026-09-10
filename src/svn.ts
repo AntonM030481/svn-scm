@@ -6,6 +6,7 @@ import {
   ConstructorPolicy,
   ICpOptions,
   IExecutionResult,
+  ISvnInfo,
   ISvnOptions
 } from "./common/types";
 import * as encodeUtil from "./encoding";
@@ -89,6 +90,7 @@ export class Svn {
 
   private svnPath: string;
   private lastCwd: string = "";
+  private initialRepositoryInfo = new Map<string, ISvnInfo>();
 
   private _onOutput = new EventEmitter();
   get onOutput(): EventEmitter {
@@ -391,6 +393,7 @@ export class Svn {
       const result = await this.exec(path, ["info", "--xml"]);
 
       const info = await parseInfoXml(result.stdout);
+      this.initialRepositoryInfo.set(path, info);
 
       if (info && info.wcInfo && info.wcInfo.wcrootAbspath) {
         return info.wcInfo.wcrootAbspath;
@@ -411,11 +414,15 @@ export class Svn {
     repositoryRoot: string,
     workspaceRoot: string
   ): Promise<Repository> {
+    const info = this.initialRepositoryInfo.get(workspaceRoot);
+    this.initialRepositoryInfo.delete(workspaceRoot);
+
     return new Repository(
       this,
       repositoryRoot,
       workspaceRoot,
-      ConstructorPolicy.Async
+      ConstructorPolicy.Async,
+      info
     );
   }
 }
