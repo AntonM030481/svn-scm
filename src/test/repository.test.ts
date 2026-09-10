@@ -115,9 +115,12 @@ suite("Repository Tests", () => {
 
     const originalGetInfo = repository.getInfo;
     let getInfoCalls = 0;
-    (repository as any).getInfo = async (...args: any[]) => {
+    (repository as any).getInfo = async (
+      filePath: string,
+      revision?: string
+    ) => {
       getInfoCalls += 1;
-      return originalGetInfo.apply(repository, args);
+      return originalGetInfo.call(repository, filePath, revision);
     };
 
     const itemLogProvider = Object.create(
