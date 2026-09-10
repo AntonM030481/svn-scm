@@ -8,7 +8,6 @@
         "vscode": "^1.53.0"
     },
     "private": true,
-    "enableProposedApi": false,
     "icon": "images/subversion.png",
     "homepage": "https://github.com/AntonM030481/svn-scm/blob/master/README.md",
     "repository": {
@@ -99,24 +98,28 @@
             "explorer": [
                 {
                     "id": "svn",
-                    "name": "SVN"
+                    "name": "SVN",
+                    "icon": "icons/subversion-logo.svg"
                 }
             ],
             "svnActivity": [
                 {
                     "id": "repolog",
                     "name": "Repositories",
-                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0",
+                    "icon": "icons/subversion-logo.svg"
                 },
                 {
                     "id": "itemlog",
                     "name": "File History",
-                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0",
+                    "icon": "icons/subversion-logo.svg"
                 },
                 {
                     "id": "branchchanges",
                     "name": "Branch Changes",
-                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0",
+                    "icon": "icons/subversion-logo.svg"
                 }
             ]
         },
