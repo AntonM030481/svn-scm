@@ -1,5 +1,6 @@
 import { Event, Uri, workspace, EventEmitter, RelativePattern } from "vscode";
-import { statSync, watch } from "original-fs";
+import { statSync } from "original-fs";
+import { watch } from "fs";
 import { exists } from "../fs";
 import { join } from "path";
 import { debounce } from "../decorators";
