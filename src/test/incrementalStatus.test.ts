@@ -4,7 +4,8 @@ import {
   fileSnapshotsEqual,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
-  mergeStatuses
+  mergeStatuses,
+  preserveRepositoryStateInSnapshot
 } from "../incrementalStatus";
 
 function status(path: string, item: Status): IFileStatus {
@@ -72,6 +73,49 @@ suite("Incremental Status Tests", () => {
     assert.deepEqual(
       result.map(item => item.path).sort(),
       ["src/feature/c.ts", "src/other.ts"]
+    );
+  });
+
+  test("preserves working copy state on a targeted refresh", () => {
+    const current = preserveRepositoryStateInSnapshot(
+      [
+        status("src/a.ts", Status.MODIFIED),
+        status("src/b.ts", Status.MODIFIED)
+      ],
+      true,
+      true
+    );
+
+    const result = mergeStatuses(
+      "/repo",
+      current,
+      ["/repo/src/a.ts"],
+      [status("src/a.ts", Status.MODIFIED)]
+    );
+    const repositoryState = result.find(item => item.path === ".");
+
+    assert.ok(repositoryState);
+    assert.equal(repositoryState.status, Status.INCOMPLETE);
+    assert.equal(repositoryState.wcStatus.locked, true);
+  });
+
+  test("replaces preserved working copy state on a root refresh", () => {
+    const current = preserveRepositoryStateInSnapshot(
+      [status("src/a.ts", Status.MODIFIED)],
+      true,
+      true
+    );
+
+    const result = mergeStatuses(
+      "/repo",
+      current,
+      ["/repo"],
+      [status("src/a.ts", Status.MODIFIED)]
+    );
+
+    assert.equal(
+      result.some(item => item.path === "."),
+      false
     );
   });
 
