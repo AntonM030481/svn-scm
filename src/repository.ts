@@ -267,9 +267,18 @@ export class Repository implements IRemoteRepository {
     // Only check deleted files after the status list is fully updated
     this.onDidChangeStatus(this.actionForDeletedFiles, this, this.disposables);
 
+    const remoteChangesEnabled =
+      configuration.get<number>("remoteChanges.checkFrequency", 300) > 0;
+
     this.createRemoteChangedInterval();
 
-    this.updateRemoteChangedFiles();
+    // A remote status includes the local working-copy state as well, so use a
+    // single initial scan instead of running local and remote status back-to-back.
+    if (remoteChangesEnabled) {
+      this.run(Operation.StatusRemote);
+    } else {
+      this.status();
+    }
 
     // On change config, dispose current interval and create a new.
     configuration.onDidChange(e => {
@@ -283,8 +292,6 @@ export class Repository implements IRemoteRepository {
         this.updateRemoteChangedFiles();
       }
     });
-
-    this.status();
 
     this.disposables.push(
       workspace.onDidSaveTextDocument(document => {
@@ -358,7 +365,6 @@ export class Repository implements IRemoteRepository {
         // Check first for relative URL (Better for workspace configuration)
         const relativePath = this.repository.removeAbsolutePath(uri.fsPath);
 
-        // If some match, remove from list
         return !rules.some(
           rule => rule.match(relativePath) || rule.match(uri.fsPath)
         );
