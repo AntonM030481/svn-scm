@@ -66,10 +66,17 @@ export class RepositoryFilesWatcher implements IDisposable {
 
     this.disposables.push(fsWatcher);
 
+    // Ignore changes emitted by our own virtual SVN filesystem. Quick Diff uses
+    // svn: URIs whose paths intentionally end in ".svn"; treating those as
+    // working-copy files causes bogus status calls such as "file.cpp.svn" and
+    // can trigger another refresh cycle after every model update.
+    const isInternalVirtualFs = (uri: Uri) =>
+      uri.scheme === "svn" || uri.scheme === "tempsvnfs";
+
     //https://subversion.apache.org/docs/release-notes/1.3.html#_svn-hack
     const isTmp = (uri: Uri) => /[\\\/](\.svn|_svn)[\\\/]tmp/.test(uri.path);
 
-    const isRelevant = (uri: Uri) => !isTmp(uri);
+    const isRelevant = (uri: Uri) => !isInternalVirtualFs(uri) && !isTmp(uri);
 
     this.onDidChange = filterEvent(fsWatcher.onDidChange, isRelevant);
     this.onDidCreate = filterEvent(fsWatcher.onDidCreate, isRelevant);
