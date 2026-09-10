@@ -66,20 +66,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            choco install svn --no-progress --yes
+          $package = Join-Path $env:RUNNER_TEMP "svn.1.8.15.nupkg"
+          Invoke-WebRequest -Uri "https://community.chocolatey.org/api/v2/package/svn/1.8.15" -OutFile $package
+          choco install svn --source $env:RUNNER_TEMP --no-progress --yes
 
-            if ($LASTEXITCODE -eq 0 -and (Get-Command svn -ErrorAction SilentlyContinue)) {
-              svn --version --quiet
-              exit 0
-            }
-
-            if ($attempt -lt 3) {
-              Start-Sleep -Seconds 10
-            }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to install Subversion"
           }
 
-          throw "Failed to install Subversion after 3 attempts"
+          svn --version --quiet
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
