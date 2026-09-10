@@ -18,6 +18,7 @@ interface StatusParams {
 interface IncrementalStatusState {
   statuses: IFileStatus[];
   pendingTargets?: string[];
+  mutatingTargets?: string[];
   fsTargets: Set<string>;
   svnRefreshPending: boolean;
 }
@@ -132,6 +133,17 @@ function statusBelongsToTarget(
     normalizedTarget === "." ||
     normalizedStatus === normalizedTarget ||
     isDescendant(normalizedTarget, normalizedStatus)
+  );
+}
+
+export function isTargetCoveredByTargets(
+  workspaceRoot: string,
+  target: string,
+  targets: string[]
+): boolean {
+  const relativeTarget = relativePath(workspaceRoot, target);
+  return targets.some(operationTarget =>
+    statusBelongsToTarget(workspaceRoot, relativeTarget, operationTarget)
   );
 }
 
@@ -357,6 +369,7 @@ function patchRepository(repository: Repository): Disposable {
       state.statuses = snapshotStatuses(repository);
       const targets = operationTargets(repository, getTargets(...args));
       state.pendingTargets = targets;
+      state.mutatingTargets = targets;
 
       if (targets) {
         beginWorkingCopyMutation(repository.root);
@@ -366,6 +379,7 @@ function patchRepository(repository: Repository): Disposable {
         return await original(...args);
       } finally {
         state.pendingTargets = undefined;
+        state.mutatingTargets = undefined;
         if (targets) {
           endWorkingCopyMutation(repository.root);
         }
@@ -390,13 +404,24 @@ function patchRepository(repository: Repository): Disposable {
     [oldFile, newFile].filter(file => typeof file === "string")
   );
 
-  const collectFsTarget = (target: string) => {
+  const collectFsTarget = (target: string, eventTarget: string = target) => {
     const autorefresh = configuration.get<boolean>("autorefresh");
     if (!autorefresh) {
       return;
     }
 
     if (!isTargetInWorkspace(repository.workspaceRoot, target)) {
+      return;
+    }
+
+    if (
+      state.mutatingTargets &&
+      isTargetCoveredByTargets(
+        repository.workspaceRoot,
+        eventTarget,
+        state.mutatingTargets
+      )
+    ) {
       return;
     }
 
@@ -426,7 +451,7 @@ function patchRepository(repository: Repository): Disposable {
       collectFsTarget(uri.fsPath)
     ),
     repository.fsWatcher.onDidWorkspaceDelete(uri =>
-      collectFsTarget(path.dirname(uri.fsPath))
+      collectFsTarget(path.dirname(uri.fsPath), uri.fsPath)
     ),
     repository.fsWatcher.onDidSvnAny(collectSvnChange)
   );
