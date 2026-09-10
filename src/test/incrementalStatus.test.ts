@@ -1,6 +1,9 @@
 import * as assert from "assert";
 import { IFileStatus, Status } from "../common/types";
-import { mergeStatuses } from "../incrementalStatus";
+import {
+  isTargetInWorkspace,
+  mergeStatuses
+} from "../incrementalStatus";
 
 function status(path: string, item: Status): IFileStatus {
   return {
@@ -67,6 +70,37 @@ suite("Incremental Status Tests", () => {
     assert.deepEqual(
       result.map(item => item.path).sort(),
       ["src/feature/c.ts", "src/other.ts"]
+    );
+  });
+
+  test("scopes targets to one workspace folder", () => {
+    const workspaceRoot = "/wc/client";
+
+    assert.equal(
+      isTargetInWorkspace(workspaceRoot, "/wc/client/src/a.ts"),
+      true
+    );
+    assert.equal(
+      isTargetInWorkspace(workspaceRoot, "/wc/server/src/b.ts"),
+      false
+    );
+    assert.equal(isTargetInWorkspace(workspaceRoot, "../server/src/b.ts"), false);
+  });
+
+  test("does not merge sibling workspace statuses", () => {
+    const current = [status("src/a.ts", Status.MODIFIED)];
+    const updated = [status("../server/src/b.ts", Status.MODIFIED)];
+
+    const result = mergeStatuses(
+      "/wc/client",
+      current,
+      ["/wc/server/src/b.ts"],
+      updated
+    );
+
+    assert.deepEqual(
+      result.map(item => item.path),
+      ["src/a.ts"]
     );
   });
 });
