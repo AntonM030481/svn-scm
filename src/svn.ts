@@ -210,8 +210,9 @@ export class Svn {
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      const completedAt = formatOutputTime(new Date());
       this.logOutput(
-        `[${formatOutputTime(new Date())}] [${name}]$ svn ${command} completed in ${formatDuration(
+        `[${completedAt}] [${name}]$ svn ${command} completed in ${formatDuration(
           duration
         )}\n`
       );
@@ -360,8 +361,9 @@ export class Svn {
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
+      const completedAt = formatOutputTime(new Date());
       this.logOutput(
-        `[${formatOutputTime(new Date())}] [${name}]$ svn ${command} completed in ${formatDuration(
+        `[${completedAt}] [${name}]$ svn ${command} completed in ${formatDuration(
           duration
         )}\n`
       );
