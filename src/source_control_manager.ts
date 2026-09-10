@@ -427,6 +427,10 @@ export class SourceControlManager implements IDisposable {
         continue;
       }
 
+      if (repository.getResourceFromFile(uri)) {
+        return repository;
+      }
+
       try {
         const path = normalizePath(uri.fsPath);
 
