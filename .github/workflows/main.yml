@@ -28,6 +28,9 @@ jobs:
       - name: Compile tests
         run: yarn test-compile
 
+      - name: Run unit tests
+        run: yarn test:unit
+
       - name: Package extension
         run: yarn vsce package -o svn-scm.vsix
 
@@ -98,12 +101,12 @@ jobs:
 
       - name: Run integration tests
         if: runner.os == 'Linux'
-        run: xvfb-run -a yarn test
+        run: xvfb-run -a yarn test:integration
         env:
           CODE_VERSION: stable
 
       - name: Run integration tests
         if: runner.os == 'Windows'
-        run: yarn test
+        run: yarn test:integration
         env:
           CODE_VERSION: stable
