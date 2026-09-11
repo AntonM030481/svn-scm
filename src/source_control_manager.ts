@@ -15,6 +15,7 @@ import {
   ConstructorPolicy,
   RepositoryChangeEvent,
   IOpenRepository,
+  Operation,
   RepositoryState
 } from "./common/types";
 import { debounce } from "./decorators";
@@ -59,6 +60,7 @@ export class SourceControlManager implements IDisposable {
   private disposables: Disposable[] = [];
   private enabled = false;
   private possibleSvnRepositoryPaths = new Set<string>();
+  private initialStatusRepositories = new Set<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -234,6 +236,7 @@ export class SourceControlManager implements IDisposable {
     this.openRepositories = [];
 
     this.possibleSvnRepositoryPaths.clear();
+    this.initialStatusRepositories.clear();
     this.disposables = dispose(this.disposables);
   }
 
@@ -431,11 +434,10 @@ export class SourceControlManager implements IDisposable {
         return repository;
       }
 
-      // Before the initial status completes, the resource groups are still
-      // empty. Avoid probing restored editors with `svn info`; the repository
-      // is already known from the working-copy root and status will classify
-      // unversioned, ignored and external paths shortly afterwards.
-      if (!repository.sourceControl.quickDiffProvider) {
+      // While the initial status is still running, the resource groups are
+      // empty. Avoid probing restored editors with `svn info`; once that scan
+      // settles (successfully or not), fall back to the normal path validation.
+      if (this.initialStatusRepositories.has(repository)) {
         return repository;
       }
 
@@ -454,6 +456,19 @@ export class SourceControlManager implements IDisposable {
   }
 
   private open(repository: Repository): void {
+    this.initialStatusRepositories.add(repository);
+    const initialStatusListener = repository.onDidRunOperation(operation => {
+      if (
+        operation !== Operation.Status &&
+        operation !== Operation.StatusRemote
+      ) {
+        return;
+      }
+
+      this.initialStatusRepositories.delete(repository);
+      initialStatusListener.dispose();
+    });
+
     const onDidDisappearRepository = filterEvent(
       repository.onDidChangeState,
       state => state === RepositoryState.Disposed
@@ -477,6 +492,8 @@ export class SourceControlManager implements IDisposable {
     this.scanIgnored(repository);
 
     const dispose = () => {
+      initialStatusListener.dispose();
+      this.initialStatusRepositories.delete(repository);
       disappearListener.dispose();
       changeListener.dispose();
       changeStatus.dispose();
