@@ -266,8 +266,7 @@ export class Repository implements IRemoteRepository {
     // Only check deleted files after the status list is fully updated
     this.onDidChangeStatus(this.actionForDeletedFiles, this, this.disposables);
 
-    let quickDiffStatusListener: Disposable;
-    quickDiffStatusListener = this.onDidChangeStatus(() => {
+    const quickDiffStatusListener: Disposable = this.onDidChangeStatus(() => {
       this.sourceControl.quickDiffProvider = this;
       quickDiffStatusListener.dispose();
     });
