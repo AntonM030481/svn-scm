@@ -431,6 +431,14 @@ export class SourceControlManager implements IDisposable {
         return repository;
       }
 
+      // Before the initial status completes, the resource groups are still
+      // empty. Avoid probing restored editors with `svn info`; the repository
+      // is already known from the working-copy root and status will classify
+      // unversioned, ignored and external paths shortly afterwards.
+      if (!repository.sourceControl.quickDiffProvider) {
+        return repository;
+      }
+
       try {
         const path = normalizePath(uri.fsPath);
 
