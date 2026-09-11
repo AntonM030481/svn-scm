@@ -34,6 +34,7 @@
     "main": "./out/extension",
     "scripts": {
         "build": "webpack --mode production",
+        "check": "yarn lint && yarn style-check && yarn test-compile",
         "compile": "webpack --mode development --watch",
         "lint": "eslint \"src/**/*.ts\"",
         "lint:fix": "eslint \"src/**/*.ts\" --fix",
