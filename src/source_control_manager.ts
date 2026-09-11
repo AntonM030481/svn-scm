@@ -247,7 +247,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   private disable(): void {
-    this.repositories.forEach(repository => repository.dispose());
+    this.openRepositories.slice().forEach(repository => repository.dispose());
     this.openRepositories = [];
 
     this.possibleSvnRepositoryPaths.clear();
@@ -276,7 +276,7 @@ export class SourceControlManager implements IDisposable {
     possibleRepositoryFolders.forEach(p =>
       this.tryOpenRepository(p.uri.fsPath)
     );
-    openRepositoriesToDispose.forEach(r => r.repository.dispose());
+    openRepositoriesToDispose.forEach(r => r.dispose());
   }
 
   private async scanWorkspaceFolders() {
