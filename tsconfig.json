@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "es2019",
     "module": "commonjs",
+    "rootDir": "./src",
     "outDir": "./out",
     "typeRoots": ["./node_modules/@types"],
     "sourceMap": true,
