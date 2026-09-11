@@ -119,67 +119,72 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
         throw err;
       }
 
-      const shouldIgnore =
-        configuration.get<boolean>("ignoreMissingSvnWarning") === true;
+      try {
+        const shouldIgnore =
+          configuration.get<boolean>("ignoreMissingSvnWarning") === true;
 
-      if (shouldIgnore) {
-        rejectSourceControlManager(err);
-        return;
-      }
-
-      console.warn(err.message);
-      outputChannel.appendLine(err.message);
-      outputChannel.show();
-
-      const findSvnExecutable = "Find SVN executable";
-      const download = "Download SVN";
-      const neverShowAgain = "Don't Show Again";
-      const choice = await window.showWarningMessage(
-        "SVN not found. Install it or configure it using the 'svn.path' setting.",
-        findSvnExecutable,
-        download,
-        neverShowAgain
-      );
-
-      if (choice === findSvnExecutable) {
-        let filters: { [name: string]: string[] } | undefined;
-
-        // For windows, limit to executable files
-        if (path.sep === "\\") {
-          filters = {
-            svn: ["exe", "bat"]
-          };
+        if (shouldIgnore) {
+          rejectSourceControlManager(err);
+          return;
         }
 
-        const executable = await window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: false,
-          filters
-        });
+        console.warn(err.message);
+        outputChannel.appendLine(err.message);
+        outputChannel.show();
 
-        if (executable && executable[0]) {
-          const file = executable[0].fsPath;
-
-          outputChannel.appendLine(`Updated "svn.path" with "${file}"`);
-
-          await configuration.update("path", file);
-
-          // Try Re-init after select the executable
-          return tryInit();
-        }
-      } else if (choice === download) {
-        commands.executeCommand(
-          "vscode.open",
-          Uri.parse("https://subversion.apache.org/packages.html")
+        const findSvnExecutable = "Find SVN executable";
+        const download = "Download SVN";
+        const neverShowAgain = "Don't Show Again";
+        const choice = await window.showWarningMessage(
+          "SVN not found. Install it or configure it using the 'svn.path' setting.",
+          findSvnExecutable,
+          download,
+          neverShowAgain
         );
-      } else if (choice === neverShowAgain) {
-        await configuration.update("ignoreMissingSvnWarning", true);
-      }
 
-      // No further initialization attempt will be made during this activation.
-      // Reject restored svn: documents instead of leaving them loading forever.
-      rejectSourceControlManager(err);
+        if (choice === findSvnExecutable) {
+          let filters: { [name: string]: string[] } | undefined;
+
+          // For windows, limit to executable files
+          if (path.sep === "\\") {
+            filters = {
+              svn: ["exe", "bat"]
+            };
+          }
+
+          const executable = await window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters
+          });
+
+          if (executable && executable[0]) {
+            const file = executable[0].fsPath;
+
+            outputChannel.appendLine(`Updated "svn.path" with "${file}"`);
+
+            await configuration.update("path", file);
+
+            // Try Re-init after select the executable
+            return tryInit();
+          }
+        } else if (choice === download) {
+          commands.executeCommand(
+            "vscode.open",
+            Uri.parse("https://subversion.apache.org/packages.html")
+          );
+        } else if (choice === neverShowAgain) {
+          await configuration.update("ignoreMissingSvnWarning", true);
+        }
+
+        // No further initialization attempt will be made during this activation.
+        // Reject restored svn: documents instead of leaving them loading forever.
+        rejectSourceControlManager(err);
+      } catch (recoveryError) {
+        rejectSourceControlManager(recoveryError);
+        throw recoveryError;
+      }
     }
   };
 
