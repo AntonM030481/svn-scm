@@ -25,8 +25,9 @@ jobs:
           const fs = require('fs');
           const path = 'package.json';
           const text = fs.readFileSync(path, 'utf8');
-          const marker = '        "build": "webpack --mode production",\n';
-          const addition = '        "check": "yarn lint && yarn style-check && yarn test-compile",\n';
+          const eol = text.includes('\r\n') ? '\r\n' : '\n';
+          const marker = `        "build": "webpack --mode production",${eol}`;
+          const addition = `        "check": "yarn lint && yarn style-check && yarn test-compile",${eol}`;
 
           if (!text.includes('"check": "yarn lint && yarn style-check && yarn test-compile"')) {
               if (!text.includes(marker)) {
