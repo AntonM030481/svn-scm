@@ -13,15 +13,9 @@ import {
   window
 } from "vscode";
 import { ISvnLogEntry, Operation } from "../common/types";
+import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
-import {
-  dispose,
-  eventToPromise,
-  filterEvent,
-  pathEquals,
-  timeout,
-  unwrap
-} from "../util";
+import { dispose, pathEquals, unwrap } from "../util";
 import {
   copyCommitToClipboard,
   fetchMore,
@@ -49,9 +43,15 @@ export class ItemLogProvider
 
   private currentItem?: ICachedLog;
   private _dispose: Disposable[] = [];
+  private initialStatusPending = new WeakSet<Repository>();
 
   constructor(private sourceControlManager: SourceControlManager) {
+    sourceControlManager.repositories.forEach(repo =>
+      this.trackInitialStatus(repo)
+    );
+
     this._dispose.push(
+      sourceControlManager.onDidOpenRepository(this.trackInitialStatus, this),
       window.onDidChangeActiveTextEditor(this.editorChanged, this),
       window.registerTreeDataProvider("itemlog", this),
       commands.registerCommand(
@@ -76,6 +76,27 @@ export class ItemLogProvider
       commands.registerCommand("svn.itemlog.refresh", this.refresh, this)
     );
     this.refresh();
+  }
+
+  private trackInitialStatus(repo: Repository): void {
+    if (repo.sourceControl.quickDiffProvider === repo) {
+      return;
+    }
+
+    this.initialStatusPending.add(repo);
+    const listener = repo.onDidRunOperation(operation => {
+      if (
+        operation !== Operation.Status &&
+        operation !== Operation.StatusRemote
+      ) {
+        return;
+      }
+
+      this.initialStatusPending.delete(repo);
+      listener.dispose();
+      void this.refresh();
+    });
+    this._dispose.push(listener);
   }
 
   public dispose() {
@@ -130,25 +151,10 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
-          // Repository construction schedules the initial status through
-          // withProgress(). Yield once so that operation can enter the running
-          // state before deciding whether item history needs to wait for it.
-          if (repo.sourceControl.quickDiffProvider !== repo) {
-            await timeout(0);
-          }
-
-          if (
-            repo.operations.isRunning(Operation.Status) ||
-            repo.operations.isRunning(Operation.StatusRemote)
-          ) {
-            await eventToPromise(
-              filterEvent(
-                repo.onDidRunOperation,
-                operation =>
-                  operation === Operation.Status ||
-                  operation === Operation.StatusRemote
-              )
-            );
+          if (this.initialStatusPending?.has(repo)) {
+            this.currentItem = undefined;
+            this._onDidChangeTreeData.fire(element);
+            return;
           }
 
           const isUnversioned = repo.unversioned.resourceStates.some(resource =>
