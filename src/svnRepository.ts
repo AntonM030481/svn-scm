@@ -261,7 +261,7 @@ export class Repository {
     let paths: ISvnPath[];
     try {
       paths = await parseDiffXml(result.stdout);
-    } catch (err) {
+    } catch (_error) {
       return [];
     }
 
@@ -592,7 +592,7 @@ export class Repository {
             ]);
 
             resolve([trunkLayout]);
-          } catch (error) {
+          } catch (_error) {
             resolve([]);
           }
         })
@@ -625,7 +625,7 @@ export class Repository {
               .map((i: string) => tree + "/" + i);
 
             resolve(list);
-          } catch (error) {
+          } catch (_error) {
             resolve([]);
           }
         })

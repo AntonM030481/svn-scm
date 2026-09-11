@@ -21,7 +21,7 @@ function getNodeModule<T>(moduleName: string, showError = true): T | undefined {
   for (const p of paths) {
     try {
       return r(p);
-    } catch (err) {
+    } catch (_err) {
       // Not in path.
     }
   }

@@ -143,7 +143,7 @@ export class ItemLogProvider
                 },
                 order: 0
               };
-            } catch (e) {
+            } catch (_error) {
               // doesn't belong to this repo
               this.currentItem = undefined;
             }

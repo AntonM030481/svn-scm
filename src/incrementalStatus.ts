@@ -495,7 +495,7 @@ function patchRepository(repository: Repository): Disposable {
       }
 
       return state.statuses;
-    } catch (error) {
+    } catch (_error) {
       const statuses = filterWorkspaceStatuses(
         repository.workspaceRoot,
         await originalGetStatus(params)
