@@ -120,6 +120,18 @@ export class SourceControlManager implements IDisposable {
     })() as unknown as SourceControlManager;
   }
 
+  private logRepositoryLifecycle(
+    repository: Repository,
+    message: string,
+    reason: string = "repository-lifecycle"
+  ): void {
+    const now = new Date();
+    const milliseconds = now.getMilliseconds().toString().padStart(3, "0");
+    const timestamp = `${now.toTimeString().slice(0, 8)}.${milliseconds}`;
+    const name = path.basename(repository.workspaceRoot);
+    this.svn.logOutput(`[${timestamp}] [${name}] [${reason}] ${message}\n`);
+  }
+
   public openRepositoriesSorted(): IOpenRepository[] {
     // Sort by path length (First external and ignored over root)
     return this.openRepositories.sort(
@@ -232,7 +244,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   private disable(): void {
-    this.repositories.forEach(repository => repository.dispose());
+    this.openRepositories.slice().forEach(repository => repository.dispose());
     this.openRepositories = [];
 
     this.possibleSvnRepositoryPaths.clear();
@@ -261,7 +273,7 @@ export class SourceControlManager implements IDisposable {
     possibleRepositoryFolders.forEach(p =>
       this.tryOpenRepository(p.uri.fsPath)
     );
-    openRepositoriesToDispose.forEach(r => r.repository.dispose());
+    openRepositoriesToDispose.forEach(r => r.dispose());
   }
 
   private async scanWorkspaceFolders() {
@@ -438,17 +450,36 @@ export class SourceControlManager implements IDisposable {
       // empty. Avoid probing restored editors with `svn info`; once that scan
       // settles (successfully or not), fall back to the normal path validation.
       if (this.initialStatusRepositories.has(repository)) {
+        this.logRepositoryLifecycle(
+          repository,
+          `initial status pending; skipping path validation: ${uri.fsPath}`,
+          "repository-routing"
+        );
         return repository;
       }
 
       try {
         const path = normalizePath(uri.fsPath);
+        this.logRepositoryLifecycle(
+          repository,
+          `validating path with svn info: ${path}`,
+          "repository-routing"
+        );
 
         await repository.info(path);
 
+        this.logRepositoryLifecycle(
+          repository,
+          `path validation succeeded: ${path}`,
+          "repository-routing"
+        );
         return repository;
       } catch (_error) {
-        // Ignore
+        this.logRepositoryLifecycle(
+          repository,
+          `path validation rejected: ${uri.fsPath}`,
+          "repository-routing"
+        );
       }
     }
 
@@ -457,6 +488,8 @@ export class SourceControlManager implements IDisposable {
 
   private open(repository: Repository): void {
     this.initialStatusRepositories.add(repository);
+    this.logRepositoryLifecycle(repository, "opened; initial status pending");
+
     const initialStatusListener = repository.onDidRunOperation(operation => {
       if (
         operation !== Operation.Status &&
@@ -466,7 +499,22 @@ export class SourceControlManager implements IDisposable {
       }
 
       this.initialStatusRepositories.delete(repository);
+      this.logRepositoryLifecycle(
+        repository,
+        `initial ${
+          operation === Operation.StatusRemote ? "remote" : "local"
+        } status settled`
+      );
       initialStatusListener.dispose();
+    });
+
+    const quickDiffLoggingListener = repository.onDidChangeStatus(() => {
+      if (repository.sourceControl.quickDiffProvider !== repository) {
+        return;
+      }
+
+      this.logRepositoryLifecycle(repository, "quick diff enabled");
+      quickDiffLoggingListener.dispose();
     });
 
     const onDidDisappearRepository = filterEvent(
@@ -492,7 +540,9 @@ export class SourceControlManager implements IDisposable {
     this.scanIgnored(repository);
 
     const dispose = () => {
+      this.logRepositoryLifecycle(repository, "closed");
       initialStatusListener.dispose();
+      quickDiffLoggingListener.dispose();
       this.initialStatusRepositories.delete(repository);
       disappearListener.dispose();
       changeListener.dispose();
