@@ -100,10 +100,10 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a yarn test
         env:
-          CODE_VERSION: 1.109.2
+          CODE_VERSION: stable
 
       - name: Run integration tests
         if: runner.os == 'Windows'
         run: yarn test
         env:
-          CODE_VERSION: 1.109.2
+          CODE_VERSION: stable
