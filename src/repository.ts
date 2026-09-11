@@ -214,7 +214,6 @@ export class Repository implements IRemoteRepository {
       title: "commit",
       arguments: [this.sourceControl]
     };
-    this.sourceControl.quickDiffProvider = this;
     this.disposables.push(this.sourceControl);
 
     this.statusBar = new StatusBarCommands(this);
@@ -266,6 +265,13 @@ export class Repository implements IRemoteRepository {
 
     // Only check deleted files after the status list is fully updated
     this.onDidChangeStatus(this.actionForDeletedFiles, this, this.disposables);
+
+    let quickDiffStatusListener: Disposable;
+    quickDiffStatusListener = this.onDidChangeStatus(() => {
+      this.sourceControl.quickDiffProvider = this;
+      quickDiffStatusListener.dispose();
+    });
+    this.disposables.push(quickDiffStatusListener);
 
     const remoteChangesEnabled =
       configuration.get<number>("remoteChanges.checkFrequency", 300) > 0;
