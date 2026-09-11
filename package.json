@@ -28,7 +28,7 @@
         "subversion"
     ],
     "activationEvents": [
-        "*",
+        "onStartupFinished",
         "onFileSystem:svn"
     ],
     "main": "./out/extension",
