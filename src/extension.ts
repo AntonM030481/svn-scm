@@ -119,11 +119,16 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
         throw err;
       }
 
-      const shouldIgnore =
-        configuration.get<boolean>("ignoreMissingSvnWarning") === true;
+      try {
+        const shouldIgnore =
+          configuration.get<boolean>("ignoreMissingSvnWarning") === true;
 
-      if (shouldIgnore) {
-        rejectSourceControlManager(err);
+        if (shouldIgnore) {
+          rejectSourceControlManager(err);
+      } catch (recoveryError) {
+        rejectSourceControlManager(recoveryError);
+        throw recoveryError;
+      }
         return;
       }
 
