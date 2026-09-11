@@ -20,13 +20,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: yarn
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install Subversion
         run: sudo apt-get update && sudo apt-get install -y subversion
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Verify tag matches package version
         run: |
@@ -40,7 +42,7 @@ jobs:
         run: yarn test-compile
 
       - name: Run integration tests
-        run: xvfb-run -a yarn test
+        run: xvfb-run -a yarn test:integration
         env:
           CODE_VERSION: 1.109.2
 
