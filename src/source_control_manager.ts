@@ -126,10 +126,7 @@ export class SourceControlManager implements IDisposable {
     reason: string = "repository-lifecycle"
   ): void {
     const now = new Date();
-    const milliseconds = now
-      .getMilliseconds()
-      .toString()
-      .padStart(3, "0");
+    const milliseconds = now.getMilliseconds().toString().padStart(3, "0");
     const timestamp = `${now.toTimeString().slice(0, 8)}.${milliseconds}`;
     const name = path.basename(repository.workspaceRoot);
     this.svn.logOutput(`[${timestamp}] [${name}] [${reason}] ${message}\n`);
