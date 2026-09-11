@@ -12,8 +12,7 @@ import {
   Uri,
   window
 } from "vscode";
-import { ISvnLogEntry, Operation } from "../common/types";
-import { Repository } from "../repository";
+import { ISvnLogEntry } from "../common/types";
 import { SourceControlManager } from "../source_control_manager";
 import { dispose, pathEquals, unwrap } from "../util";
 import {
@@ -43,15 +42,12 @@ export class ItemLogProvider
 
   private currentItem?: ICachedLog;
   private _dispose: Disposable[] = [];
-  private initialStatusPending = new WeakSet<Repository>();
 
   constructor(private sourceControlManager: SourceControlManager) {
-    sourceControlManager.repositories.forEach(repo =>
-      this.trackInitialStatus(repo)
-    );
-
     this._dispose.push(
-      sourceControlManager.onDidOpenRepository(this.trackInitialStatus, this),
+      sourceControlManager.onDidChangeStatusRepository(() => {
+        void this.refresh();
+      }),
       window.onDidChangeActiveTextEditor(this.editorChanged, this),
       window.registerTreeDataProvider("itemlog", this),
       commands.registerCommand(
@@ -76,27 +72,6 @@ export class ItemLogProvider
       commands.registerCommand("svn.itemlog.refresh", this.refresh, this)
     );
     this.refresh();
-  }
-
-  private trackInitialStatus(repo: Repository): void {
-    if (repo.sourceControl.quickDiffProvider === repo) {
-      return;
-    }
-
-    this.initialStatusPending.add(repo);
-    const listener = repo.onDidRunOperation(operation => {
-      if (
-        operation !== Operation.Status &&
-        operation !== Operation.StatusRemote
-      ) {
-        return;
-      }
-
-      this.initialStatusPending.delete(repo);
-      listener.dispose();
-      void this.refresh();
-    });
-    this._dispose.push(listener);
   }
 
   public dispose() {
@@ -151,7 +126,7 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
-          if (this.initialStatusPending?.has(repo)) {
+          if (this.sourceControlManager.isInitialStatusPending(repo)) {
             this.currentItem = undefined;
             this._onDidChangeTreeData.fire(element);
             return;
