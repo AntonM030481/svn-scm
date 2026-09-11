@@ -26,4 +26,7 @@ bin
 webpack.config.js
 
 out/**
-!out/extension.js*
+!out/extension.js
+!out/extension.js.LICENSE.txt
+.yarn/**
+eslint.config.js
