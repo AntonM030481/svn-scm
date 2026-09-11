@@ -12,8 +12,7 @@ import {
   Uri,
   window
 } from "vscode";
-import { ISvnLogEntry, Operation } from "../common/types";
-import { Repository } from "../repository";
+import { ISvnLogEntry } from "../common/types";
 import { SourceControlManager } from "../source_control_manager";
 import { dispose, pathEquals, unwrap } from "../util";
 import {
@@ -45,12 +44,7 @@ export class ItemLogProvider
   private _dispose: Disposable[] = [];
 
   constructor(private sourceControlManager: SourceControlManager) {
-    sourceControlManager.repositories.forEach(repo =>
-      this.trackInitialStatus(repo)
-    );
-
     this._dispose.push(
-      sourceControlManager.onDidOpenRepository(this.trackInitialStatus, this),
       window.onDidChangeActiveTextEditor(this.editorChanged, this),
       window.registerTreeDataProvider("itemlog", this),
       commands.registerCommand(
@@ -75,25 +69,6 @@ export class ItemLogProvider
       commands.registerCommand("svn.itemlog.refresh", this.refresh, this)
     );
     this.refresh();
-  }
-
-  private trackInitialStatus(repo: Repository): void {
-    if (!this.sourceControlManager.isInitialStatusPending(repo)) {
-      return;
-    }
-
-    const listener = repo.onDidRunOperation(operation => {
-      if (
-        operation !== Operation.Status &&
-        operation !== Operation.StatusRemote
-      ) {
-        return;
-      }
-
-      listener.dispose();
-      void this.refresh();
-    });
-    this._dispose.push(listener);
   }
 
   public dispose() {
@@ -148,9 +123,10 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
-          if (this.sourceControlManager.isInitialStatusPending(repo)) {
-            this.currentItem = undefined;
-            this._onDidChangeTreeData.fire(element);
+          await repo.initialStatusSettled;
+
+          const activeUri = window.activeTextEditor?.document.uri;
+          if (activeUri && activeUri.toString() !== uri.toString()) {
             return;
           }
 
