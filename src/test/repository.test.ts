@@ -95,6 +95,20 @@ suite("Repository Tests", () => {
       assert.ok(repository);
       assert.equal(repository.sourceControl.quickDiffProvider, undefined);
 
+      const originalInfo = repository.info.bind(repository);
+      let infoCalls = 0;
+      (repository as any).info = async (...args: any[]) => {
+        infoCalls += 1;
+        return originalInfo.apply(repository, args as [string]);
+      };
+
+      const repositoryFromUri = await sourceControlManager.getRepositoryFromUri(
+        Uri.file(unversionedFile)
+      );
+      assert.equal(repositoryFromUri, repository);
+      assert.equal(infoCalls, 0);
+      (repository as any).info = originalInfo;
+
       const statusChanged = new Promise<void>(resolve => {
         const disposable = repository.onDidChangeStatus(() => {
           disposable.dispose();
