@@ -1,4 +1,5 @@
 /.vscode-test
+/.yarn/install-state.gz
 /coverage
 /node_modules
 /out
