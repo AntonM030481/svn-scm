@@ -65,6 +65,56 @@ suite("Repository Tests", () => {
     assert.equal(repository, repository2);
   });
 
+  test("Quick diff waits for initial status", async () => {
+    const newCheckoutDir = await testUtil.createRepoCheckout(
+      testUtil.getSvnUrl(repoUri) + "/trunk"
+    );
+    const unversionedFile = path.join(newCheckoutDir.fsPath, "startup.txt");
+    fs.writeFileSync(unversionedFile, "test");
+
+    const svn = sourceControlManager.svn as any;
+    const originalOpen = svn.open.bind(svn);
+    let releaseStatus!: () => void;
+    const statusGate = new Promise<void>(resolve => {
+      releaseStatus = resolve;
+    });
+
+    svn.open = async (...args: any[]) => {
+      const baseRepository = await originalOpen(...args);
+      const originalGetStatus = baseRepository.getStatus.bind(baseRepository);
+      baseRepository.getStatus = async (...statusArgs: any[]) => {
+        await statusGate;
+        return originalGetStatus(...statusArgs);
+      };
+      return baseRepository;
+    };
+
+    try {
+      await sourceControlManager.tryOpenRepository(newCheckoutDir.fsPath);
+      const repository = sourceControlManager.getRepository(newCheckoutDir);
+      assert.ok(repository);
+      assert.equal(repository.sourceControl.quickDiffProvider, undefined);
+
+      const statusChanged = new Promise<void>(resolve => {
+        const disposable = repository.onDidChangeStatus(() => {
+          disposable.dispose();
+          resolve();
+        });
+      });
+
+      releaseStatus();
+      await statusChanged;
+
+      assert.equal(repository.sourceControl.quickDiffProvider, repository);
+      assert.equal(
+        repository.provideOriginalResource(Uri.file(unversionedFile)),
+        undefined
+      );
+    } finally {
+      svn.open = originalOpen;
+    }
+  });
+
   test("Try get current branch name", async () => {
     const repository: Repository | null = sourceControlManager.getRepository(
       checkoutDir.fsPath
