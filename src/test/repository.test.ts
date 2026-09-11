@@ -99,7 +99,7 @@ suite("Repository Tests", () => {
       let infoCalls = 0;
       (repository as any).info = async (...args: any[]) => {
         infoCalls += 1;
-        return originalInfo(...args);
+        return originalInfo.apply(repository, args as [string]);
       };
 
       const repositoryFromUri = await sourceControlManager.getRepositoryFromUri(
