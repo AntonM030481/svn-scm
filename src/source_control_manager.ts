@@ -316,7 +316,7 @@ export class SourceControlManager implements IDisposable {
 
       try {
         files = await readdir(path);
-      } catch (error) {
+      } catch (_error) {
         return;
       }
 
@@ -326,7 +326,7 @@ export class SourceControlManager implements IDisposable {
 
         try {
           stats = await stat(dir);
-        } catch (error) {
+        } catch (_error) {
           continue;
         }
 
@@ -437,7 +437,7 @@ export class SourceControlManager implements IDisposable {
         await repository.info(path);
 
         return repository;
-      } catch (error) {
+      } catch (_error) {
         // Ignore
       }
     }
@@ -450,7 +450,7 @@ export class SourceControlManager implements IDisposable {
       repository.onDidChangeState,
       state => state === RepositoryState.Disposed
     );
-    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+
     const disappearListener = onDidDisappearRepository(() => dispose());
 
     const changeListener = repository.onDidChangeRepository(uri =>
@@ -476,7 +476,6 @@ export class SourceControlManager implements IDisposable {
       repository.dispose();
 
       this.openRepositories = this.openRepositories.filter(
-        // eslint-disable-next-line @typescript-eslint/no-use-before-define
         e => e !== openRepository
       );
       this._onDidCloseRepository.fire(repository);

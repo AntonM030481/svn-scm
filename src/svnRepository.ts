@@ -261,7 +261,7 @@ export class Repository {
     let paths: ISvnPath[];
     try {
       paths = await parseDiffXml(result.stdout);
-    } catch (err) {
+    } catch (_error) {
       return [];
     }
 
@@ -488,11 +488,12 @@ export class Repository {
   public async addFilesByIgnore(files: string[], ignoreList: string[]) {
     const allFiles = async (file: string): Promise<string[]> => {
       if ((await stat(file)).isDirectory()) {
-        return (
+        const nestedFiles = (
           await Promise.all(
             (await readdir(file)).map(subfile => {
               const abspath = path.resolve(file + path.sep + subfile);
               const relpath = this.removeAbsolutePath(abspath);
+
               if (
                 !matchAll(path.sep + relpath, ignoreList, {
                   dot: true,
@@ -501,10 +502,13 @@ export class Repository {
               ) {
                 return allFiles(abspath);
               }
+
               return [];
             })
           )
-        ).reduce((acc, cur) => acc.concat(cur), [file]);
+        ).flat();
+
+        return [file, ...nestedFiles];
       }
       return [file];
     };
@@ -592,7 +596,7 @@ export class Repository {
             ]);
 
             resolve([trunkLayout]);
-          } catch (error) {
+          } catch (_error) {
             resolve([]);
           }
         })
@@ -625,7 +629,7 @@ export class Repository {
               .map((i: string) => tree + "/" + i);
 
             resolve(list);
-          } catch (error) {
+          } catch (_error) {
             resolve([]);
           }
         })

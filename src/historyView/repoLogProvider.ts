@@ -184,7 +184,7 @@ export class RepoLogProvider
         item.repo = repo;
         item.svnTarget = Uri.parse(svninfo.url);
         item.persisted.baseRevision = parseInt(svninfo.revision, 10);
-      } catch (e) {
+      } catch (_error) {
         window.showErrorMessage("Failed to resolve svn path");
         return;
       }
