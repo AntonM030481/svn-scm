@@ -63,7 +63,11 @@ class TempSvnFs implements FileSystemProvider, Disposable {
 
   readonly onDidChangeFile: Event<FileChangeEvent[]> = this._emitter.event;
 
-  constructor() {
+  register(): void {
+    if (this._disposables.length > 0) {
+      return;
+    }
+
     this._disposables.push(
       workspace.registerFileSystemProvider("tempsvnfs", this, {
         isCaseSensitive: true
