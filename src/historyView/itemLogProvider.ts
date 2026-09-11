@@ -19,6 +19,7 @@ import {
   eventToPromise,
   filterEvent,
   pathEquals,
+  timeout,
   unwrap
 } from "../util";
 import {
@@ -129,6 +130,13 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
+          // Repository construction schedules the initial status through
+          // withProgress(). Yield once so that operation can enter the running
+          // state before deciding whether item history needs to wait for it.
+          if (repo.sourceControl.quickDiffProvider !== repo) {
+            await timeout(0);
+          }
+
           if (
             repo.operations.isRunning(Operation.Status) ||
             repo.operations.isRunning(Operation.StatusRemote)
