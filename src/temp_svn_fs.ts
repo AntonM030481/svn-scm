@@ -77,7 +77,6 @@ class TempSvnFs implements FileSystemProvider, Disposable {
   }
 
   watch(_resource: Uri): Disposable {
-     
     return new Disposable(() => {});
   }
 

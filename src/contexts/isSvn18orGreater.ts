@@ -9,6 +9,5 @@ export class IsSvn18orGreater implements Disposable {
     setVscodeContext("isSvn18orGreater", is18orGreater);
   }
 
-   
   dispose() {}
 }

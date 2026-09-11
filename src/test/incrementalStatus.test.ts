@@ -71,10 +71,10 @@ suite("Incremental Status Tests", () => {
       updated
     );
 
-    assert.deepEqual(
-      result.map(item => item.path).sort(),
-      ["src/feature/c.ts", "src/other.ts"]
-    );
+    assert.deepEqual(result.map(item => item.path).sort(), [
+      "src/feature/c.ts",
+      "src/other.ts"
+    ]);
   });
 
   test("preserves working copy state on a targeted refresh", () => {
@@ -132,7 +132,10 @@ suite("Incremental Status Tests", () => {
       isTargetInWorkspace(workspaceRoot, "/wc/server/src/b.ts"),
       false
     );
-    assert.equal(isTargetInWorkspace(workspaceRoot, "../server/src/b.ts"), false);
+    assert.equal(
+      isTargetInWorkspace(workspaceRoot, "../server/src/b.ts"),
+      false
+    );
   });
 
   test("does not merge sibling workspace statuses", () => {

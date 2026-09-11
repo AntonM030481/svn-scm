@@ -201,6 +201,6 @@ export async function activate(context: ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
- 
+
 function deactivate() {}
 exports.deactivate = deactivate;

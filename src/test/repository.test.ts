@@ -144,7 +144,10 @@ suite("Repository Tests", () => {
         Uri.file(file)
       );
       assert.equal(repositoryFromUri, repository);
-      assert.equal(repository.provideOriginalResource(Uri.file(file)), undefined);
+      assert.equal(
+        repository.provideOriginalResource(Uri.file(file)),
+        undefined
+      );
     } finally {
       fs.unlinkSync(file);
       await repository.status();
