@@ -1,5 +1,5 @@
 import * as path from "path";
-import * as Mocha from "mocha";
+import Mocha = require("mocha");
 
 async function main(): Promise<void> {
   const mocha = new Mocha({
