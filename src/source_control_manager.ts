@@ -97,6 +97,10 @@ export class SourceControlManager implements IDisposable {
     return this._svn;
   }
 
+  public isInitialStatusPending(repository: Repository): boolean {
+    return this.initialStatusRepositories.has(repository);
+  }
+
   constructor(
     private _svn: Svn,
     policy: ConstructorPolicy,
@@ -133,7 +137,6 @@ export class SourceControlManager implements IDisposable {
   }
 
   public openRepositoriesSorted(): IOpenRepository[] {
-    // Sort by path length (First external and ignored over root)
     return this.openRepositories.sort(
       (a, b) =>
         b.repository.workspaceRoot.length - a.repository.workspaceRoot.length
@@ -291,7 +294,6 @@ export class SourceControlManager implements IDisposable {
     const checkParent = level === 0;
 
     if (await isSvnFolder(path, checkParent)) {
-      // Config based on folder path
       const resourceConfig = workspace.getConfiguration("svn", Uri.file(path));
 
       const ignoredRepos = new Set(
@@ -437,7 +439,6 @@ export class SourceControlManager implements IDisposable {
     for (const liveRepository of this.openRepositoriesSorted()) {
       const repository = liveRepository.repository;
 
-      // Ignore path is not child (fix for multiple externals)
       if (!isDescendant(repository.workspaceRoot, uri.fsPath)) {
         continue;
       }
@@ -446,9 +447,6 @@ export class SourceControlManager implements IDisposable {
         return repository;
       }
 
-      // While the initial status is still running, the resource groups are
-      // empty. Avoid probing restored editors with `svn info`; once that scan
-      // settles (successfully or not), fall back to the normal path validation.
       if (this.initialStatusRepositories.has(repository)) {
         this.logRepositoryLifecycle(
           repository,
