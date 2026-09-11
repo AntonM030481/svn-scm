@@ -16,7 +16,7 @@ export async function run(): Promise<void> {
     ignore: ["test/globMatch.test.js"]
   });
 
-  files.forEach(file => mocha.addFile(path.resolve(testsRoot, file)));
+  files.sort().forEach(file => mocha.addFile(path.resolve(testsRoot, file)));
 
   return new Promise((resolve, reject) => {
     try {
