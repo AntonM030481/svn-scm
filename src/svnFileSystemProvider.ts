@@ -39,15 +39,14 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   private readonly sourceControlManagerPromise: Promise<SourceControlManager>;
 
   private _onDidChangeFile = new EventEmitter<FileChangeEvent[]>();
-  readonly onDidChangeFile: Event<FileChangeEvent[]> = this._onDidChangeFile
-    .event;
+  readonly onDidChangeFile: Event<FileChangeEvent[]> =
+    this._onDidChangeFile.event;
 
   private changedRepositoryRoots = new Set<string>();
 
   constructor(
     sourceControlManager:
-      | SourceControlManager
-      | PromiseLike<SourceControlManager>
+      SourceControlManager | PromiseLike<SourceControlManager>
   ) {
     this.sourceControlManagerPromise = Promise.resolve(sourceControlManager);
 

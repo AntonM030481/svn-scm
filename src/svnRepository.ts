@@ -53,16 +53,16 @@ export class Repository {
     this._info = initialInfo;
 
     if (policy === ConstructorPolicy.LateInit) {
-      return ((async (): Promise<Repository> => {
+      return (async (): Promise<Repository> => {
         return this;
-      })() as unknown) as Repository;
+      })() as unknown as Repository;
     }
-    return ((async (): Promise<Repository> => {
+    return (async (): Promise<Repository> => {
       if (!this._info) {
         await this.updateInfo();
       }
       return this;
-    })() as unknown) as Repository;
+    })() as unknown as Repository;
   }
 
   public async updateInfo() {
@@ -189,9 +189,12 @@ export class Repository {
     this._infoCache[file] = await parseInfoXml(result.stdout);
 
     // Cache for 2 minutes
-    setTimeout(() => {
-      this.resetInfoCache(file);
-    }, 2 * 60 * 1000);
+    setTimeout(
+      () => {
+        this.resetInfoCache(file);
+      },
+      2 * 60 * 1000
+    );
 
     return this._infoCache[file];
   }
@@ -361,9 +364,8 @@ export class Repository {
         }
       }
     } else {
-      const svnEncoding: string | undefined = configuration.get<string>(
-        "default.encoding"
-      );
+      const svnEncoding: string | undefined =
+        configuration.get<string>("default.encoding");
       if (svnEncoding) {
         encoding = svnEncoding;
       }

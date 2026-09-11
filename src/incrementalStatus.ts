@@ -507,9 +507,9 @@ function patchRepository(repository: Repository): Disposable {
 
   const originals = new Map<string, (...args: any[]) => any>();
 
-  const originalOnDidAnyFileChanged = (repository as any).onDidAnyFileChanged.bind(
-    repository
-  );
+  const originalOnDidAnyFileChanged = (
+    repository as any
+  ).onDidAnyFileChanged.bind(repository);
   originals.set("onDidAnyFileChanged", originalOnDidAnyFileChanged);
   (repository as any).onDidAnyFileChanged = (...args: any[]) => {
     if (isSelfGeneratedSvnMetadataChange(repository.root)) {
@@ -640,9 +640,9 @@ function patchRepository(repository: Repository): Disposable {
     repository.fsWatcher.onDidSvnAny(collectSvnChange)
   );
 
-  const originalEventuallyUpdate = (repository as any).eventuallyUpdateWhenIdleAndWait.bind(
-    repository
-  );
+  const originalEventuallyUpdate = (
+    repository as any
+  ).eventuallyUpdateWhenIdleAndWait.bind(repository);
   originals.set("eventuallyUpdateWhenIdleAndWait", originalEventuallyUpdate);
 
   let fsRefreshCheckScheduled = false;
@@ -661,9 +661,9 @@ function patchRepository(repository: Repository): Disposable {
     }, 0);
   };
 
-  const originalUpdateWhenIdleAndWait = (repository as any).updateWhenIdleAndWait.bind(
-    repository
-  );
+  const originalUpdateWhenIdleAndWait = (
+    repository as any
+  ).updateWhenIdleAndWait.bind(repository);
   originals.set("updateWhenIdleAndWait", originalUpdateWhenIdleAndWait);
   (repository as any).updateWhenIdleAndWait = async () => {
     await repository.whenIdleAndFocused();
