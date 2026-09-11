@@ -15,7 +15,6 @@ import {
   ConstructorPolicy,
   RepositoryChangeEvent,
   IOpenRepository,
-  Operation,
   RepositoryState
 } from "./common/types";
 import { debounce } from "./decorators";
@@ -60,7 +59,6 @@ export class SourceControlManager implements IDisposable {
   private disposables: Disposable[] = [];
   private enabled = false;
   private possibleSvnRepositoryPaths = new Set<string>();
-  private initialStatusRepositories = new Set<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -95,10 +93,6 @@ export class SourceControlManager implements IDisposable {
 
   get svn(): Svn {
     return this._svn;
-  }
-
-  public isInitialStatusPending(repository: Repository): boolean {
-    return this.initialStatusRepositories.has(repository);
   }
 
   constructor(
@@ -251,7 +245,6 @@ export class SourceControlManager implements IDisposable {
     this.openRepositories = [];
 
     this.possibleSvnRepositoryPaths.clear();
-    this.initialStatusRepositories.clear();
     this.disposables = dispose(this.disposables);
   }
 
@@ -447,7 +440,7 @@ export class SourceControlManager implements IDisposable {
         return repository;
       }
 
-      if (this.initialStatusRepositories.has(repository)) {
+      if (repository.isInitialStatusPending) {
         this.logRepositoryLifecycle(
           repository,
           `initial status pending; skipping path validation: ${uri.fsPath}`,
@@ -485,25 +478,11 @@ export class SourceControlManager implements IDisposable {
   }
 
   private open(repository: Repository): void {
-    this.initialStatusRepositories.add(repository);
     this.logRepositoryLifecycle(repository, "opened; initial status pending");
-
-    const initialStatusListener = repository.onDidRunOperation(operation => {
-      if (
-        operation !== Operation.Status &&
-        operation !== Operation.StatusRemote
-      ) {
-        return;
+    void repository.initialStatusSettled.then(() => {
+      if (repository.state !== RepositoryState.Disposed) {
+        this.logRepositoryLifecycle(repository, "initial status settled");
       }
-
-      this.initialStatusRepositories.delete(repository);
-      this.logRepositoryLifecycle(
-        repository,
-        `initial ${
-          operation === Operation.StatusRemote ? "remote" : "local"
-        } status settled`
-      );
-      initialStatusListener.dispose();
     });
 
     const quickDiffLoggingListener = repository.onDidChangeStatus(() => {
@@ -539,9 +518,7 @@ export class SourceControlManager implements IDisposable {
 
     const dispose = () => {
       this.logRepositoryLifecycle(repository, "closed");
-      initialStatusListener.dispose();
       quickDiffLoggingListener.dispose();
-      this.initialStatusRepositories.delete(repository);
       disappearListener.dispose();
       changeListener.dispose();
       changeStatus.dispose();
