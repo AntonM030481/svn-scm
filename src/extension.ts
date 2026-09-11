@@ -67,7 +67,6 @@ async function init(
 
   disposables.push(
     sourceControlManager,
-    tempSvnFs,
     new SvnProvider(sourceControlManager),
     new RepoLogProvider(sourceControlManager),
     new ItemLogProvider(sourceControlManager),
@@ -85,6 +84,9 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   const outputChannel = window.createOutputChannel("Svn");
   commands.registerCommand("svn.showOutput", () => outputChannel.show());
   disposables.push(outputChannel);
+
+  tempSvnFs.register();
+  disposables.push(tempSvnFs);
 
   // Register the svn: scheme before any asynchronous initialization. VS Code
   // can restore BASE/diff editors immediately when the window opens, even while
