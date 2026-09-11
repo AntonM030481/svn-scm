@@ -52,7 +52,6 @@
         "dependencies": false
     },
     "devDependencies": {
-        "@types/glob": "^7.1.4",
         "@types/mocha": "10",
         "@types/node": "^12.11.7",
         "@types/semver": "^7.3.8",
@@ -68,10 +67,10 @@
         "decache": "^4.6.0",
         "eslint": "^10.10.0",
         "eslint-config-prettier": "^10.1.8",
-        "glob": "^7.1.7",
+        "glob": "13.0.6",
         "iconv-lite-umd": "^0.6.10",
         "jschardet": "^3.0.0",
-        "minimatch": "^3.0.4",
+        "minimatch": "10.2.6",
         "mocha": "10",
         "original-fs": "^1.0.0",
         "prettier": "3.9.6",
