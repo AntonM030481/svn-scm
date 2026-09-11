@@ -39,6 +39,7 @@ import { IRemoteRepository } from "./remoteRepository";
 import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
 import { svnErrorCodes } from "./svn";
+import SvnError from "./svnError";
 import { Repository as BaseRepository } from "./svnRepository";
 import { toSvnUri } from "./uri";
 import {
@@ -1123,7 +1124,10 @@ export class Repository implements IRemoteRepository {
 
         return result;
       } catch (err) {
-        if (err.svnErrorCode === svnErrorCodes.NotASvnRepository) {
+        if (
+          err instanceof SvnError &&
+          err.svnErrorCode === svnErrorCodes.NotASvnRepository
+        ) {
           this.state = RepositoryState.Disposed;
         }
 
@@ -1158,12 +1162,14 @@ export class Repository implements IRemoteRepository {
         return result;
       } catch (err) {
         if (
+          err instanceof SvnError &&
           err.svnErrorCode === svnErrorCodes.RepositoryIsLocked &&
           attempt <= 10
         ) {
           // quatratic backoff
           await timeout(Math.pow(attempt, 2) * 50);
         } else if (
+          err instanceof SvnError &&
           err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
           attempt <= 1 + accounts.length
         ) {
@@ -1179,6 +1185,7 @@ export class Repository implements IRemoteRepository {
             this.password = accounts[index].password;
           }
         } else if (
+          err instanceof SvnError &&
           err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
           attempt <= 3 + accounts.length
         ) {
