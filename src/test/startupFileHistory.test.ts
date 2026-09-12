@@ -72,6 +72,7 @@ suite("Startup File History Tests", () => {
     const svn = sourceControlManager.svn as any;
     const originalOpen = svn.open.bind(svn);
     let releaseStatus!: () => void;
+    // Keep the initial scan pending while the active editor asks for history.
     const statusGate = new Promise<void>(resolve => {
       releaseStatus = resolve;
     });
