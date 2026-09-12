@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Show Prettier diff
+        run: |
+          yarn prettier --write src/test/startupFileHistory.test.ts
+          git diff -- src/test/startupFileHistory.test.ts
+          exit 1
+
       - name: Check
         run: yarn check
 
