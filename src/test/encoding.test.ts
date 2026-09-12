@@ -20,14 +20,24 @@ const CP866 = Buffer.from(
 suite("Encoding detection", () => {
   const configuration = workspace.getConfiguration("svn");
   let previousExperimentalValue: boolean | undefined;
+  let previousEncodingPriority: string[] | undefined;
 
   setup(async () => {
     previousExperimentalValue = configuration.inspect<boolean>(
       "experimental.detect_encoding"
     )?.globalValue;
+    previousEncodingPriority = configuration.inspect<string[]>(
+      "experimental.encoding_priority"
+    )?.globalValue;
+
     await configuration.update(
       "experimental.detect_encoding",
       false,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      [],
       ConfigurationTarget.Global
     );
   });
@@ -36,6 +46,11 @@ suite("Encoding detection", () => {
     await configuration.update(
       "experimental.detect_encoding",
       previousExperimentalValue,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      previousEncodingPriority,
       ConfigurationTarget.Global
     );
   });
@@ -81,5 +96,41 @@ suite("Encoding detection", () => {
       detectEncoding(Buffer.concat([asciiPrefix, CP1251])),
       null
     );
+  });
+
+  test("experimental detection requires an explicit priority", async () => {
+    await configuration.update(
+      "experimental.detect_encoding",
+      true,
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(detectEncoding(Buffer.from("plain ASCII text")), null);
+
+    await configuration.update(
+      "experimental.encoding_priority",
+      ["A-S_C I I"],
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(
+      detectEncoding(Buffer.from("plain ASCII text")),
+      "ascii"
+    );
+  });
+
+  test("experimental detection keeps priority order", async () => {
+    await configuration.update(
+      "experimental.detect_encoding",
+      true,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      ["windows-1251", "ISO-8859-2"],
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(detectEncoding(CP1251), "windows1251");
   });
 });
