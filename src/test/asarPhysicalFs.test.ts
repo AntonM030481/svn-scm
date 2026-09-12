@@ -27,8 +27,10 @@ suite("Physical filesystem ASAR handling", () => {
         (error: NodeJS.ErrnoException) => error.code === "ENOTDIR"
       );
 
+      // A successful rename proves the previous physical-fs calls did not leave
+      // the archive locked on Windows. Verify the renamed path physically too.
       fs.renameSync(archive, renamed);
-      assert.equal(fs.statSync(renamed).isFile(), true);
+      assert.equal((await stat(renamed)).isFile(), true);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
