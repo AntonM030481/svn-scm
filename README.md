@@ -24,6 +24,8 @@ If you use [TortoiseSVN](https://tortoisesvn.net/), make sure the option
   [Issues](https://github.com/AntonM030481/svn-scm/issues)
 * Feel free to submit
   [pull requests](https://github.com/AntonM030481/svn-scm/pulls)
+* See the [maintainer documentation](docs/README.md) for architecture,
+  development, testing, and release details
 
 ## [Original contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors)
 

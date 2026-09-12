@@ -1,49 +1,33 @@
 # Contributing
 
-Before you contribute to this project, please open an issue beforehand to discuss the changes you want to make.
+Issues and pull requests are welcome. For substantial behavior changes, open an
+issue first so the scope and compatibility impact can be discussed.
 
 ## Development setup
 
-Requirements    
-* [Git](https://git-scm.com/)
-* [NodeJs](https://nodejs.org/) >= 12.4.0
-* [yarn](https://classic.yarnpkg.com/lang/en/) >= 1.22
+The project uses Node.js 24 and the Yarn version pinned in `package.json`.
+Enable Corepack, install dependencies, and run the standard checks:
 
-First you will need to fork the project
-![Github Fork](images/docs/fork.png)
-
-Then clone your fork
-```
-git clone https://github.com/<YOUR_USERNAME>/svn-scm.git
+```sh
+corepack enable
+yarn install --immutable
+yarn check
+yarn test:unit
 ```
 
-### Dependencies
-To install all of the required dependencies run
-```
-yarn --frozen-lockfile
-```
+The integration tests also require a Subversion command-line client. See the
+[development guide](docs/development.md) for local setup and debugging, and the
+[testing guide](docs/testing.md) for the VS Code test matrix.
 
-### Build
-To build the extension
-```
-yarn run build
-```
+## Pull requests
 
-### Watch
-For development run in watch mode
-```
-yarn run compile
-```
+- Keep each pull request focused.
+- Add regression coverage for behavior changes and bug fixes.
+- Update user or maintainer documentation when behavior, architecture, or a
+  workflow changes.
+- Confirm that CI passes before requesting review.
 
-### Formatting
-This project uses [prettier](https://prettier.io/) for code formatting. You can run prettier across the code by calling `yarn run style-fix`
-
-### Linting
-This project uses [ESLint](https://eslint.org/) for code linting. You can run ESLint across the code by calling `yarn run lint`. To fix fixable errors run `yarn run lint:fix`
-
-### Debugging
-Run in VS Code
-1. Open the `svn-scm` folder
-2. Make sure the [dependencies](#dependencies) are installed
-3. Run in [watch](#watch) mode
-4. Choose the `Launch Extension` launch configuration from the launch dropdown in the Debug viewlet and press `F5`.
+Read the [design principles](docs/design-principles.md) before changing core
+behavior. The [maintenance guide](docs/maintenance.md) contains compatibility,
+lifecycle, and review conventions. All maintainer documentation is indexed in
+[`docs/`](docs/README.md).
