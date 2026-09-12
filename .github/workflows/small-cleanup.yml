@@ -1,0 +1,63 @@
+name: Small cleanup
+
+on:
+  push:
+    branches:
+      - chore/small-cleanup
+    paths:
+      - .github/workflows/small-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: chore/small-cleanup
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Remove redundant eslint packages
+        run: yarn remove @typescript-eslint/eslint-plugin @typescript-eslint/parser
+
+      - name: Remove stale config
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          let pkg = fs.readFileSync('package.json', 'utf8');
+          pkg = pkg.replace(/\r?\n    "config": \{\r?\n        "commitizen": \{\r?\n            "path": "cz-conventional-changelog"\r?\n        \}\r?\n    \},/, '');
+          fs.writeFileSync('package.json', pkg);
+
+          let webpack = fs.readFileSync('webpack.config.js', 'utf8');
+          webpack = webpack.replace(/const IGNORED = \['jschardet', 'iconv-lite', 'iconv-lite-umd', '\.\/vscodeModules'\];\r?\n/, '');
+          fs.writeFileSync('webpack.config.js', webpack);
+          NODE
+
+      - name: Check
+        run: yarn check
+
+      - name: Unit tests
+        run: yarn test:unit
+
+      - name: Build
+        run: yarn build
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json yarn.lock webpack.config.js
+          git commit -m "chore: remove stale tooling config"
+          git push
