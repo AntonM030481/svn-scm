@@ -54,13 +54,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-        vscode-version:
-          - 1.86.0
-          - stable
+        include:
+          - os: ubuntu-latest
+            vscode-version: 1.86.0
+          - os: ubuntu-latest
+            vscode-version: stable
+          - os: windows-latest
+            vscode-version: 1.86.0
+          - os: windows-latest
+            vscode-version: stable
+          - os: macos-15-intel
+            vscode-version: 1.86.0
+          - os: macos-latest
+            vscode-version: stable
 
     steps:
       - name: Checkout
