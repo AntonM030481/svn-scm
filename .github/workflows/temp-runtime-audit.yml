@@ -17,15 +17,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Find routing and refresh call sites
+      - name: Find cached repository info reads
         run: |
-          echo '=== getRepositoryFromUri ==='
-          grep -RFn 'getRepositoryFromUri' src || true
-          echo '=== onDidChangeRepository ==='
-          grep -RFn 'onDidChangeRepository' src || true
-          echo '=== updateInfo ==='
-          grep -RFn '.updateInfo(' src || true
-          echo '=== eventuallyUpdateWhenIdleAndWait ==='
-          grep -RFn 'eventuallyUpdateWhenIdleAndWait' src || true
-          echo '=== notifyRepositoryChanged ==='
-          grep -RFn 'notifyRepositoryChanged' src || true
+          echo '=== repository.info ==='
+          grep -RFn 'repository.info' src || true
+          echo '=== this.info ==='
+          grep -RFn 'this.info' src || true
+          echo '=== .info.revision ==='
+          grep -RFn '.info.revision' src || true
+          echo '=== .info.url ==='
+          grep -RFn '.info.url' src || true
