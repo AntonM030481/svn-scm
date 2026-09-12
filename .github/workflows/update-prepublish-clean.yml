@@ -1,0 +1,50 @@
+name: Update prepublish clean
+
+on:
+  push:
+    branches:
+      - chore/modernize-release-workflow-clean
+    paths:
+      - .github/workflows/update-prepublish-clean.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: chore/modernize-release-workflow-clean
+
+      - name: Update prepublish
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'package.json';
+          const oldValue = '"vscode:prepublish": "yarn run lint && yarn run build"';
+          const newValue = '"vscode:prepublish": "yarn check && yarn build"';
+          let text = fs.readFileSync(file, 'utf8');
+          if (!text.includes(oldValue)) throw new Error('Expected prepublish script not found');
+          fs.writeFileSync(file, text.replace(oldValue, newValue));
+          NODE
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn vsce package --no-yarn -o svn-scm.vsix
+
+      - name: Commit package update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: unify prepublish checks"
+          git push
