@@ -1,7 +1,14 @@
 import * as assert from "assert";
 import * as fs from "original-fs";
 import * as path from "path";
-import { commands, EventEmitter, TextEditor, Uri, window, workspace } from "vscode";
+import {
+  commands,
+  EventEmitter,
+  TextEditor,
+  Uri,
+  window,
+  workspace
+} from "vscode";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -148,49 +155,52 @@ suite("Startup File History Tests", () => {
     );
   });
 
-  test("Unversioned active file waits for initial status without svn info", async () => {
-    const started = Date.now();
-    const fileName = "unversioned-startup.txt";
-    const startup = await openWithBlockedInitialStatus(fileName, true);
-    const { repository, editor } = startup;
-    const originalGetInfo = repository.getInfo;
-    let getInfoCalls = 0;
-    (repository as any).getInfo = async (
-      filePath: string,
-      revision?: string
-    ) => {
-      getInfoCalls += 1;
-      return originalGetInfo.call(repository, filePath, revision);
-    };
+  test(
+    "Unversioned active file waits for initial status without svn info",
+    async () => {
+      const started = Date.now();
+      const fileName = "unversioned-startup.txt";
+      const startup = await openWithBlockedInitialStatus(fileName, true);
+      const { repository, editor } = startup;
+      const originalGetInfo = repository.getInfo;
+      let getInfoCalls = 0;
+      (repository as any).getInfo = async (
+        filePath: string,
+        revision?: string
+      ) => {
+        getInfoCalls += 1;
+        return originalGetInfo.call(repository, filePath, revision);
+      };
 
-    const { provider, emitter } = createItemLogProvider();
+      const { provider, emitter } = createItemLogProvider();
 
-    try {
-      const refresh = provider.refresh(undefined, editor);
-      await Promise.resolve();
-      assert.equal(getInfoCalls, 0);
+      try {
+        const refresh = provider.refresh(undefined, editor);
+        await Promise.resolve();
+        assert.equal(getInfoCalls, 0);
 
-      startup.releaseStatus();
-      await refresh;
+        startup.releaseStatus();
+        await refresh;
 
-      assert.equal(repository.isInitialStatusPending, false);
-      assert.equal(getInfoCalls, 0);
-      assert.equal((provider as any).currentItem, undefined);
-      assert.equal(
-        repository.provideOriginalResource(editor.document.uri),
-        undefined
+        assert.equal(repository.isInitialStatusPending, false);
+        assert.equal(getInfoCalls, 0);
+        assert.equal((provider as any).currentItem, undefined);
+        assert.equal(
+          repository.provideOriginalResource(editor.document.uri),
+          undefined
+        );
+      } finally {
+        startup.releaseStatus();
+        (repository as any).getInfo = originalGetInfo;
+        emitter.dispose();
+        startup.restoreSvnOpen();
+        sourceControlManager.close(repository);
+        await commands.executeCommand("workbench.action.closeActiveEditor");
+      }
+
+      console.log(
+        `[startup-file-history] unversioned: ${Date.now() - started} ms`
       );
-    } finally {
-      startup.releaseStatus();
-      (repository as any).getInfo = originalGetInfo;
-      emitter.dispose();
-      startup.restoreSvnOpen();
-      sourceControlManager.close(repository);
-      await commands.executeCommand("workbench.action.closeActiveEditor");
     }
-
-    console.log(
-      `[startup-file-history] unversioned: ${Date.now() - started} ms`
-    );
-  });
+  );
 });
