@@ -36,6 +36,7 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   private disposables: Disposable[] = [];
   private cache = new Map<string, CacheRow>();
   private disposed = false;
+  private cleanupInterval?: ReturnType<typeof setInterval>;
   private readonly sourceControlManagerPromise: Promise<SourceControlManager>;
 
   private _onDidChangeFile = new EventEmitter<FileChangeEvent[]>();
@@ -71,7 +72,7 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
       })
       .catch(() => undefined);
 
-    setInterval(() => this.cleanup(), FIVE_MINUTES);
+    this.cleanupInterval = setInterval(() => this.cleanup(), FIVE_MINUTES);
   }
 
   private async getSourceControlManager(): Promise<SourceControlManager> {
@@ -233,6 +234,10 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
 
   dispose(): void {
     this.disposed = true;
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = undefined;
+    }
     this.disposables.forEach(d => d.dispose());
   }
 }
