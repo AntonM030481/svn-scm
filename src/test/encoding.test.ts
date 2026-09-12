@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as chardet from "chardet";
 import { ConfigurationTarget, workspace } from "vscode";
 import { detectEncoding } from "../encoding";
 
@@ -16,6 +17,10 @@ const CP866 = Buffer.from(
   "8fe0a8a2a5e220aca8e02e209de2ae20e2a5e1e220aaaea4a8e0aea2aaa82053756276657273696f6e2e2090e3e1e1aaa8a920e2a5aae1e220a4aeaba6a5ad20aeafe0a5a4a5abefe2ece1ef20e1e2a0a1a8abecadae2e208fe0a8a2a5e220aca8e02e209de2ae20e2a5e1e220aaaea4a8e0aea2aaa82053756276657273696f6e2e2090e3e1e1aaa8a920e2a5aae1e220a4aeaba6a5ad20aeafe0a5a4a5abefe2ece1ef20e1e2a0a1a8abecadae2e20",
   "hex"
 );
+
+function normalizeEncodingName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
 
 suite("Encoding detection", () => {
   const configuration = workspace.getConfiguration("svn");
@@ -120,6 +125,17 @@ suite("Encoding detection", () => {
   });
 
   test("experimental detection keeps priority order", async () => {
+    const detected = chardet.analyse(CP1251);
+    assert.ok(detected.length >= 2);
+
+    const topCandidate = detected[0];
+    const lowerRankedCandidate = detected.find(
+      candidate =>
+        normalizeEncodingName(candidate.name) !==
+        normalizeEncodingName(topCandidate.name)
+    );
+    assert.ok(lowerRankedCandidate);
+
     await configuration.update(
       "experimental.detect_encoding",
       true,
@@ -127,10 +143,13 @@ suite("Encoding detection", () => {
     );
     await configuration.update(
       "experimental.encoding_priority",
-      ["ISO-8859-2", "windows-1251"],
+      [lowerRankedCandidate.name, topCandidate.name],
       ConfigurationTarget.Global
     );
 
-    assert.strictEqual(detectEncoding(CP1251), "iso88592");
+    assert.strictEqual(
+      detectEncoding(CP1251),
+      normalizeEncodingName(lowerRankedCandidate.name)
+    );
   });
 });
