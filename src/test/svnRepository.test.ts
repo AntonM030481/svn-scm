@@ -68,6 +68,49 @@ suite("Svn Repository Tests", () => {
     assert.equal(status[2].path, "added.php");
   });
 
+  test("Resolves external repository UUID only when requested", async () => {
+    svn = new Svn(options);
+    const repository = await new Repository(
+      svn,
+      "/tmp",
+      "/tmp",
+      ConstructorPolicy.LateInit
+    );
+    repository.exec = async (_args: string[], _options?: ICpOptions) => ({
+      exitCode: 0,
+      stderr: "",
+      stdout: `<?xml version="1.0" encoding="UTF-8"?>
+        <status>
+          <target path=".">
+            <entry path="external-a">
+              <wc-status item="external" props="none" />
+            </entry>
+            <entry path="external-b">
+              <wc-status item="external" props="none" />
+            </entry>
+          </target>
+        </status>`
+    });
+
+    let getInfoCalls = 0;
+    repository.getInfo = async () => {
+      getInfoCalls += 1;
+      return info;
+    };
+
+    const defaultStatus = await repository.getStatus({});
+    assert.equal(getInfoCalls, 0);
+    assert.equal(defaultStatus[0].repositoryUuid, undefined);
+    assert.equal(defaultStatus[1].repositoryUuid, undefined);
+
+    const resolvedStatus = await repository.getStatus({
+      resolveExternalRepositoryUuid: true
+    });
+    assert.equal(getInfoCalls, 2);
+    assert.equal(resolvedStatus[0].repositoryUuid, info.repository.uuid);
+    assert.equal(resolvedStatus[1].repositoryUuid, info.repository.uuid);
+  });
+
   test("Test multiple status targets", async () => {
     const status = await parseStatusXml(`<?xml version="1.0" encoding="UTF-8"?>
       <status>

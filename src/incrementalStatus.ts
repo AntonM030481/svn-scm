@@ -14,6 +14,7 @@ interface StatusParams {
   includeIgnored?: boolean;
   includeExternals?: boolean;
   checkRemoteChanges?: boolean;
+  resolveExternalRepositoryUuid?: boolean;
 }
 
 interface FileSnapshot {
@@ -358,7 +359,10 @@ async function getTargetedStatus(
   const statuses = await parseStatusXml(result.stdout);
 
   for (const status of statuses) {
-    if (status.status !== Status.EXTERNAL) {
+    if (
+      !params.resolveExternalRepositoryUuid ||
+      status.status !== Status.EXTERNAL
+    ) {
       continue;
     }
 
