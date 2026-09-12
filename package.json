@@ -46,7 +46,7 @@
         "test:integration": "node ./out/test/runTest.js",
         "test-compile": "tsc -p ./",
         "tools:genReadme": "node ./out/tools/generateConfigSectionForReadme.js",
-        "vscode:prepublish": "yarn run lint && yarn run build"
+        "vscode:prepublish": "yarn check && yarn build"
     },
     "vsce": {
         "dependencies": false
