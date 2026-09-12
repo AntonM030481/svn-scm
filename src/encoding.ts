@@ -1,4 +1,4 @@
-import { jschardet } from "./vscodeModules";
+import * as jschardet from "jschardet";
 import * as chardet from "chardet";
 import { configuration } from "./helpers/configuration";
 
