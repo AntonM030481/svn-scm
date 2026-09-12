@@ -3,37 +3,35 @@ import { getSvnRepositoryPathFromMetadata } from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
   test("extracts working-copy roots from SVN metadata paths", () => {
-    assert.strictEqual(
-      getSvnRepositoryPathFromMetadata(
-        "/workspace/project/.svn/wc.db",
-        ".svn"
-      ),
-      "/workspace/project"
+    const dotSvnChild = getSvnRepositoryPathFromMetadata(
+      "/workspace/project/.svn/wc.db",
+      ".svn"
     );
-    assert.strictEqual(
-      getSvnRepositoryPathFromMetadata("/workspace/project/.svn", ".svn"),
-      "/workspace/project"
+    const dotSvnDirectory = getSvnRepositoryPathFromMetadata(
+      "/workspace/project/.svn",
+      ".svn"
     );
-    assert.strictEqual(
-      getSvnRepositoryPathFromMetadata(
-        "C:\\workspace\\project\\_svn\\entries",
-        "_svn"
-      ),
-      "C:\\workspace\\project"
+    const aspNetSvnChild = getSvnRepositoryPathFromMetadata(
+      "C:\\workspace\\project\\_svn\\entries",
+      "_svn"
     );
+
+    assert.strictEqual(dotSvnChild, "/workspace/project");
+    assert.strictEqual(dotSvnDirectory, "/workspace/project");
+    assert.strictEqual(aspNetSvnChild, "C:\\workspace\\project");
   });
 
   test("ignores ordinary files and SVN-like directory names", () => {
-    assert.strictEqual(
-      getSvnRepositoryPathFromMetadata("/workspace/project/file.ts", ".svn"),
-      undefined
+    const ordinaryFile = getSvnRepositoryPathFromMetadata(
+      "/workspace/project/file.ts",
+      ".svn"
     );
-    assert.strictEqual(
-      getSvnRepositoryPathFromMetadata(
-        "/workspace/project/.svn-backup/file",
-        ".svn"
-      ),
-      undefined
+    const lookalikeDirectory = getSvnRepositoryPathFromMetadata(
+      "/workspace/project/.svn-backup/file",
+      ".svn"
     );
+
+    assert.strictEqual(ordinaryFile, undefined);
+    assert.strictEqual(lookalikeDirectory, undefined);
   });
 });
