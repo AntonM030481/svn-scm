@@ -30,6 +30,7 @@ import {
   filterEvent,
   IDisposable,
   isDescendant,
+  getSvnDir,
   isSvnFolder,
   normalizePath,
   eventToPromise
@@ -37,6 +38,27 @@ import {
 import { matchAll } from "./util/globMatch";
 
 type State = "uninitialized" | "initialized";
+
+export function getSvnRepositoryPathFromMetadata(
+  filePath: string,
+  svnDir: string = getSvnDir()
+): string | undefined {
+  const normalized = filePath.replace(/\\/g, "/");
+  const comparable = normalized.toLowerCase();
+  const marker = `/${svnDir.toLowerCase()}/`;
+  const markerIndex = comparable.lastIndexOf(marker);
+
+  if (markerIndex >= 0) {
+    return filePath.slice(0, markerIndex);
+  }
+
+  const directoryMarker = `/${svnDir.toLowerCase()}`;
+  if (comparable.endsWith(directoryMarker)) {
+    return filePath.slice(0, comparable.length - directoryMarker.length);
+  }
+
+  return undefined;
+}
 
 export class SourceControlManager implements IDisposable {
   private _onDidOpenRepository = new EventEmitter<Repository>();
@@ -183,7 +205,10 @@ export class SourceControlManager implements IDisposable {
     );
     const onPossibleSvnRepositoryChange = filterEvent(
       onWorkspaceChange,
-      uri => uri.scheme === "file" && !this.getRepository(uri)
+      uri =>
+        uri.scheme === "file" &&
+        getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined &&
+        !this.getRepository(uri)
     );
     onPossibleSvnRepositoryChange(
       this.onPossibleSvnRepositoryChange,
@@ -197,7 +222,13 @@ export class SourceControlManager implements IDisposable {
   }
 
   private onPossibleSvnRepositoryChange(uri: Uri): void {
-    const possibleSvnRepositoryPath = uri.fsPath.replace(/\.svn.*$/, "");
+    const possibleSvnRepositoryPath = getSvnRepositoryPathFromMetadata(
+      uri.fsPath
+    );
+    if (possibleSvnRepositoryPath === undefined) {
+      return;
+    }
+
     this.eventuallyScanPossibleSvnRepository(possibleSvnRepositoryPath);
   }
 
