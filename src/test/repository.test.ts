@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import * as fs from "original-fs";
+import * as fs from "node:fs";
 import * as path from "path";
 import { commands, EventEmitter, Uri, window, workspace } from "vscode";
 import { ItemLogProvider } from "../historyView/itemLogProvider";

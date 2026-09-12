@@ -3859,13 +3859,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"original-fs@npm:^1.2.0":
-  version: 1.2.0
-  resolution: "original-fs@npm:1.2.0"
-  checksum: 10c0/8b9e3fb068427b330cdc3f0c591a520f3a6612b473b35a4c6f6ed3d825e122f6f04f74a17fe8fdd5206ea52e62bde0d49cbfcb5aeafd3c05260038bea7424f08
-  languageName: node
-  linkType: hard
-
 "p-limit@npm:^2.2.0":
   version: 2.3.0
   resolution: "p-limit@npm:2.3.0"
@@ -4798,7 +4791,6 @@ __metadata:
     jschardet: "npm:3.1.4"
     minimatch: "npm:10.2.6"
     mocha: "npm:10"
-    original-fs: "npm:^1.2.0"
     prettier: "npm:3.9.6"
     semver: "npm:^7.8.5"
     tmp: "npm:0.2.7"
