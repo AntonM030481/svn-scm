@@ -57,6 +57,7 @@ jobs:
         os:
           - ubuntu-latest
           - windows-latest
+          - macos-latest
         vscode-version:
           - 1.86.0
           - stable
@@ -107,6 +108,14 @@ jobs:
           $svnDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $svn --version --quiet
 
+      - name: Install Subversion
+        if: runner.os == 'macOS'
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            brew install subversion
+          fi
+          svn --version --quiet
+
       - name: Install dependencies
         run: yarn install --immutable
 
@@ -120,7 +129,7 @@ jobs:
           CODE_VERSION: ${{ matrix.vscode-version }}
 
       - name: Run integration tests
-        if: runner.os == 'Windows'
+        if: runner.os != 'Linux'
         run: yarn test:integration
         env:
           CODE_VERSION: ${{ matrix.vscode-version }}
