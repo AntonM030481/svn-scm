@@ -1,5 +1,8 @@
 import * as nodeFs from "node:fs";
 
+declare const __webpack_require__: NodeRequire;
+declare const __non_webpack_require__: NodeRequire;
+
 // Electron patches node:fs so .asar archives behave like directories. SVN
 // must see working-copy .asar files as ordinary files, so prefer Electron's
 // built-in original-fs. Webpack's runtime require preserves that Electron
