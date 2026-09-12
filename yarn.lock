@@ -830,6 +830,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@vscode/iconv-lite-umd@npm:0.7.1":
+  version: 0.7.1
+  resolution: "@vscode/iconv-lite-umd@npm:0.7.1"
+  checksum: 10c0/ed6026004465fd2b034cae2b4f03df15b16b90d701ac380f2596972cc651dbd143a9fcf4e68472d7cceaf3d8f91fad5b45b72077127f0b275395f6358d841e5a
+  languageName: node
+  linkType: hard
+
 "@vscode/test-electron@npm:^3.1.0":
   version: 3.1.0
   resolution: "@vscode/test-electron@npm:3.1.0"
@@ -2796,13 +2803,6 @@ __metadata:
     agent-base: "npm:^7.1.2"
     debug: "npm:4"
   checksum: 10c0/f729219bc735edb621fa30e6e84e60ee5d00802b8247aac0d7b79b0bd6d4b3294737a337b93b86a0bd9e68099d031858a39260c976dc14cdbba238ba1f8779ac
-  languageName: node
-  linkType: hard
-
-"iconv-lite-umd@npm:^0.6.10":
-  version: 0.6.10
-  resolution: "iconv-lite-umd@npm:0.6.10"
-  checksum: 10c0/11a3cbd13c9414b784fd85504251cfd5c6742ff56189ed981dc05cb757f546d7edf18c714ce67c8fa40c13569ae1ffb22c02b53cc54bf7378aa511be43e55ade
   languageName: node
   linkType: hard
 
@@ -4805,6 +4805,7 @@ __metadata:
     "@types/xml2js": "npm:^0.4.14"
     "@typescript-eslint/eslint-plugin": "npm:^8.70.0"
     "@typescript-eslint/parser": "npm:^8.70.0"
+    "@vscode/iconv-lite-umd": "npm:0.7.1"
     "@vscode/test-electron": "npm:^3.1.0"
     "@vscode/vsce": "npm:3.9.2"
     chardet: "npm:2.2.0"
@@ -4813,7 +4814,6 @@ __metadata:
     eslint: "npm:^10.10.0"
     eslint-config-prettier: "npm:^10.1.8"
     glob: "npm:13.0.6"
-    iconv-lite-umd: "npm:^0.6.10"
     jschardet: "npm:3.1.4"
     minimatch: "npm:10.2.6"
     mocha: "npm:10"
