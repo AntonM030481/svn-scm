@@ -63,11 +63,9 @@ function wrapWithoutAsar<T extends object>(target: T): T {
 }
 
 const originalFs = loadOriginalFs();
-const useNoAsarFallback = !originalFs && Boolean(process.versions.electron);
 
 export const physicalFs: typeof nodeFs =
-  originalFs ?? (useNoAsarFallback ? wrapWithoutAsar(nodeFs) : nodeFs);
+  originalFs ?? wrapWithoutAsar(nodeFs);
 
 export const physicalFsPromises =
-  originalFs?.promises ??
-  (useNoAsarFallback ? wrapWithoutAsar(nodeFs.promises) : nodeFs.promises);
+  originalFs?.promises ?? wrapWithoutAsar(nodeFs.promises);
