@@ -1,4 +1,3 @@
-import { readFile as fsReadFile } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const readFile = promisify(fsReadFile);
+export const readFile = physicalFsPromises.readFile;

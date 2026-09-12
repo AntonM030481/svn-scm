@@ -1,4 +1,3 @@
-import { lstat as fsLstat } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const lstat = promisify(fsLstat);
+export const lstat = physicalFsPromises.lstat;

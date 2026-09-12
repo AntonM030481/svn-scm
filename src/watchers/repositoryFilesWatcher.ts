@@ -1,6 +1,6 @@
 import { Event, Uri, workspace, EventEmitter, RelativePattern } from "vscode";
-import { statSync } from "original-fs";
-import { watch } from "fs";
+import { watch } from "node:fs";
+import { physicalFs } from "../fs/physical";
 import { exists } from "../fs";
 import { join } from "path";
 import { debounce } from "../decorators";
@@ -15,7 +15,7 @@ import {
 
 export function isWorkspaceFileChange(uri: Uri): boolean {
   try {
-    return !statSync(uri.fsPath).isDirectory();
+    return !physicalFs.statSync(uri.fsPath).isDirectory();
   } catch {
     // The path can disappear between the change event and this check. Keep the
     // event in that case so status can remove stale state if necessary.

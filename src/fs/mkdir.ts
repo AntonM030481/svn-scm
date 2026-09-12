@@ -1,4 +1,3 @@
-import { mkdir as fsMkdir } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const mkdir = promisify(fsMkdir);
+export const mkdir = physicalFsPromises.mkdir;

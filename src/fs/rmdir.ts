@@ -1,4 +1,3 @@
-import { rmdir as fsRmdir } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const rmdir = promisify(fsRmdir);
+export const rmdir = physicalFsPromises.rmdir;

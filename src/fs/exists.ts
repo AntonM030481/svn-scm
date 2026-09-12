@@ -1,7 +1,10 @@
-import { access } from "original-fs";
+import { physicalFsPromises } from "./physical";
 
-export function exists(path: string): Promise<boolean> {
-  return new Promise((resolve, _reject) => {
-    access(path, err => (err ? resolve(false) : resolve(true)));
-  });
+export async function exists(path: string): Promise<boolean> {
+  try {
+    await physicalFsPromises.access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }

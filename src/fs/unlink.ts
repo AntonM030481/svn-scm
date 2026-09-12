@@ -1,4 +1,3 @@
-import { unlink as fsUnlink } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const unlink = promisify(fsUnlink);
+export const unlink = physicalFsPromises.unlink;

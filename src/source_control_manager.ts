@@ -1,4 +1,4 @@
-import { Stats } from "original-fs";
+import type { Stats } from "node:fs";
 import * as path from "path";
 import {
   commands,

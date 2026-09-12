@@ -1,4 +1,3 @@
-import { writeFile as fsWriteFile } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const writeFile = promisify(fsWriteFile);
+export const writeFile = physicalFsPromises.writeFile;

@@ -1,4 +1,4 @@
-import { readFileSync } from "original-fs";
+import { readFileSync } from "node:fs";
 import { join } from "path";
 import { cwd } from "process";
 

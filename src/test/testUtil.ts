@@ -1,6 +1,6 @@
 import * as cp from "child_process";
 import { ChildProcess, SpawnOptions } from "child_process";
-import * as fs from "original-fs";
+import * as fs from "node:fs";
 import * as path from "path";
 import * as tmp from "tmp";
 import { extensions, Uri, window } from "vscode";

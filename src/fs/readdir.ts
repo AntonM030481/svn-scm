@@ -1,4 +1,3 @@
-import { readdir as fsReaddir } from "original-fs";
-import { promisify } from "util";
+import { physicalFsPromises } from "./physical";
 
-export const readdir = promisify(fsReaddir);
+export const readdir = physicalFsPromises.readdir;
