@@ -58,8 +58,6 @@
         "@types/tmp": "0.2.6",
         "@types/vscode": "1.86.0",
         "@types/xml2js": "^0.4.14",
-        "@typescript-eslint/eslint-plugin": "^8.70.0",
-        "@typescript-eslint/parser": "^8.70.0",
         "@vscode/iconv-lite-umd": "0.7.1",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "3.9.2",
@@ -81,11 +79,6 @@
         "webpack": "^5.110.3",
         "webpack-cli": "7.2.3",
         "xml2js": "0.6.2"
-    },
-    "config": {
-        "commitizen": {
-            "path": "cz-conventional-changelog"
-        }
     },
     "contributes": {
         "viewsContainers": {

@@ -684,7 +684,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript-eslint/eslint-plugin@npm:8.70.0, @typescript-eslint/eslint-plugin@npm:^8.70.0":
+"@typescript-eslint/eslint-plugin@npm:8.70.0":
   version: 8.70.0
   resolution: "@typescript-eslint/eslint-plugin@npm:8.70.0"
   dependencies:
@@ -704,7 +704,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript-eslint/parser@npm:8.70.0, @typescript-eslint/parser@npm:^8.70.0":
+"@typescript-eslint/parser@npm:8.70.0":
   version: 8.70.0
   resolution: "@typescript-eslint/parser@npm:8.70.0"
   dependencies:
@@ -4787,8 +4787,6 @@ __metadata:
     "@types/tmp": "npm:0.2.6"
     "@types/vscode": "npm:1.86.0"
     "@types/xml2js": "npm:^0.4.14"
-    "@typescript-eslint/eslint-plugin": "npm:^8.70.0"
-    "@typescript-eslint/parser": "npm:^8.70.0"
     "@vscode/iconv-lite-umd": "npm:0.7.1"
     "@vscode/test-electron": "npm:^3.1.0"
     "@vscode/vsce": "npm:3.9.2"
