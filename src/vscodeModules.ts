@@ -34,11 +34,19 @@ function getNodeModule<T>(moduleName: string, showError = true): T | undefined {
 }
 
 let iconv_lite = getNodeModule(
-  "iconv-lite-umd",
+  "@vscode/iconv-lite-umd",
   false
-) as typeof import("iconv-lite-umd");
+) as typeof import("@vscode/iconv-lite-umd");
 if (!iconv_lite) {
-  iconv_lite = getNodeModule("iconv-lite") as typeof import("iconv-lite");
+  iconv_lite = getNodeModule(
+    "iconv-lite-umd",
+    false
+  ) as typeof import("@vscode/iconv-lite-umd");
+}
+if (!iconv_lite) {
+  iconv_lite = getNodeModule(
+    "iconv-lite"
+  ) as typeof import("@vscode/iconv-lite-umd");
 }
 export const iconv = iconv_lite;
 
