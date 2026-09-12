@@ -1,0 +1,153 @@
+name: Temporary debounce cancellation fix
+
+on:
+  push:
+    branches:
+      - "fix/cancel-debounces"
+    paths:
+      - ".github/workflows/temp-cancel-debounces.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/cancel-debounces
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Add debounce cancellation lifecycle support
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          decorators = Path('src/decorators.ts')
+          text = decorators.read_text()
+          old = '''export function debounce(
+            delay: number
+          ): (_target: any, key: string, descriptor: any) => void {
+            return decorate((fn, key) => {
+              const timerKey = `$debounce$${key}`;
+
+              return function (this: any, ...args: any[]) {
+                clearTimeout(this[timerKey]);
+                this[timerKey] = setTimeout(() => fn.apply(this, args), delay);
+              };
+            });
+          }'''
+          new = '''const DEBOUNCE_TIMER_PREFIX = "$debounce$";
+
+          export function debounce(
+            delay: number
+          ): (_target: any, key: string, descriptor: any) => void {
+            return decorate((fn, key) => {
+              const timerKey = `${DEBOUNCE_TIMER_PREFIX}${key}`;
+
+              return function (this: any, ...args: any[]) {
+                clearTimeout(this[timerKey]);
+                this[timerKey] = setTimeout(() => {
+                  this[timerKey] = undefined;
+                  fn.apply(this, args);
+                }, delay);
+              };
+            });
+          }
+
+          export function cancelDebounces(target: any): void {
+            for (const key of Object.keys(target)) {
+              if (!key.startsWith(DEBOUNCE_TIMER_PREFIX)) {
+                continue;
+              }
+
+              const timer = target[key];
+              if (timer !== undefined) {
+                clearTimeout(timer);
+              }
+              target[key] = undefined;
+            }
+          }'''
+          if old not in text:
+              raise SystemExit('debounce implementation not found')
+          decorators.write_text(text.replace(old, new, 1))
+
+          replacements = {
+              'src/contexts/checkActiveEditor.ts': [
+                  ('import { debounce } from "../decorators";', 'import { cancelDebounces, debounce } from "../decorators";'),
+                  ('  public dispose(): void {\n    this.disposables.forEach(d => d.dispose());\n  }', '  public dispose(): void {\n    cancelDebounces(this);\n    this.disposables.forEach(d => d.dispose());\n  }'),
+              ],
+              'src/contexts/openRepositoryCount.ts': [
+                  ('import { debounce } from "../decorators";', 'import { cancelDebounces, debounce } from "../decorators";'),
+                  ('  public dispose(): void {\n    this.disposables.forEach(d => d.dispose());\n  }', '  public dispose(): void {\n    cancelDebounces(this);\n    this.disposables.forEach(d => d.dispose());\n  }'),
+              ],
+              'src/source_control_manager.ts': [
+                  ('import { debounce } from "./decorators";', 'import { cancelDebounces, debounce } from "./decorators";'),
+                  ('  private disable(): void {\n    this.openRepositories.slice().forEach(repository => repository.dispose());', '  private disable(): void {\n    cancelDebounces(this);\n    this.openRepositories.slice().forEach(repository => repository.dispose());'),
+              ],
+              'src/repository.ts': [
+                  ('import { debounce, globalSequentialize, memoize, throttle } from "./decorators";', 'import {\n  cancelDebounces,\n  debounce,\n  globalSequentialize,\n  memoize,\n  throttle\n} from "./decorators";'),
+                  ('  public dispose(): void {\n    this.disposables = dispose(this.disposables);\n  }', '  public dispose(): void {\n    cancelDebounces(this);\n    this.disposables = dispose(this.disposables);\n  }'),
+              ],
+              'src/watchers/repositoryFilesWatcher.ts': [
+                  ('import { debounce } from "../decorators";', 'import { cancelDebounces, debounce } from "../decorators";'),
+                  ('  public dispose(): void {\n    this.disposables.forEach(d => d.dispose());\n  }', '  public dispose(): void {\n    cancelDebounces(this);\n    this.disposables.forEach(d => d.dispose());\n  }'),
+              ],
+              'src/svnFileSystemProvider.ts': [
+                  ('import { debounce, throttle } from "./decorators";', 'import { cancelDebounces, debounce, throttle } from "./decorators";'),
+                  ('  dispose(): void {\n    this.disposed = true;', '  dispose(): void {\n    this.disposed = true;\n    cancelDebounces(this);'),
+              ],
+          }
+
+          for filename, edits in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in edits:
+                  if old not in text:
+                      raise SystemExit(f'pattern not found in {filename}: {old[:80]}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text)
+          PY
+          cat > src/test/decoratorsLifecycle.test.ts <<'EOF'
+          import * as assert from "assert";
+          import { cancelDebounces, debounce } from "../decorators";
+
+          class DebounceFixture {
+            public calls = 0;
+
+            @debounce(20)
+            public trigger(): void {
+              this.calls += 1;
+            }
+          }
+
+          suite("Decorator Lifecycle Tests", () => {
+            test("cancelDebounces cancels pending callbacks and allows reuse", async () => {
+              const fixture = new DebounceFixture();
+
+              fixture.trigger();
+              cancelDebounces(fixture);
+              await new Promise(resolve => setTimeout(resolve, 60));
+              assert.equal(fixture.calls, 0);
+
+              fixture.trigger();
+              await new Promise(resolve => setTimeout(resolve, 60));
+              assert.equal(fixture.calls, 1);
+            });
+          });
+          EOF
+          yarn style-fix
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn build
+      - name: Commit changes
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/decorators.ts src/contexts/checkActiveEditor.ts src/contexts/openRepositoryCount.ts src/source_control_manager.ts src/repository.ts src/watchers/repositoryFilesWatcher.ts src/svnFileSystemProvider.ts src/test/decoratorsLifecycle.test.ts
+          git commit -m "fix: cancel debounced callbacks on dispose"
+          git push origin HEAD:fix/cancel-debounces
