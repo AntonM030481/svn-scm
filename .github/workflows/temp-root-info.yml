@@ -28,59 +28,41 @@ jobs:
           from pathlib import Path
 
           source = Path('src/incrementalStatus.ts')
-          text = source.read_text()
-          old = '''        if (succeeded && targets) {
-            try {
-              await svnRepository.updateInfo();
-            } catch (error) {
-              console.error(error);
-            }
-            repository.notifyRepositoryChanged(Uri.file(repository.root));
-          }'''
-          new = '''        if (succeeded && targets) {
-            repository.notifyRepositoryChanged(Uri.file(repository.root));
-          }'''
-          if old not in text:
-              raise SystemExit('incremental status block not found')
-          source.write_text(text.replace(old, new, 1))
+          lines = source.read_text().splitlines()
+          info_index = next(i for i, line in enumerate(lines) if 'await svnRepository.updateInfo();' in line)
+          expected = [
+              '          try {',
+              '            await svnRepository.updateInfo();',
+              '          } catch (error) {',
+              '            console.error(error);',
+              '          }',
+          ]
+          if lines[info_index - 1:info_index + 4] != expected:
+              raise SystemExit('unexpected root info block')
+          del lines[info_index - 1:info_index + 4]
+          source.write_text('\n'.join(lines) + '\n')
 
           test = Path('src/test/repository.test.ts')
-          text = test.read_text()
-          anchor = '''    let repositoryChangeEvents = 0;
-            const repositoryChangeListener = sourceControlManager.onDidChangeRepository('''
-          replacement = '''    const svnRepository = repository.repository;
-            const originalUpdateInfo = svnRepository.updateInfo.bind(svnRepository);
-            let updateInfoCalls = 0;
-            svnRepository.updateInfo = async () => {
-              updateInfoCalls += 1;
-              return originalUpdateInfo();
-            };
+          lines = test.read_text().splitlines()
+          listener_index = next(i for i, line in enumerate(lines) if line.strip() == 'let repositoryChangeEvents = 0;')
+          instrumentation = [
+              '    const svnRepository = repository.repository;',
+              '    const originalUpdateInfo = svnRepository.updateInfo.bind(svnRepository);',
+              '    let updateInfoCalls = 0;',
+              '    svnRepository.updateInfo = async () => {',
+              '      updateInfoCalls += 1;',
+              '      return originalUpdateInfo();',
+              '    };',
+              '',
+          ]
+          lines[listener_index:listener_index] = instrumentation
 
-            let repositoryChangeEvents = 0;
-            const repositoryChangeListener = sourceControlManager.onDidChangeRepository('''
-          if anchor not in text:
-              raise SystemExit('commit test listener anchor not found')
-          text = text.replace(anchor, replacement, 1)
-          anchor = '''      assert.equal(repository.changes.resourceStates.length, 0);
-              assert.equal(repositoryChangeEvents, 1);'''
-          replacement = '''      assert.equal(repository.changes.resourceStates.length, 0);
-              assert.equal(updateInfoCalls, 0);
-              assert.equal(repositoryChangeEvents, 1);'''
-          if anchor not in text:
-              raise SystemExit('commit test assertion anchor not found')
-          text = text.replace(anchor, replacement, 1)
-          anchor = '''    } finally {
-              repositoryChangeListener.dispose();
-            }
-          });'''
-          replacement = '''    } finally {
-              svnRepository.updateInfo = originalUpdateInfo;
-              repositoryChangeListener.dispose();
-            }
-          });'''
-          if anchor not in text:
-              raise SystemExit('commit test cleanup anchor not found')
-          test.write_text(text.replace(anchor, replacement, 1))
+          event_assert_index = next(i for i, line in enumerate(lines) if line.strip() == 'assert.equal(repositoryChangeEvents, 1);')
+          lines.insert(event_assert_index, '      assert.equal(updateInfoCalls, 0);')
+
+          cleanup_index = next(i for i, line in enumerate(lines) if line.strip() == 'repositoryChangeListener.dispose();')
+          lines.insert(cleanup_index, '      svnRepository.updateInfo = originalUpdateInfo;')
+          test.write_text('\n'.join(lines) + '\n')
           PY
           yarn style-fix
       - run: yarn check
