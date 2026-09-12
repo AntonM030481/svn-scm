@@ -32,3 +32,5 @@ jobs:
           git add package.json yarn.lock
           git commit -m "chore: remove original-fs dev dependency"
           git push
+
+# temporary validation workflow; removed before merge
