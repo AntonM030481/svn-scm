@@ -24,11 +24,11 @@ suite("Encoding detection", () => {
   setup(async () => {
     previousExperimentalValue = configuration.inspect<boolean>(
       "experimental.detect_encoding"
-    )?.workspaceValue;
+    )?.globalValue;
     await configuration.update(
       "experimental.detect_encoding",
       false,
-      ConfigurationTarget.Workspace
+      ConfigurationTarget.Global
     );
   });
 
@@ -36,7 +36,7 @@ suite("Encoding detection", () => {
     await configuration.update(
       "experimental.detect_encoding",
       previousExperimentalValue,
-      ConfigurationTarget.Workspace
+      ConfigurationTarget.Global
     );
   });
 
