@@ -15,7 +15,7 @@ import {
 import { SourceControlManager } from "./source_control_manager";
 import { fromSvnUri } from "./uri";
 import { SvnUriAction, RepositoryChangeEvent } from "./common/types";
-import { debounce, throttle } from "./decorators";
+import { cancelDebounces, debounce, throttle } from "./decorators";
 import {
   filterEvent,
   eventToPromise,
@@ -234,6 +234,7 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
 
   dispose(): void {
     this.disposed = true;
+    cancelDebounces(this);
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = undefined;

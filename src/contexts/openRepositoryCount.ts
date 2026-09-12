@@ -1,5 +1,5 @@
 import { Disposable } from "vscode";
-import { debounce } from "../decorators";
+import { cancelDebounces, debounce } from "../decorators";
 import { SourceControlManager } from "../source_control_manager";
 import { IDisposable, setVscodeContext } from "../util";
 
@@ -31,6 +31,7 @@ export class OpenRepositoryCount implements IDisposable {
   }
 
   public dispose(): void {
+    cancelDebounces(this);
     this.disposables.forEach(d => d.dispose());
   }
 }

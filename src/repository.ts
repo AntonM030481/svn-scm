@@ -30,7 +30,13 @@ import {
   IStoredAuth,
   ISvnListItem
 } from "./common/types";
-import { debounce, globalSequentialize, memoize, throttle } from "./decorators";
+import {
+  cancelDebounces,
+  debounce,
+  globalSequentialize,
+  memoize,
+  throttle
+} from "./decorators";
 import { exists } from "./fs";
 import { configuration } from "./helpers/configuration";
 import OperationsImpl from "./operationsImpl";
@@ -1217,6 +1223,7 @@ export class Repository implements IRemoteRepository {
   }
 
   public dispose(): void {
+    cancelDebounces(this);
     this.disposables = dispose(this.disposables);
   }
 }

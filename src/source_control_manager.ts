@@ -17,7 +17,7 @@ import {
   IOpenRepository,
   RepositoryState
 } from "./common/types";
-import { debounce } from "./decorators";
+import { cancelDebounces, debounce } from "./decorators";
 import { readdir, stat } from "./fs";
 import { configuration } from "./helpers/configuration";
 import { RemoteRepository } from "./remoteRepository";
@@ -272,6 +272,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   private disable(): void {
+    cancelDebounces(this);
     this.openRepositories.slice().forEach(repository => repository.dispose());
     this.openRepositories = [];
 
