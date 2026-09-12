@@ -15,7 +15,6 @@ import {
   ConstructorPolicy,
   RepositoryChangeEvent,
   IOpenRepository,
-  Operation,
   RepositoryState
 } from "./common/types";
 import { debounce } from "./decorators";
@@ -60,7 +59,6 @@ export class SourceControlManager implements IDisposable {
   private disposables: Disposable[] = [];
   private enabled = false;
   private possibleSvnRepositoryPaths = new Set<string>();
-  private initialStatusRepositories = new Set<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -133,7 +131,6 @@ export class SourceControlManager implements IDisposable {
   }
 
   public openRepositoriesSorted(): IOpenRepository[] {
-    // Sort by path length (First external and ignored over root)
     return this.openRepositories.sort(
       (a, b) =>
         b.repository.workspaceRoot.length - a.repository.workspaceRoot.length
@@ -248,7 +245,6 @@ export class SourceControlManager implements IDisposable {
     this.openRepositories = [];
 
     this.possibleSvnRepositoryPaths.clear();
-    this.initialStatusRepositories.clear();
     this.disposables = dispose(this.disposables);
   }
 
@@ -291,7 +287,6 @@ export class SourceControlManager implements IDisposable {
     const checkParent = level === 0;
 
     if (await isSvnFolder(path, checkParent)) {
-      // Config based on folder path
       const resourceConfig = workspace.getConfiguration("svn", Uri.file(path));
 
       const ignoredRepos = new Set(
@@ -437,7 +432,6 @@ export class SourceControlManager implements IDisposable {
     for (const liveRepository of this.openRepositoriesSorted()) {
       const repository = liveRepository.repository;
 
-      // Ignore path is not child (fix for multiple externals)
       if (!isDescendant(repository.workspaceRoot, uri.fsPath)) {
         continue;
       }
@@ -446,10 +440,7 @@ export class SourceControlManager implements IDisposable {
         return repository;
       }
 
-      // While the initial status is still running, the resource groups are
-      // empty. Avoid probing restored editors with `svn info`; once that scan
-      // settles (successfully or not), fall back to the normal path validation.
-      if (this.initialStatusRepositories.has(repository)) {
+      if (repository.isInitialStatusPending) {
         this.logRepositoryLifecycle(
           repository,
           `initial status pending; skipping path validation: ${uri.fsPath}`,
@@ -487,25 +478,11 @@ export class SourceControlManager implements IDisposable {
   }
 
   private open(repository: Repository): void {
-    this.initialStatusRepositories.add(repository);
     this.logRepositoryLifecycle(repository, "opened; initial status pending");
-
-    const initialStatusListener = repository.onDidRunOperation(operation => {
-      if (
-        operation !== Operation.Status &&
-        operation !== Operation.StatusRemote
-      ) {
-        return;
+    void repository.initialStatusSettled.then(() => {
+      if (repository.state !== RepositoryState.Disposed) {
+        this.logRepositoryLifecycle(repository, "initial status settled");
       }
-
-      this.initialStatusRepositories.delete(repository);
-      this.logRepositoryLifecycle(
-        repository,
-        `initial ${
-          operation === Operation.StatusRemote ? "remote" : "local"
-        } status settled`
-      );
-      initialStatusListener.dispose();
     });
 
     const quickDiffLoggingListener = repository.onDidChangeStatus(() => {
@@ -541,9 +518,7 @@ export class SourceControlManager implements IDisposable {
 
     const dispose = () => {
       this.logRepositoryLifecycle(repository, "closed");
-      initialStatusListener.dispose();
       quickDiffLoggingListener.dispose();
-      this.initialStatusRepositories.delete(repository);
       disappearListener.dispose();
       changeListener.dispose();
       changeStatus.dispose();

@@ -85,6 +85,12 @@ export class Repository implements IRemoteRepository {
   private remoteChangedUpdateInterval?: NodeJS.Timer;
   private deletedUris: Uri[] = [];
   private canSaveAuth: boolean = false;
+  private _initialStatusPending = true;
+  public readonly initialStatusSettled: Promise<void>;
+
+  public get isInitialStatusPending(): boolean {
+    return this._initialStatusPending;
+  }
 
   private lastPromptAuth?: Thenable<IAuth | undefined>;
 
@@ -280,11 +286,18 @@ export class Repository implements IRemoteRepository {
 
     // A remote status includes the local working-copy state as well, so use a
     // single initial scan instead of running local and remote status back-to-back.
-    if (remoteChangesEnabled) {
-      this.run(Operation.StatusRemote);
-    } else {
-      this.status();
-    }
+    const initialStatus = remoteChangesEnabled
+      ? this.run(Operation.StatusRemote)
+      : this.status();
+
+    this.initialStatusSettled = initialStatus
+      .then(
+        () => undefined,
+        () => undefined
+      )
+      .then(() => {
+        this._initialStatusPending = false;
+      });
 
     // On change config, dispose current interval and create a new.
     configuration.onDidChange(e => {

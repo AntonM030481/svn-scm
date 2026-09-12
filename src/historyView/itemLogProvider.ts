@@ -12,15 +12,9 @@ import {
   Uri,
   window
 } from "vscode";
-import { ISvnLogEntry, Operation } from "../common/types";
+import { ISvnLogEntry } from "../common/types";
 import { SourceControlManager } from "../source_control_manager";
-import {
-  dispose,
-  eventToPromise,
-  filterEvent,
-  pathEquals,
-  unwrap
-} from "../util";
+import { dispose, pathEquals, unwrap } from "../util";
 import {
   copyCommitToClipboard,
   fetchMore,
@@ -129,18 +123,11 @@ export class ItemLogProvider
       if (uri.scheme === "file") {
         const repo = this.sourceControlManager.getRepository(uri);
         if (repo !== null) {
-          if (
-            repo.operations.isRunning(Operation.Status) ||
-            repo.operations.isRunning(Operation.StatusRemote)
-          ) {
-            await eventToPromise(
-              filterEvent(
-                repo.onDidRunOperation,
-                operation =>
-                  operation === Operation.Status ||
-                  operation === Operation.StatusRemote
-              )
-            );
+          await repo.initialStatusSettled;
+
+          const activeUri = window.activeTextEditor?.document.uri;
+          if (activeUri && activeUri.toString() !== uri.toString()) {
+            return;
           }
 
           const isUnversioned = repo.unversioned.resourceStates.some(resource =>
