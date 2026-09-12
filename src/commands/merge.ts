@@ -2,6 +2,7 @@ import { commands, window } from "vscode";
 import { IBranchItem } from "../common/types";
 import { isTrunk, selectBranch } from "../helpers/branch";
 import { Repository } from "../repository";
+import SvnError from "../svnError";
 import { Command } from "./command";
 
 export class Merge extends Command {
@@ -28,7 +29,7 @@ export class Merge extends Command {
     try {
       await repository.merge(branch.path, reintegrate);
     } catch (error) {
-      if (typeof error === "object" && error.hasOwnProperty("stderrFormated")) {
+      if (error instanceof SvnError && error.stderrFormated) {
         if (error.stderrFormated.includes("try updating first")) {
           const answer = await window.showErrorMessage(
             "Seems like you need to update first prior to merging. " +
