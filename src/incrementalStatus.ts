@@ -557,11 +557,6 @@ function patchRepository(repository: Repository): Disposable {
           endWorkingCopyMutation(repository.root);
         }
         if (succeeded && targets) {
-          try {
-            await svnRepository.updateInfo();
-          } catch (error) {
-            console.error(error);
-          }
           repository.notifyRepositoryChanged(Uri.file(repository.root));
         }
       }
