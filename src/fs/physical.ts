@@ -8,9 +8,7 @@ declare const __non_webpack_require__: NodeRequire;
 // Electron's pristine filesystem; plain Node does not provide it, so tests and
 // tooling fall back to node:fs.
 const runtimeRequire =
-  typeof __webpack_require__ === "function"
-    ? __non_webpack_require__
-    : require;
+  typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
 
 export const physicalFs: typeof nodeFs = (() => {
   try {
