@@ -27,17 +27,17 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Verify dependencies are unused
+      - name: Verify decache is unused
         shell: bash
         run: |
-          refs=$(git grep -n -E '(decache|original-fs)' -- ':!package.json' ':!yarn.lock' ':!.github/workflows/remove-unused-deps.yml' || true)
+          refs=$(git grep -n 'decache' -- ':!package.json' ':!yarn.lock' ':!.github/workflows/remove-unused-deps.yml' || true)
           if [ -n "$refs" ]; then
             echo "$refs"
             exit 1
           fi
 
-      - name: Remove dependencies
-        run: yarn remove decache original-fs
+      - name: Remove dependency
+        run: yarn remove decache
 
       - name: Check
         run: yarn check
@@ -53,5 +53,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json yarn.lock
-          git commit -m "chore: remove unused dependencies"
+          git commit -m "chore: remove unused decache dependency"
           git push
