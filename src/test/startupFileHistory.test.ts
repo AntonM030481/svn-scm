@@ -9,9 +9,11 @@ import {
   window,
   workspace
 } from "vscode";
+import { SvnUriAction } from "../common/types";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
+import { toSvnUri } from "../uri";
 import * as testUtil from "./testUtil";
 
 suite("Startup File History Tests", () => {
@@ -115,7 +117,7 @@ suite("Startup File History Tests", () => {
     return { provider, emitter };
   }
 
-  test("Versioned active file waits for initial status", async () => {
+  test("File history for versioned active file waits for initial status", async () => {
     const started = Date.now();
     const startup = await openWithBlockedInitialStatus(
       versionedFileName,
@@ -155,6 +157,53 @@ suite("Startup File History Tests", () => {
     }
 
     console.log(`[startup-file-history] versioned: ${Date.now() - started} ms`);
+  });
+
+  test("Restored versioned diff loads while initial status is pending", async () => {
+    const started = Date.now();
+    const startup = await openWithBlockedInitialStatus(
+      versionedFileName,
+      false
+    );
+    const { repository, editor } = startup;
+    const originalUri = toSvnUri(
+      editor.document.uri,
+      SvnUriAction.SHOW,
+      {},
+      true
+    );
+
+    try {
+      assert.equal(repository.isInitialStatusPending, true);
+
+      const originalDocument = await workspace.openTextDocument(originalUri);
+      assert.equal(originalDocument.getText(), "versioned");
+      assert.equal(repository.isInitialStatusPending, true);
+
+      await commands.executeCommand(
+        "vscode.diff",
+        originalUri,
+        editor.document.uri,
+        `${versionedFileName} (Working Tree)`
+      );
+
+      assert.equal(repository.isInitialStatusPending, true);
+      assert.ok(
+        workspace.textDocuments.some(document =>
+          document.uri.toString() === originalUri.toString()
+        )
+      );
+    } finally {
+      startup.releaseStatus();
+      await repository.initialStatusSettled;
+      startup.restoreSvnOpen();
+      sourceControlManager.close(repository);
+      await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+
+    console.log(
+      `[startup-file-history] restored diff: ${Date.now() - started} ms`
+    );
   });
 
   test("Unversioned active file waits for initial status without svn info", async () => {
