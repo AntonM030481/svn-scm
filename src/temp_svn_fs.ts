@@ -54,7 +54,7 @@ export class Directory implements FileStat {
 
 export type Entry = File | Directory;
 
-class TempSvnFs implements FileSystemProvider, Disposable {
+export class TempSvnFs implements FileSystemProvider, Disposable {
   private _emitter = new EventEmitter<FileChangeEvent[]>();
   private _bufferedEvents: FileChangeEvent[] = [];
   private _fireSoonHandler?: ReturnType<typeof setTimeout>;
@@ -232,6 +232,12 @@ class TempSvnFs implements FileSystemProvider, Disposable {
     for (const [name] of this.readDirectory(Uri.parse("tempsvnfs:/"))) {
       this.delete(Uri.parse(`tempsvnfs:/${name}`));
     }
+
+    if (this._fireSoonHandler) {
+      clearTimeout(this._fireSoonHandler);
+      this._fireSoonHandler = undefined;
+    }
+    this._bufferedEvents.length = 0;
   }
 
   private _lookup(uri: Uri, silent: false): Entry;
