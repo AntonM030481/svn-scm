@@ -127,10 +127,10 @@ suite("Encoding detection", () => {
     );
     await configuration.update(
       "experimental.encoding_priority",
-      ["windows-1251", "ISO-8859-2"],
+      ["ISO-8859-2", "windows-1251"],
       ConfigurationTarget.Global
     );
 
-    assert.strictEqual(detectEncoding(CP1251), "windows1251");
+    assert.strictEqual(detectEncoding(CP1251), "iso88592");
   });
 });
