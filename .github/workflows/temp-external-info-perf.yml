@@ -23,7 +23,7 @@ jobs:
       - run: corepack enable
       - run: yarn install --immutable
       - name: Apply optimization and regression test
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
