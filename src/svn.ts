@@ -15,7 +15,7 @@ import { parseInfoXml } from "./parser/infoParser";
 import SvnError from "./svnError";
 import { Repository } from "./svnRepository";
 import { dispose, IDisposable, toDisposable } from "./util";
-import { iconv } from "./vscodeModules";
+import * as iconv from "@vscode/iconv-lite-umd";
 
 const SLOW_COMMAND_LOG_MS = 250;
 

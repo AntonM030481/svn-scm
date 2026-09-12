@@ -14,7 +14,7 @@ import {
 import * as path from "path";
 import * as crypto from "crypto";
 import { configuration } from "./helpers/configuration";
-import { iconv } from "./vscodeModules";
+import * as iconv from "@vscode/iconv-lite-umd";
 
 export class File implements FileStat {
   type: FileType;
