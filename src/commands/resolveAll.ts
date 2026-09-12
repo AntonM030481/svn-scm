@@ -34,7 +34,9 @@ export class ResolveAll extends Command {
         window.showInformationMessage(response);
       } catch (error) {
         const message =
-          error instanceof SvnError ? error.displayMessage : getErrorMessage(error);
+          error instanceof SvnError
+            ? error.displayMessage
+            : getErrorMessage(error);
         window.showErrorMessage(message);
       }
     }
