@@ -1,0 +1,20 @@
+name: Scan original-fs
+
+on:
+  push:
+    branches:
+      - chore/use-node-fs
+    paths:
+      - .github/workflows/scan-original-fs.yml
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Find original-fs usages
+        shell: bash
+        run: |
+          grep -RFn --exclude-dir=.git --exclude-dir=.yarn --exclude=yarn.lock 'original-fs' . || true
+          echo '--- fs imports ---'
+          grep -RFn --include='*.ts' --include='*.js' -E 'from ["'"'](fs|node:fs|node:fs/promises|original-fs)["'"']|require\(["'"'](fs|node:fs|node:fs/promises|original-fs)["'"']\)' src .github webpack.config.js || true
