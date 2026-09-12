@@ -1,1 +1,3 @@
-export { unlink } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const unlink = physicalFsPromises.unlink;

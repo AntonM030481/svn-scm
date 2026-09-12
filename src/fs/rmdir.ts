@@ -1,1 +1,3 @@
-export { rmdir } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const rmdir = physicalFsPromises.rmdir;

@@ -1,1 +1,3 @@
-export { readdir } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const readdir = physicalFsPromises.readdir;

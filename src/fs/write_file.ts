@@ -1,1 +1,3 @@
-export { writeFile } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const writeFile = physicalFsPromises.writeFile;

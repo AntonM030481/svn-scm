@@ -1,1 +1,3 @@
-export { mkdir } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const mkdir = physicalFsPromises.mkdir;

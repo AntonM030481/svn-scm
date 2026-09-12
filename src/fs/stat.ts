@@ -1,1 +1,3 @@
-export { stat } from "node:fs/promises";
+import { physicalFsPromises } from "./physical";
+
+export const stat = physicalFsPromises.stat;
