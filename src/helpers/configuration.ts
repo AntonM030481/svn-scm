@@ -3,6 +3,7 @@
 import {
   ConfigurationChangeEvent,
   ConfigurationTarget,
+  Disposable,
   Event,
   EventEmitter,
   workspace,
@@ -11,9 +12,10 @@ import {
 
 const SVN = "svn";
 
-class Configuration {
+class Configuration implements Disposable {
   private configuration: WorkspaceConfiguration;
   private _onDidChange = new EventEmitter<ConfigurationChangeEvent>();
+  private readonly configurationChangeDisposable: Disposable;
 
   get onDidChange(): Event<ConfigurationChangeEvent> {
     return this._onDidChange.event;
@@ -21,7 +23,10 @@ class Configuration {
 
   constructor() {
     this.configuration = workspace.getConfiguration(SVN);
-    workspace.onDidChangeConfiguration(this.onConfigurationChanged, this);
+    this.configurationChangeDisposable = workspace.onDidChangeConfiguration(
+      this.onConfigurationChanged,
+      this
+    );
   }
 
   private onConfigurationChanged(event: ConfigurationChangeEvent) {
@@ -48,6 +53,11 @@ class Configuration {
 
   public inspect(section: string) {
     return this.configuration.inspect(section);
+  }
+
+  public dispose(): void {
+    this.configurationChangeDisposable.dispose();
+    this._onDidChange.dispose();
   }
 }
 

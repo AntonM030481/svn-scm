@@ -83,8 +83,11 @@ async function init(
 
 async function _activate(context: ExtensionContext, disposables: Disposable[]) {
   const outputChannel = window.createOutputChannel("Svn");
-  commands.registerCommand("svn.showOutput", () => outputChannel.show());
-  disposables.push(outputChannel);
+  disposables.push(
+    commands.registerCommand("svn.showOutput", () => outputChannel.show()),
+    outputChannel,
+    configuration
+  );
 
   tempSvnFs.register();
   disposables.push(tempSvnFs);
