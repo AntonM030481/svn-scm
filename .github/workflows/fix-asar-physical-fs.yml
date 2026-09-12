@@ -1,0 +1,85 @@
+name: Validate ASAR physical fs fix
+
+on:
+  push:
+    branches:
+      - test/asar-physical-fs
+    paths:
+      - .github/workflows/fix-asar-physical-fs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: test/asar-physical-fs
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - name: Use Electron original-fs callback API
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          fs.writeFileSync('src/fs/physical.ts', `import * as physicalFs from "original-fs";\n\n// Electron's original-fs callback API bypasses ASAR virtualization. Its\n// promises property does not preserve that behavior on older VS Code/Electron\n// hosts, so async helpers intentionally promisify the callback methods instead.\nexport { physicalFs };\n`);
+
+          const helpers = {
+            'src/fs/read_file.ts': 'readFile',
+            'src/fs/write_file.ts': 'writeFile',
+            'src/fs/readdir.ts': 'readdir',
+            'src/fs/stat.ts': 'stat',
+            'src/fs/unlink.ts': 'unlink',
+            'src/fs/lstat.ts': 'lstat',
+            'src/fs/mkdir.ts': 'mkdir',
+            'src/fs/rmdir.ts': 'rmdir'
+          };
+
+          for (const [file, name] of Object.entries(helpers)) {
+            fs.writeFileSync(file, `import { promisify } from "node:util";\nimport { physicalFs } from "./physical";\n\nexport const ${name} = promisify(physicalFs.${name});\n`);
+          }
+
+          fs.writeFileSync('src/fs/access.ts', `import { physicalFs } from "./physical";\n\nexport function access(\n  path: string,\n  mode: number | undefined\n): Promise<boolean> {\n  return new Promise(resolve => {\n    physicalFs.access(path, mode, error => resolve(!error));\n  });\n}\n`);
+
+          fs.writeFileSync('src/fs/exists.ts', `import { physicalFs } from "./physical";\n\nexport function exists(path: string): Promise<boolean> {\n  return new Promise(resolve => {\n    physicalFs.access(path, error => resolve(!error));\n  });\n}\n`);
+
+          let webpack = fs.readFileSync('webpack.config.js', 'utf8');
+          webpack = webpack.replace(
+            "vscode: 'commonjs vscode' // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/",
+            "vscode: 'commonjs vscode', // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/\n        'original-fs': 'commonjs original-fs' // Electron's unpatched filesystem; keep runtime resolution instead of bundling the npm shim."
+          );
+          if (!webpack.includes("'original-fs': 'commonjs original-fs'")) {
+            throw new Error('Failed to externalize original-fs');
+          }
+          fs.writeFileSync('webpack.config.js', webpack);
+
+          fs.writeFileSync('src/test/asarPhysicalFs.test.ts', `import * as assert from "assert";\nimport * as fs from "node:fs";\nimport * as os from "node:os";\nimport * as path from "node:path";\nimport { createPackage } from "@electron/asar";\nimport { readdir, stat } from "../fs";\n\nsuite("Physical filesystem ASAR handling", () => {\n  test("treats .asar archives as physical files", async () => {\n    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-scm-asar-"));\n    const source = path.join(root, "source");\n    const archive = path.join(root, "fixture.asar");\n    const renamed = path.join(root, "fixture-renamed.asar");\n\n    fs.mkdirSync(source);\n    fs.writeFileSync(path.join(source, "payload.txt"), "payload");\n\n    try {\n      await createPackage(source, archive);\n\n      const archiveStat = await stat(archive);\n      assert.equal(archiveStat.isFile(), true);\n      assert.equal(archiveStat.isDirectory(), false);\n\n      await assert.rejects(\n        () => readdir(archive),\n        (error: NodeJS.ErrnoException) => error.code === "ENOTDIR"\n      );\n\n      fs.renameSync(archive, renamed);\n      assert.equal(fs.statSync(renamed).isFile(), true);\n    } finally {\n      fs.rmSync(root, { recursive: true, force: true });\n    }\n  });\n});\n`);
+          NODE
+
+          yarn prettier --write src/fs src/test/asarPhysicalFs.test.ts webpack.config.js
+
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn build
+
+      - name: Verify production bundle keeps Electron runtime module external
+        shell: bash
+        run: |
+          grep -q 'require("original-fs")' out/extension.js
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/fs src/test/asarPhysicalFs.test.ts webpack.config.js
+          git commit -m "fix: preserve physical ASAR filesystem access"
+          git push
