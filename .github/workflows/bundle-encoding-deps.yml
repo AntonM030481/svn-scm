@@ -1,0 +1,23 @@
+name: Bundle encoding dependencies
+
+on:
+  push:
+    branches:
+      - chore/bundle-encoding-deps
+    paths:
+      - .github/workflows/bundle-encoding-deps.yml
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Show encoding dependency references
+        shell: bash
+        run: |
+          echo '--- vscodeModules refs ---'
+          git grep -n 'vscodeModules' -- '*.ts' '*.js' || true
+          echo '--- iconv refs ---'
+          git grep -n '\biconv\b' -- 'src/**/*.ts' || true
+          echo '--- jschardet refs ---'
+          git grep -n 'jschardet' -- 'src/**/*.ts' || true
