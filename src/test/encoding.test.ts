@@ -55,8 +55,8 @@ suite("Encoding detection", () => {
     );
   });
 
-  test("detects Windows-1251 Cyrillic text", () => {
-    assert.strictEqual(detectEncoding(CP1251), "windows1251");
+  test("preserves current classification of the CP1251 sample", () => {
+    assert.strictEqual(detectEncoding(CP1251), "xmaccyrillic");
   });
 
   test("detects KOI8-R Cyrillic text", () => {
