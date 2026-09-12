@@ -1,10 +1,11 @@
 import * as nodeFs from "node:fs";
-import { createRequire } from "node:module";
 
 // Electron patches node:fs so .asar archives behave like directories. SVN
 // must see working-copy .asar files as ordinary files, so prefer Electron's
-// built-in original-fs. Plain Node hosts do not provide it, hence fallback.
-const runtimeRequire = createRequire(__filename);
+// built-in original-fs. Webpack's runtime require preserves that Electron
+// module lookup; createRequire() does not on older VS Code extension hosts.
+const runtimeRequire: NodeRequire =
+  typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
 
 export const physicalFs: typeof nodeFs = (() => {
   try {
