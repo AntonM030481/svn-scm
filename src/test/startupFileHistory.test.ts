@@ -117,149 +117,138 @@ suite("Startup File History Tests", () => {
     return { provider, emitter };
   }
 
-  test(
-    "File history for versioned active file waits for initial status",
-    async () => {
-      const started = Date.now();
-      const startup = await openWithBlockedInitialStatus(
-        versionedFileName,
-        false
-      );
-      const { repository, editor } = startup;
-      const originalGetInfo = repository.getInfo;
-      let getInfoCalls = 0;
-      (repository as any).getInfo = async (
-        filePath: string,
-        revision?: string
-      ) => {
-        getInfoCalls += 1;
-        return originalGetInfo.call(repository, filePath, revision);
-      };
+  test("File history for versioned active file waits for initial status", async () => {
+    const started = Date.now();
+    const startup = await openWithBlockedInitialStatus(
+      versionedFileName,
+      false
+    );
+    const { repository, editor } = startup;
+    const originalGetInfo = repository.getInfo;
+    let getInfoCalls = 0;
+    (repository as any).getInfo = async (
+      filePath: string,
+      revision?: string
+    ) => {
+      getInfoCalls += 1;
+      return originalGetInfo.call(repository, filePath, revision);
+    };
 
-      const { provider, emitter } = createItemLogProvider();
+    const { provider, emitter } = createItemLogProvider();
 
-      try {
-        const refresh = provider.refresh(undefined, editor);
-        await Promise.resolve();
-        assert.equal(getInfoCalls, 0);
+    try {
+      const refresh = provider.refresh(undefined, editor);
+      await Promise.resolve();
+      assert.equal(getInfoCalls, 0);
 
-        startup.releaseStatus();
-        await refresh;
+      startup.releaseStatus();
+      await refresh;
 
-        assert.equal(repository.isInitialStatusPending, false);
-        assert.equal(getInfoCalls, 1);
-        assert.ok((provider as any).currentItem);
-      } finally {
-        startup.releaseStatus();
-        (repository as any).getInfo = originalGetInfo;
-        emitter.dispose();
-        startup.restoreSvnOpen();
-        sourceControlManager.close(repository);
-        await commands.executeCommand("workbench.action.closeActiveEditor");
-      }
-
-      console.log(
-        `[startup-file-history] versioned: ${Date.now() - started} ms`
-      );
+      assert.equal(repository.isInitialStatusPending, false);
+      assert.equal(getInfoCalls, 1);
+      assert.ok((provider as any).currentItem);
+    } finally {
+      startup.releaseStatus();
+      (repository as any).getInfo = originalGetInfo;
+      emitter.dispose();
+      startup.restoreSvnOpen();
+      sourceControlManager.close(repository);
+      await commands.executeCommand("workbench.action.closeActiveEditor");
     }
-  );
 
-  test(
-    "Restored versioned diff loads while initial status is pending",
-    async () => {
-      const started = Date.now();
-      const startup = await openWithBlockedInitialStatus(
-        versionedFileName,
-        false
-      );
-      const { repository, editor } = startup;
-      const originalUri = toSvnUri(
+    console.log(`[startup-file-history] versioned: ${Date.now() - started} ms`);
+  });
+
+  test("Restored versioned diff loads while initial status is pending", async () => {
+    const started = Date.now();
+    const startup = await openWithBlockedInitialStatus(
+      versionedFileName,
+      false
+    );
+    const { repository, editor } = startup;
+    const originalUri = toSvnUri(
+      editor.document.uri,
+      SvnUriAction.SHOW,
+      {},
+      true
+    );
+
+    try {
+      assert.equal(repository.isInitialStatusPending, true);
+
+      const originalDocument = await workspace.openTextDocument(originalUri);
+      assert.equal(originalDocument.getText(), "versioned");
+      assert.equal(repository.isInitialStatusPending, true);
+
+      await commands.executeCommand(
+        "vscode.diff",
+        originalUri,
         editor.document.uri,
-        SvnUriAction.SHOW,
-        {},
-        true
+        `${versionedFileName} (Working Tree)`
       );
 
-      try {
-        assert.equal(repository.isInitialStatusPending, true);
-
-        const originalDocument = await workspace.openTextDocument(originalUri);
-        assert.equal(originalDocument.getText(), "versioned");
-        assert.equal(repository.isInitialStatusPending, true);
-
-        await commands.executeCommand(
-          "vscode.diff",
-          originalUri,
-          editor.document.uri,
-          `${versionedFileName} (Working Tree)`
-        );
-
-        assert.equal(repository.isInitialStatusPending, true);
-        assert.ok(
-          workspace.textDocuments.some(
-            document => document.uri.toString() === originalUri.toString()
-          )
-        );
-      } finally {
-        startup.releaseStatus();
-        await repository.initialStatusSettled;
-        startup.restoreSvnOpen();
-        sourceControlManager.close(repository);
-        await commands.executeCommand("workbench.action.closeActiveEditor");
-      }
-
-      console.log(
-        `[startup-file-history] restored diff: ${Date.now() - started} ms`
+      assert.equal(repository.isInitialStatusPending, true);
+      assert.ok(
+        workspace.textDocuments.some(
+          document => document.uri.toString() === originalUri.toString()
+        )
       );
+    } finally {
+      startup.releaseStatus();
+      await repository.initialStatusSettled;
+      startup.restoreSvnOpen();
+      sourceControlManager.close(repository);
+      await commands.executeCommand("workbench.action.closeActiveEditor");
     }
-  );
 
-  test(
-    "Unversioned active file waits for initial status without svn info",
-    async () => {
-      const started = Date.now();
-      const fileName = "unversioned-startup.txt";
-      const startup = await openWithBlockedInitialStatus(fileName, true);
-      const { repository, editor } = startup;
-      const originalGetInfo = repository.getInfo;
-      let getInfoCalls = 0;
-      (repository as any).getInfo = async (
-        filePath: string,
-        revision?: string
-      ) => {
-        getInfoCalls += 1;
-        return originalGetInfo.call(repository, filePath, revision);
-      };
+    console.log(
+      `[startup-file-history] restored diff: ${Date.now() - started} ms`
+    );
+  });
 
-      const { provider, emitter } = createItemLogProvider();
+  test("Unversioned active file waits for initial status without svn info", async () => {
+    const started = Date.now();
+    const fileName = "unversioned-startup.txt";
+    const startup = await openWithBlockedInitialStatus(fileName, true);
+    const { repository, editor } = startup;
+    const originalGetInfo = repository.getInfo;
+    let getInfoCalls = 0;
+    (repository as any).getInfo = async (
+      filePath: string,
+      revision?: string
+    ) => {
+      getInfoCalls += 1;
+      return originalGetInfo.call(repository, filePath, revision);
+    };
 
-      try {
-        const refresh = provider.refresh(undefined, editor);
-        await Promise.resolve();
-        assert.equal(getInfoCalls, 0);
+    const { provider, emitter } = createItemLogProvider();
 
-        startup.releaseStatus();
-        await refresh;
+    try {
+      const refresh = provider.refresh(undefined, editor);
+      await Promise.resolve();
+      assert.equal(getInfoCalls, 0);
 
-        assert.equal(repository.isInitialStatusPending, false);
-        assert.equal(getInfoCalls, 0);
-        assert.equal((provider as any).currentItem, undefined);
-        assert.equal(
-          repository.provideOriginalResource(editor.document.uri),
-          undefined
-        );
-      } finally {
-        startup.releaseStatus();
-        (repository as any).getInfo = originalGetInfo;
-        emitter.dispose();
-        startup.restoreSvnOpen();
-        sourceControlManager.close(repository);
-        await commands.executeCommand("workbench.action.closeActiveEditor");
-      }
+      startup.releaseStatus();
+      await refresh;
 
-      console.log(
-        `[startup-file-history] unversioned: ${Date.now() - started} ms`
+      assert.equal(repository.isInitialStatusPending, false);
+      assert.equal(getInfoCalls, 0);
+      assert.equal((provider as any).currentItem, undefined);
+      assert.equal(
+        repository.provideOriginalResource(editor.document.uri),
+        undefined
       );
+    } finally {
+      startup.releaseStatus();
+      (repository as any).getInfo = originalGetInfo;
+      emitter.dispose();
+      startup.restoreSvnOpen();
+      sourceControlManager.close(repository);
+      await commands.executeCommand("workbench.action.closeActiveEditor");
     }
-  );
+
+    console.log(
+      `[startup-file-history] unversioned: ${Date.now() - started} ms`
+    );
+  });
 });
