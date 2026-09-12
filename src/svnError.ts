@@ -1,8 +1,15 @@
 import { ISvnErrorData } from "./common/types";
 
-export default class SvnError {
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === "string" ? error : String(error);
+}
+
+export default class SvnError extends Error {
   public error?: Error;
-  public message: string;
   public stdout?: string;
   public stderr?: string;
   public stderrFormated?: string;
@@ -11,20 +18,19 @@ export default class SvnError {
   public svnCommand?: string;
 
   constructor(data: ISvnErrorData) {
-    if (data.error) {
-      this.error = data.error;
-      this.message = data.error.message;
-    } else {
-      this.error = void 0;
-    }
-
-    this.message = data.message || "SVN error";
+    super(data.message || "SVN error");
+    this.name = "SvnError";
+    this.error = data.error;
     this.stdout = data.stdout;
     this.stderr = data.stderr;
     this.stderrFormated = data.stderrFormated;
     this.exitCode = data.exitCode;
     this.svnErrorCode = data.svnErrorCode;
     this.svnCommand = data.svnCommand;
+  }
+
+  public get displayMessage(): string {
+    return this.stderrFormated || this.stderr || this.message;
   }
 
   public toString(): string {
@@ -43,8 +49,8 @@ export default class SvnError {
         2
       );
 
-    if (this.error) {
-      result += (this.error as any).stack;
+    if (this.error?.stack) {
+      result += this.error.stack;
     }
 
     return result;
