@@ -3,7 +3,7 @@ import { watch } from "node:fs";
 import { physicalFs } from "../fs/physical";
 import { exists } from "../fs";
 import { join } from "path";
-import { debounce } from "../decorators";
+import { cancelDebounces, debounce } from "../decorators";
 import {
   anyEvent,
   filterEvent,
@@ -154,6 +154,7 @@ export class RepositoryFilesWatcher implements IDisposable {
   }
 
   public dispose(): void {
+    cancelDebounces(this);
     this.disposables.forEach(d => d.dispose());
   }
 }

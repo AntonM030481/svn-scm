@@ -1,6 +1,6 @@
 import { Disposable, window } from "vscode";
 import { Status } from "../common/types";
-import { debounce } from "../decorators";
+import { cancelDebounces, debounce } from "../decorators";
 import { SourceControlManager } from "../source_control_manager";
 import { IDisposable, setVscodeContext } from "../util";
 
@@ -70,6 +70,7 @@ export class CheckActiveEditor implements IDisposable {
   }
 
   public dispose(): void {
+    cancelDebounces(this);
     this.disposables.forEach(d => d.dispose());
   }
 }

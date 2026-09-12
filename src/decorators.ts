@@ -103,17 +103,36 @@ function _sequentialize(
 
 export const sequentialize = decorate(_sequentialize);
 
+const DEBOUNCE_TIMER_PREFIX = "$debounce$";
+
 export function debounce(
   delay: number
 ): (_target: any, key: string, descriptor: any) => void {
   return decorate((fn, key) => {
-    const timerKey = `$debounce$${key}`;
+    const timerKey = `${DEBOUNCE_TIMER_PREFIX}${key}`;
 
     return function (this: any, ...args: any[]) {
       clearTimeout(this[timerKey]);
-      this[timerKey] = setTimeout(() => fn.apply(this, args), delay);
+      this[timerKey] = setTimeout(() => {
+        this[timerKey] = undefined;
+        fn.apply(this, args);
+      }, delay);
     };
   });
+}
+
+export function cancelDebounces(target: any): void {
+  for (const key of Object.keys(target)) {
+    if (!key.startsWith(DEBOUNCE_TIMER_PREFIX)) {
+      continue;
+    }
+
+    const timer = target[key];
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+    target[key] = undefined;
+  }
 }
 
 const _seqList: { [key: string]: any } = {};
