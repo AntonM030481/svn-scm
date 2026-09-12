@@ -62,7 +62,7 @@ jobs:
           PY
           cat > src/test/tempSvnFsLifecycle.test.ts <<'EOF'
           import * as assert from "assert";
-          import { FileChangeType, Uri } from "vscode";
+          import { Uri } from "vscode";
           import { TempSvnFs } from "../temp_svn_fs";
 
           suite("Temp SVN FS Lifecycle", () => {
