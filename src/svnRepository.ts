@@ -111,6 +111,7 @@ export class Repository {
     includeIgnored?: boolean;
     includeExternals?: boolean;
     checkRemoteChanges?: boolean;
+    resolveExternalRepositoryUuid?: boolean;
   }): Promise<IFileStatus[]> {
     params = Object.assign(
       {},
@@ -139,7 +140,10 @@ export class Repository {
     const status: IFileStatus[] = await parseStatusXml(result.stdout);
 
     for (const s of status) {
-      if (s.status === Status.EXTERNAL) {
+      if (
+        params.resolveExternalRepositoryUuid &&
+        s.status === Status.EXTERNAL
+      ) {
         try {
           const info = await this.getInfo(s.path);
           s.repositoryUuid = info.repository.uuid;

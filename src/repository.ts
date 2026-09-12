@@ -498,7 +498,8 @@ export class Repository implements IRemoteRepository {
         return this.repository.getStatus({
           includeIgnored: true,
           includeExternals: combineExternal,
-          checkRemoteChanges
+          checkRemoteChanges,
+          resolveExternalRepositoryUuid: combineExternal
         });
       })) || [];
 
