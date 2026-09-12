@@ -1,10 +1,7 @@
-import { physicalFsPromises } from "./physical";
+import { physicalFs } from "./physical";
 
-export async function exists(path: string): Promise<boolean> {
-  try {
-    await physicalFsPromises.access(path);
-    return true;
-  } catch {
-    return false;
-  }
+export function exists(path: string): Promise<boolean> {
+  return new Promise(resolve => {
+    physicalFs.access(path, error => resolve(!error));
+  });
 }

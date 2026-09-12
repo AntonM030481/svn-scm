@@ -1,3 +1,4 @@
-import { physicalFsPromises } from "./physical";
+import { promisify } from "node:util";
+import { physicalFs } from "./physical";
 
-export const unlink = physicalFsPromises.unlink;
+export const unlink = promisify(physicalFs.unlink);

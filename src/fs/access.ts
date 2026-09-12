@@ -1,13 +1,10 @@
-import { physicalFsPromises } from "./physical";
+import { physicalFs } from "./physical";
 
-export async function access(
+export function access(
   path: string,
   mode: number | undefined
 ): Promise<boolean> {
-  try {
-    await physicalFsPromises.access(path, mode);
-    return true;
-  } catch {
-    return false;
-  }
+  return new Promise(resolve => {
+    physicalFs.access(path, mode, error => resolve(!error));
+  });
 }

@@ -1,3 +1,4 @@
-import { physicalFsPromises } from "./physical";
+import { promisify } from "node:util";
+import { physicalFs } from "./physical";
 
-export const writeFile = physicalFsPromises.writeFile;
+export const writeFile = promisify(physicalFs.writeFile);

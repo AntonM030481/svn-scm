@@ -52,6 +52,7 @@
         "dependencies": false
     },
     "devDependencies": {
+        "@electron/asar": "3.2.10",
         "@types/mocha": "10",
         "@types/node": "18",
         "@types/semver": "^7.8.0",
