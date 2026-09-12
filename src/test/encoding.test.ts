@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as chardet from "chardet";
 import { ConfigurationTarget, workspace } from "vscode";
 import { detectEncoding } from "../encoding";
 
@@ -17,17 +18,31 @@ const CP866 = Buffer.from(
   "hex"
 );
 
+function normalizeEncodingName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
 suite("Encoding detection", () => {
   const configuration = workspace.getConfiguration("svn");
   let previousExperimentalValue: boolean | undefined;
+  let previousEncodingPriority: string[] | undefined;
 
   setup(async () => {
     previousExperimentalValue = configuration.inspect<boolean>(
       "experimental.detect_encoding"
     )?.globalValue;
+    previousEncodingPriority = configuration.inspect<string[]>(
+      "experimental.encoding_priority"
+    )?.globalValue;
+
     await configuration.update(
       "experimental.detect_encoding",
       false,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      [],
       ConfigurationTarget.Global
     );
   });
@@ -36,6 +51,11 @@ suite("Encoding detection", () => {
     await configuration.update(
       "experimental.detect_encoding",
       previousExperimentalValue,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      previousEncodingPriority,
       ConfigurationTarget.Global
     );
   });
@@ -80,6 +100,56 @@ suite("Encoding detection", () => {
     assert.strictEqual(
       detectEncoding(Buffer.concat([asciiPrefix, CP1251])),
       null
+    );
+  });
+
+  test("experimental detection requires an explicit priority", async () => {
+    await configuration.update(
+      "experimental.detect_encoding",
+      true,
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(detectEncoding(Buffer.from("plain ASCII text")), null);
+
+    await configuration.update(
+      "experimental.encoding_priority",
+      ["A-S_C I I"],
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(
+      detectEncoding(Buffer.from("plain ASCII text")),
+      "ascii"
+    );
+  });
+
+  test("experimental detection keeps priority order", async () => {
+    const detected = chardet.analyse(CP1251);
+    assert.ok(detected.length >= 2);
+
+    const topCandidate = detected[0];
+    const lowerRankedCandidate = detected.find(
+      candidate =>
+        normalizeEncodingName(candidate.name) !==
+        normalizeEncodingName(topCandidate.name)
+    );
+    assert.ok(lowerRankedCandidate);
+
+    await configuration.update(
+      "experimental.detect_encoding",
+      true,
+      ConfigurationTarget.Global
+    );
+    await configuration.update(
+      "experimental.encoding_priority",
+      [lowerRankedCandidate.name, topCandidate.name],
+      ConfigurationTarget.Global
+    );
+
+    assert.strictEqual(
+      detectEncoding(CP1251),
+      normalizeEncodingName(lowerRankedCandidate.name)
     );
   });
 });
