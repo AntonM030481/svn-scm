@@ -300,17 +300,19 @@ export class Repository implements IRemoteRepository {
       });
 
     // On change config, dispose current interval and create a new.
-    configuration.onDidChange(e => {
-      if (e.affectsConfiguration("svn.remoteChanges.checkFrequency")) {
-        if (this.remoteChangedUpdateInterval) {
-          clearInterval(this.remoteChangedUpdateInterval);
+    this.disposables.push(
+      configuration.onDidChange(e => {
+        if (e.affectsConfiguration("svn.remoteChanges.checkFrequency")) {
+          if (this.remoteChangedUpdateInterval) {
+            clearInterval(this.remoteChangedUpdateInterval);
+          }
+
+          this.createRemoteChangedInterval();
+
+          this.updateRemoteChangedFiles();
         }
-
-        this.createRemoteChangedInterval();
-
-        this.updateRemoteChangedFiles();
-      }
-    });
+      })
+    );
 
     this.disposables.push(
       workspace.onDidSaveTextDocument(document => {
