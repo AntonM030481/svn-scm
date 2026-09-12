@@ -1,0 +1,55 @@
+name: Update safe dependencies
+
+on:
+  push:
+    branches:
+      - chore/update-safe-deps
+    paths:
+      - .github/workflows/update-safe-deps.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: chore/update-safe-deps
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Update dependencies
+        run: >-
+          yarn add -D
+          dayjs@^1.11.23
+          semver@^7.8.5
+          @types/semver@^7.8.0
+          tmp@0.2.7
+          @types/tmp@0.2.6
+          decache@^4.6.2
+          ts-loader@^9.6.2
+          original-fs@^1.2.0
+          @types/xml2js@^0.4.14
+
+      - name: Check
+        run: yarn check
+
+      - name: Unit tests
+        run: yarn test:unit
+
+      - name: Commit generated manifest and lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json yarn.lock
+          git commit -m "chore: update safe dependencies"
+          git push
