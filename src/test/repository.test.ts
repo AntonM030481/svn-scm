@@ -232,6 +232,14 @@ suite("Repository Tests", () => {
 
     assert.equal(repository.changes.resourceStates.length, 1);
 
+    const svnRepository = repository.repository;
+    const originalUpdateInfo = svnRepository.updateInfo.bind(svnRepository);
+    let updateInfoCalls = 0;
+    svnRepository.updateInfo = async () => {
+      updateInfoCalls += 1;
+      return originalUpdateInfo();
+    };
+
     let repositoryChangeEvents = 0;
     const repositoryChangeListener = sourceControlManager.onDidChangeRepository(
       event => {
@@ -246,11 +254,13 @@ suite("Repository Tests", () => {
       assert.ok(/1 file commited: revision (.*)\./i.test(message));
 
       assert.equal(repository.changes.resourceStates.length, 0);
+      assert.equal(updateInfoCalls, 0);
       assert.equal(repositoryChangeEvents, 1);
 
       const remoteContent = await repository.show(file, "HEAD");
       assert.equal(remoteContent, "test");
     } finally {
+      svnRepository.updateInfo = originalUpdateInfo;
       repositoryChangeListener.dispose();
     }
   });
