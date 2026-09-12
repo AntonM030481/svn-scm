@@ -1578,13 +1578,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"callsite@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "callsite@npm:1.0.0"
-  checksum: 10c0/8b23d5ed879984b66fe3da381994d6c4b741e561226abc48b40c99c4896f7125db395ea4aa989071a7eb0712c3f83bc32fb1e798fdf54967acdf4af176e48572
-  languageName: node
-  linkType: hard
-
 "camelcase@npm:^6.0.0":
   version: 6.3.0
   resolution: "camelcase@npm:6.3.0"
@@ -1893,15 +1886,6 @@ __metadata:
     supports-color:
       optional: true
   checksum: 10c0/d2b44bc1afd912b49bb7ebb0d50a860dc93a4dd7d946e8de94abc957bb63726b7dd5aa48c18c2386c379ec024c46692e15ed3ed97d481729f929201e671fcd55
-  languageName: node
-  linkType: hard
-
-"decache@npm:^4.6.2":
-  version: 4.6.2
-  resolution: "decache@npm:4.6.2"
-  dependencies:
-    callsite: "npm:^1.0.0"
-  checksum: 10c0/7a27260a0bfc51b913db4956e8fe596d72151c0d4cb437daa30787950c274b3fa5c81235a334742b1e32f87ee55d7eb2a0d960ecdadf3583ef23b8f796aebad3
   languageName: node
   linkType: hard
 
@@ -4810,7 +4794,6 @@ __metadata:
     "@vscode/vsce": "npm:3.9.2"
     chardet: "npm:2.2.0"
     dayjs: "npm:^1.11.23"
-    decache: "npm:^4.6.2"
     eslint: "npm:^10.10.0"
     eslint-config-prettier: "npm:^10.1.8"
     glob: "npm:13.0.6"
