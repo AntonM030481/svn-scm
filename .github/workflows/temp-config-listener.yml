@@ -1,0 +1,39 @@
+name: Temporary repository listener fix
+
+on:
+  push:
+    branches:
+      - "fix/repository-config-listener"
+    paths:
+      - ".github/workflows/temp-config-listener.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/repository-config-listener
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Track configuration subscription
+        run: |
+          sed -i '/configuration.onDidChange(e => {/s/configuration.onDidChange/this.disposables.push(configuration.onDidChange/' src/repository.ts
+          sed -i '/this.disposables.push(configuration.onDidChange(e => {/,/    });/ { /    });/s/    });/    }));/ }' src/repository.ts
+          yarn style-fix
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn build
+      - name: Commit source change
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/repository.ts
+          git commit -m "fix: dispose repository configuration listener"
+          git push origin HEAD:fix/repository-config-listener
