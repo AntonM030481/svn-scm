@@ -6,6 +6,7 @@ import { getBranchName } from "../helpers/branch";
 import { configuration } from "../helpers/configuration";
 import { SourceControlManager } from "../source_control_manager";
 import { svnErrorCodes } from "../svn";
+import SvnError from "../svnError";
 import { Command } from "./command";
 
 export class Checkout extends Command {
@@ -98,6 +99,7 @@ export class Checkout extends Command {
         break;
       } catch (err) {
         if (
+          err instanceof SvnError &&
           err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
           attempt <= 3
         ) {

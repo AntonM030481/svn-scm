@@ -3,6 +3,7 @@ import { SourceControlResourceState, Uri, window } from "vscode";
 import { Status } from "../common/types";
 import { inputCommitMessage } from "../messages";
 import { Resource } from "../resource";
+import SvnError, { getErrorMessage } from "../svnError";
 import { Command } from "./command";
 
 export class Commit extends Command {
@@ -70,7 +71,11 @@ export class Commit extends Command {
         repository.inputBox.value = "";
       } catch (error) {
         console.error(error);
-        window.showErrorMessage(error.stderrFormated);
+        window.showErrorMessage(
+          error instanceof SvnError
+            ? error.displayMessage
+            : getErrorMessage(error)
+        );
       }
     });
   }

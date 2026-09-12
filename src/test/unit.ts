@@ -9,6 +9,7 @@ async function main(): Promise<void> {
   });
 
   mocha.addFile(path.resolve(__dirname, "globMatch.test.js"));
+  mocha.addFile(path.resolve(__dirname, "svnError.test.js"));
 
   const failures = await new Promise<number>(resolve => {
     mocha.run(resolve);

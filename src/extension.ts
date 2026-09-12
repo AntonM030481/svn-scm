@@ -17,6 +17,7 @@ import { RepoLogProvider } from "./historyView/repoLogProvider";
 import * as messages from "./messages";
 import { SourceControlManager } from "./source_control_manager";
 import { Svn } from "./svn";
+import { getErrorMessage } from "./svnError";
 import { SvnFinder } from "./svnFinder";
 import SvnProvider from "./treeView/dataProviders/svnProvider";
 import { toDisposable } from "./util";
@@ -31,7 +32,7 @@ import { enableTargetedStatusLogReasons } from "./svnLogReasons";
 type SourceControlManagerResolver = (
   value: SourceControlManager | PromiseLike<SourceControlManager>
 ) => void;
-type SourceControlManagerRejecter = (reason?: any) => void;
+type SourceControlManagerRejecter = (reason?: unknown) => void;
 
 async function init(
   extensionContext: ExtensionContext,
@@ -116,7 +117,8 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
         resolveSourceControlManager
       );
     } catch (err) {
-      if (!/Svn installation not found/.test(err.message || "")) {
+      const message = getErrorMessage(err);
+      if (!/Svn installation not found/.test(message)) {
         rejectSourceControlManager(err);
         throw err;
       }
@@ -130,8 +132,8 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
           return;
         }
 
-        console.warn(err.message);
-        outputChannel.appendLine(err.message);
+        console.warn(message);
+        outputChannel.appendLine(message);
         outputChannel.show();
 
         const findSvnExecutable = "Find SVN executable";
