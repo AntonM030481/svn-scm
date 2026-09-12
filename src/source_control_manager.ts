@@ -460,52 +460,8 @@ export class SourceControlManager implements IDisposable {
   }
 
   public async getRepositoryFromUri(uri: Uri): Promise<Repository | null> {
-    for (const liveRepository of this.openRepositoriesSorted()) {
-      const repository = liveRepository.repository;
-
-      if (!isDescendant(repository.workspaceRoot, uri.fsPath)) {
-        continue;
-      }
-
-      if (repository.getResourceFromFile(uri)) {
-        return repository;
-      }
-
-      if (repository.isInitialStatusPending) {
-        this.logRepositoryLifecycle(
-          repository,
-          `initial status pending; skipping path validation: ${uri.fsPath}`,
-          "repository-routing"
-        );
-        return repository;
-      }
-
-      try {
-        const path = normalizePath(uri.fsPath);
-        this.logRepositoryLifecycle(
-          repository,
-          `validating path with svn info: ${path}`,
-          "repository-routing"
-        );
-
-        await repository.info(path);
-
-        this.logRepositoryLifecycle(
-          repository,
-          `path validation succeeded: ${path}`,
-          "repository-routing"
-        );
-        return repository;
-      } catch (_error) {
-        this.logRepositoryLifecycle(
-          repository,
-          `path validation rejected: ${uri.fsPath}`,
-          "repository-routing"
-        );
-      }
-    }
-
-    return null;
+    const liveRepository = this.getOpenRepository(uri);
+    return liveRepository ? liveRepository.repository : null;
   }
 
   private open(repository: Repository): void {
