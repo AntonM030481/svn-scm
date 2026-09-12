@@ -6,22 +6,17 @@ declare const __non_webpack_require__: NodeRequire;
 type ElectronProcess = NodeJS.Process & { noAsar?: boolean };
 
 // Electron patches node:fs so .asar archives behave like directories. SVN
-// must see working-copy .asar files as ordinary files, so prefer Electron's
-// unpatched filesystem. New Electron exposes node:original-fs; older versions
-// use original-fs.
+// must see working-copy .asar files as ordinary files. Modern Electron exposes
+// node:original-fs; older extension hosts fall back to scoped process.noAsar.
 const runtimeRequire: NodeRequire =
   typeof __webpack_require__ === "function" ? __non_webpack_require__ : require;
 
 function loadOriginalFs(): typeof nodeFs | undefined {
-  for (const moduleName of ["node:original-fs", "original-fs"]) {
-    try {
-      return runtimeRequire(moduleName) as typeof nodeFs;
-    } catch {
-      // Try the next Electron module name.
-    }
+  try {
+    return runtimeRequire("node:original-fs") as typeof nodeFs;
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
 
 function withoutAsar<T>(operation: () => T): T {
