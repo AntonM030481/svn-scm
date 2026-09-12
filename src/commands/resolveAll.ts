@@ -1,6 +1,7 @@
 import { window } from "vscode";
 import { getConflictPickOptions } from "../conflictItems";
 import { Repository } from "../repository";
+import SvnError, { getErrorMessage } from "../svnError";
 import { Command } from "./command";
 
 export class ResolveAll extends Command {
@@ -32,7 +33,9 @@ export class ResolveAll extends Command {
         );
         window.showInformationMessage(response);
       } catch (error) {
-        window.showErrorMessage(error.stderr);
+        const message =
+          error instanceof SvnError ? error.displayMessage : getErrorMessage(error);
+        window.showErrorMessage(message);
       }
     }
   }
