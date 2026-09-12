@@ -33,3 +33,5 @@ jobs:
           git add src/source_control_manager.ts
           git commit -m "perf: filter repository discovery events"
           git push origin HEAD:perf/filter-repository-discovery-events
+
+# retry after formatting repository discovery tests
