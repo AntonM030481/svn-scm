@@ -1,0 +1,102 @@
+name: Temporary temp SVN FS disposal fix
+
+on:
+  push:
+    branches:
+      - "fix/temp-svn-fs-dispose"
+    paths:
+      - ".github/workflows/temp-temp-svn-fs-dispose.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/temp-svn-fs-dispose
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Apply disposal fix and regression test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('src/temp_svn_fs.ts')
+          text = source.read_text()
+          text = text.replace(
+              'class TempSvnFs implements FileSystemProvider, Disposable {',
+              'export class TempSvnFs implements FileSystemProvider, Disposable {',
+              1,
+          )
+          old = '''  dispose(): void {
+              this._disposables.forEach(disposable => disposable.dispose());
+              this._disposables = [];
+
+              for (const [name] of this.readDirectory(Uri.parse("tempsvnfs:/"))) {
+                this.delete(Uri.parse(`tempsvnfs:/${name}`));
+              }
+            }'''
+          new = '''  dispose(): void {
+              this._disposables.forEach(disposable => disposable.dispose());
+              this._disposables = [];
+
+              for (const [name] of this.readDirectory(Uri.parse("tempsvnfs:/"))) {
+                this.delete(Uri.parse(`tempsvnfs:/${name}`));
+              }
+
+              if (this._fireSoonHandler) {
+                clearTimeout(this._fireSoonHandler);
+                this._fireSoonHandler = undefined;
+              }
+              this._bufferedEvents.length = 0;
+            }'''
+          if old not in text:
+              raise SystemExit('dispose block not found')
+          source.write_text(text.replace(old, new, 1))
+          PY
+          cat > src/test/tempSvnFsLifecycle.test.ts <<'EOF'
+          import * as assert from "assert";
+          import { FileChangeType, Uri } from "vscode";
+          import { TempSvnFs } from "../temp_svn_fs";
+
+          suite("Temp SVN FS Lifecycle", () => {
+            test("dispose cancels buffered file change events", async () => {
+              const provider = new TempSvnFs();
+              let eventCount = 0;
+              const listener = provider.onDidChangeFile(() => {
+                eventCount += 1;
+              });
+
+              try {
+                provider.createDirectory(Uri.parse("tempsvnfs:/pending"));
+                provider.dispose();
+
+                await new Promise(resolve => setTimeout(resolve, 20));
+
+                assert.equal(eventCount, 0);
+                assert.equal((provider as any)._fireSoonHandler, undefined);
+                assert.deepEqual((provider as any)._bufferedEvents, []);
+              } finally {
+                listener.dispose();
+                provider.dispose();
+              }
+            });
+          });
+          EOF
+          yarn style-fix
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn build
+      - name: Commit changes
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/temp_svn_fs.ts src/test/tempSvnFsLifecycle.test.ts
+          git commit -m "fix: cancel temp SVN FS events on dispose"
+          git push origin HEAD:fix/temp-svn-fs-dispose
