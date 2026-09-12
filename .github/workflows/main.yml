@@ -63,8 +63,8 @@ jobs:
             vscode-version: 1.86.0
           - os: windows-latest
             vscode-version: stable
-          - os: macos-15-intel
-            vscode-version: 1.86.0
+          # VS Code 1.86's Electron crashes on current GitHub macOS images
+          # before extension tests start. Minimum-version coverage remains on Linux and Windows.
           - os: macos-latest
             vscode-version: stable
 
