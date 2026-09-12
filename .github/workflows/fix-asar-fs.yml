@@ -1,0 +1,157 @@
+name: Preserve physical fs semantics
+
+on:
+  push:
+    branches:
+      - chore/use-node-fs
+    paths:
+      - .github/workflows/fix-asar-fs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: chore/use-node-fs
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: yarn install --immutable
+
+      - name: Preserve Electron physical filesystem access
+        shell: bash
+        run: |
+          cat > src/fs/physical.ts <<'EOF'
+          import * as nodeFs from "node:fs";
+          import { createRequire } from "node:module";
+
+          // Electron patches node:fs so .asar archives behave like directories. SVN
+          // must see working-copy .asar files as ordinary files, so prefer Electron's
+          // built-in original-fs. Plain Node hosts do not provide it, hence fallback.
+          const runtimeRequire = createRequire(__filename);
+
+          export const physicalFs: typeof nodeFs = (() => {
+            try {
+              return runtimeRequire("original-fs") as typeof nodeFs;
+            } catch {
+              return nodeFs;
+            }
+          })();
+
+          export const physicalFsPromises = physicalFs.promises;
+          EOF
+
+          cat > src/fs/read_file.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const readFile = physicalFsPromises.readFile;
+          EOF
+
+          cat > src/fs/write_file.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const writeFile = physicalFsPromises.writeFile;
+          EOF
+
+          cat > src/fs/readdir.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const readdir = physicalFsPromises.readdir;
+          EOF
+
+          cat > src/fs/stat.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const stat = physicalFsPromises.stat;
+          EOF
+
+          cat > src/fs/unlink.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const unlink = physicalFsPromises.unlink;
+          EOF
+
+          cat > src/fs/lstat.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const lstat = physicalFsPromises.lstat;
+          EOF
+
+          cat > src/fs/mkdir.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const mkdir = physicalFsPromises.mkdir;
+          EOF
+
+          cat > src/fs/rmdir.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export const rmdir = physicalFsPromises.rmdir;
+          EOF
+
+          cat > src/fs/access.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export async function access(
+            path: string,
+            mode: number | undefined
+          ): Promise<boolean> {
+            try {
+              await physicalFsPromises.access(path, mode);
+              return true;
+            } catch {
+              return false;
+            }
+          }
+          EOF
+
+          cat > src/fs/exists.ts <<'EOF'
+          import { physicalFsPromises } from "./physical";
+
+          export async function exists(path: string): Promise<boolean> {
+            try {
+              await physicalFsPromises.access(path);
+              return true;
+            } catch {
+              return false;
+            }
+          }
+          EOF
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'src/watchers/repositoryFilesWatcher.ts';
+          let text = fs.readFileSync(file, 'utf8');
+          text = text.replace(
+            'import { statSync, watch } from "node:fs";',
+            'import { watch } from "node:fs";\nimport { physicalFs } from "../fs/physical";'
+          );
+          text = text.replace('return !statSync(uri.fsPath).isDirectory();', 'return !physicalFs.statSync(uri.fsPath).isDirectory();');
+          fs.writeFileSync(file, text);
+          NODE
+
+      - name: Verify package dependency stays removed
+        run: |
+          if grep -q '"original-fs"' package.json; then
+            echo 'original-fs npm dependency unexpectedly present'
+            exit 1
+          fi
+
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn build
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "fix: preserve Electron physical fs behavior"
+          git push
