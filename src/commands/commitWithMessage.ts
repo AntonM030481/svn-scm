@@ -59,7 +59,9 @@ export class CommitWithMessage extends Command {
     } catch (error) {
       console.error(error);
       window.showErrorMessage(
-        error instanceof SvnError ? error.displayMessage : getErrorMessage(error)
+        error instanceof SvnError
+          ? error.displayMessage
+          : getErrorMessage(error)
       );
     }
   }
