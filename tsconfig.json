@@ -8,7 +8,6 @@
     "sourceMap": true,
     "experimentalDecorators": true,
     "esModuleInterop": true,
-    "useUnknownInCatchVariables": false,
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
