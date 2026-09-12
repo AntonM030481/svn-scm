@@ -1,6 +1,7 @@
 import { window } from "vscode";
 import { selectBranch } from "../helpers/branch";
 import { Repository } from "../repository";
+import SvnError from "../svnError";
 import { Command } from "./command";
 
 export class SwitchBranch extends Command {
@@ -33,9 +34,8 @@ export class SwitchBranch extends Command {
           await repository.switchBranch(branch.path);
         } catch (error) {
           if (
-            typeof error === "object" &&
-            error.hasOwnProperty("stderrFormated") &&
-            error.stderrFormated.includes("ignore-ancestry")
+            error instanceof SvnError &&
+            error.stderrFormated?.includes("ignore-ancestry")
           ) {
             const answer = await window.showErrorMessage(
               "Seems like these branches don't have a common ancestor. " +
