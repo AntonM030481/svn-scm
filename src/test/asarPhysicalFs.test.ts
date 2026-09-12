@@ -5,6 +5,8 @@ import * as path from "node:path";
 import { createPackage } from "@electron/asar";
 import { readdir, stat } from "../fs";
 
+type ElectronProcess = NodeJS.Process & { noAsar?: boolean };
+
 suite("Physical filesystem ASAR handling", () => {
   test("treats .asar archives as physical files", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-scm-asar-"));
@@ -17,6 +19,50 @@ suite("Physical filesystem ASAR handling", () => {
 
     try {
       await createPackage(source, archive);
+
+      const electronProcess = process as ElectronProcess;
+      const previousNoAsar = electronProcess.noAsar;
+      let noAsarIsFile: boolean | undefined;
+      electronProcess.noAsar = true;
+      try {
+        noAsarIsFile = fs.statSync(archive).isFile();
+      } finally {
+        if (previousNoAsar === undefined) {
+          delete electronProcess.noAsar;
+        } else {
+          electronProcess.noAsar = previousNoAsar;
+        }
+      }
+
+      let originalFsResolved: string | undefined;
+      let originalFsIsFile: boolean | undefined;
+      try {
+        originalFsResolved = require.resolve("original-fs");
+        originalFsIsFile = (require("original-fs") as typeof fs)
+          .statSync(archive)
+          .isFile();
+      } catch {
+        // Not available in every extension host.
+      }
+
+      let nodeOriginalFsIsFile: boolean | undefined;
+      try {
+        nodeOriginalFsIsFile = (require("node:original-fs") as typeof fs)
+          .statSync(archive)
+          .isFile();
+      } catch {
+        // Not available in older Electron versions.
+      }
+
+      console.log("ASAR filesystem diagnostics", {
+        versions: process.versions,
+        noAsarBefore: previousNoAsar,
+        nodeFsIsFile: fs.statSync(archive).isFile(),
+        noAsarIsFile,
+        originalFsResolved,
+        originalFsIsFile,
+        nodeOriginalFsIsFile
+      });
 
       const archiveStat = await stat(archive);
       assert.equal(archiveStat.isFile(), true);
