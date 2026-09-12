@@ -20,12 +20,12 @@ jobs:
       - name: Find routing and refresh call sites
         run: |
           echo '=== getRepositoryFromUri ==='
-          rg -n 'getRepositoryFromUri' src || true
+          grep -RFn 'getRepositoryFromUri' src || true
           echo '=== onDidChangeRepository ==='
-          rg -n 'onDidChangeRepository' src || true
+          grep -RFn 'onDidChangeRepository' src || true
           echo '=== updateInfo ==='
-          rg -n '\.updateInfo\(' src || true
+          grep -RFn '.updateInfo(' src || true
           echo '=== eventuallyUpdateWhenIdleAndWait ==='
-          rg -n 'eventuallyUpdateWhenIdleAndWait' src || true
+          grep -RFn 'eventuallyUpdateWhenIdleAndWait' src || true
           echo '=== notifyRepositoryChanged ==='
-          rg -n 'notifyRepositoryChanged' src || true
+          grep -RFn 'notifyRepositoryChanged' src || true
