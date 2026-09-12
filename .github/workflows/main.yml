@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - "*"
+      - "**"
   pull_request:
     branches:
       - master
@@ -54,12 +54,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-        vscode-version:
-          - 1.86.0
-          - stable
+        include:
+          - os: ubuntu-latest
+            vscode-version: 1.86.0
+          - os: ubuntu-latest
+            vscode-version: stable
+          - os: windows-latest
+            vscode-version: 1.86.0
+          - os: windows-latest
+            vscode-version: stable
+          # VS Code 1.86's Electron crashes on current GitHub macOS images
+          # before extension tests start. Minimum-version coverage remains on Linux and Windows.
+          - os: macos-latest
+            vscode-version: stable
 
     steps:
       - name: Checkout
@@ -107,6 +114,14 @@ jobs:
           $svnDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $svn --version --quiet
 
+      - name: Install Subversion
+        if: runner.os == 'macOS'
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            brew install subversion
+          fi
+          svn --version --quiet
+
       - name: Install dependencies
         run: yarn install --immutable
 
@@ -120,7 +135,7 @@ jobs:
           CODE_VERSION: ${{ matrix.vscode-version }}
 
       - name: Run integration tests
-        if: runner.os == 'Windows'
+        if: runner.os != 'Linux'
         run: yarn test:integration
         env:
           CODE_VERSION: ${{ matrix.vscode-version }}
