@@ -1626,10 +1626,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chardet@npm:^1.3.0":
-  version: 1.3.0
-  resolution: "chardet@npm:1.3.0"
-  checksum: 10c0/ee10b6dd58fd619458d510b37707de4943200e05846789896729a8bd3973ede7c5d2f7e92c726a674af873fa24e4f9ec77b4373dc13f16804a2468b83c0b0e9f
+"chardet@npm:2.2.0":
+  version: 2.2.0
+  resolution: "chardet@npm:2.2.0"
+  checksum: 10c0/8d43a1dd3ce535aa070d04139fae62f879b4388394eb1d857364ce416675a1f0f63974fba8208e9cd11b49e1a6da3e65ea6393d0fc654a8c4217c0d74c16b1b4
   languageName: node
   linkType: hard
 
@@ -3117,10 +3117,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"jschardet@npm:^3.0.0":
-  version: 3.0.0
-  resolution: "jschardet@npm:3.0.0"
-  checksum: 10c0/5d12d351cf1fbd3e4644418e6d7545acdd36eb198caad1ba0d98b91c54f75936d51bcf369412f5f296766913c1e1899543c8da4dd8fc1fc7f142d760beff5d4e
+"jschardet@npm:3.1.4":
+  version: 3.1.4
+  resolution: "jschardet@npm:3.1.4"
+  checksum: 10c0/d72c724ff60bc185d3962617ffda6849c6d632a935820841078c656a5247d73617a5df3b233e1fb1064de8683f7dae1b422b68186d1d6db22117b59edb5433dc
   languageName: node
   linkType: hard
 
@@ -4807,14 +4807,14 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.70.0"
     "@vscode/test-electron": "npm:^3.1.0"
     "@vscode/vsce": "npm:3.9.2"
-    chardet: "npm:^1.3.0"
+    chardet: "npm:2.2.0"
     dayjs: "npm:^1.11.23"
     decache: "npm:^4.6.2"
     eslint: "npm:^10.10.0"
     eslint-config-prettier: "npm:^10.1.8"
     glob: "npm:13.0.6"
     iconv-lite-umd: "npm:^0.6.10"
-    jschardet: "npm:^3.0.0"
+    jschardet: "npm:3.1.4"
     minimatch: "npm:10.2.6"
     mocha: "npm:10"
     original-fs: "npm:^1.2.0"
@@ -4826,7 +4826,7 @@ __metadata:
     typescript-eslint: "npm:8.70.0"
     webpack: "npm:^5.110.3"
     webpack-cli: "npm:7.2.3"
-    xml2js: "npm:^0.4.19"
+    xml2js: "npm:0.6.2"
   languageName: unknown
   linkType: soft
 
@@ -5357,13 +5357,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"xml2js@npm:^0.4.19":
-  version: 0.4.23
-  resolution: "xml2js@npm:0.4.23"
+"xml2js@npm:0.6.2":
+  version: 0.6.2
+  resolution: "xml2js@npm:0.6.2"
   dependencies:
     sax: "npm:>=0.6.0"
     xmlbuilder: "npm:~11.0.0"
-  checksum: 10c0/a3f41c9afc46d5bd0bea4070e5108777b605fd5ce2ebb978a68fd4c75513978ad5939f8135664ffea6f1adb342f391b1ba1584ed7955123b036e9ab8a1d26566
+  checksum: 10c0/e98a84e9c172c556ee2c5afa0fc7161b46919e8b53ab20de140eedea19903ed82f7cd5b1576fb345c84f0a18da1982ddf65908129b58fc3d7cbc658ae232108f
   languageName: node
   linkType: hard
 
