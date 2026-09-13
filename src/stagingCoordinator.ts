@@ -453,7 +453,9 @@ export class StagingCoordinator implements Disposable {
       return (await stat(resource.resourceUri.fsPath)).isDirectory();
     } catch {
       try {
-        return (await repository.info(resource.resourceUri.fsPath)).kind === "dir";
+        return (
+          (await repository.info(resource.resourceUri.fsPath)).kind === "dir"
+        );
       } catch {
         return false;
       }
