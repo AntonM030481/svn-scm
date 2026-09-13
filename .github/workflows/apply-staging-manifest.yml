@@ -1,0 +1,103 @@
+name: Apply staging manifest wiring
+
+on:
+  push:
+    branches:
+      - feature/git-like-staging
+    paths:
+      - .github/workflows/apply-staging-manifest.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          persist-credentials: true
+
+      - name: Update package manifest
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+
+          const commandDefs = [
+            { command: 'svn.stage', title: 'Stage Changes', category: 'SVN', icon: '$(add)' },
+            { command: 'svn.unstage', title: 'Unstage Changes', category: 'SVN', icon: '$(remove)' },
+            { command: 'svn.stageAll', title: 'Stage All Changes', category: 'SVN', icon: '$(add)' },
+            { command: 'svn.unstageAll', title: 'Unstage All Changes', category: 'SVN', icon: '$(remove)' },
+            { command: 'svn.commitStaged', title: 'Commit Staged', category: 'SVN', icon: '$(check)' },
+            { command: 'svn.commitAll', title: 'Commit All Changes', category: 'SVN', icon: '$(check-all)' }
+          ];
+          const known = new Set(p.contributes.commands.map(x => x.command));
+          for (const def of commandDefs) if (!known.has(def.command)) p.contributes.commands.push(def);
+
+          const menus = p.contributes.menus;
+          const removeCommands = (menu, ids, predicate = () => true) => {
+            menus[menu] = (menus[menu] || []).filter(x => !(ids.has(x.command) && predicate(x)));
+          };
+          const addUnique = (menu, entry) => {
+            menus[menu] ||= [];
+            if (!menus[menu].some(x => x.command === entry.command && x.when === entry.when && x.group === entry.group)) {
+              menus[menu].push(entry);
+            }
+          };
+
+          for (const command of ['svn.stage', 'svn.unstage']) {
+            addUnique('commandPalette', { command, when: 'false' });
+          }
+          for (const command of ['svn.stageAll', 'svn.unstageAll', 'svn.commitStaged', 'svn.commitAll']) {
+            addUnique('commandPalette', { command, when: 'config.svn.enabled && svnOpenRepositoryCount != 0' });
+          }
+
+          removeCommands('scm/title', new Set(['svn.commitWithMessage']));
+          addUnique('scm/title', {
+            command: 'svn.commitStaged',
+            group: 'navigation',
+            when: 'config.svn.enabled && scmProvider == svn'
+          });
+          addUnique('scm/title', {
+            command: 'svn.commitAll',
+            when: 'config.svn.enabled && scmProvider == svn'
+          });
+
+          addUnique('scm/resourceGroup/context', {
+            command: 'svn.stageAll',
+            when: 'config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external',
+            group: 'inline'
+          });
+          addUnique('scm/resourceGroup/context', {
+            command: 'svn.unstageAll',
+            when: 'config.svn.enabled && scmProvider == svn && scmResourceGroup == staged',
+            group: 'inline'
+          });
+
+          removeCommands('scm/resourceState/context', new Set(['svn.add']), x => x.group === 'inline');
+          removeCommands('scm/resourceState/context', new Set(['svn.changelist']), x => x.group === 'inline');
+          addUnique('scm/resourceState/context', {
+            command: 'svn.stage',
+            when: 'config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external',
+            group: 'inline'
+          });
+          addUnique('scm/resourceState/context', {
+            command: 'svn.unstage',
+            when: 'config.svn.enabled && scmProvider == svn && scmResourceGroup == staged',
+            group: 'inline'
+          });
+
+          fs.writeFileSync('package.json', JSON.stringify(p, null, 4) + '\n');
+          NODE
+
+      - name: Commit generated manifest and remove helper workflow
+        run: |
+          rm .github/workflows/apply-staging-manifest.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json .github/workflows/apply-staging-manifest.yml
+          git commit -m "feat: wire Git-like staging into SCM UI"
+          git push origin HEAD:feature/git-like-staging
