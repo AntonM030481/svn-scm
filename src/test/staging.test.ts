@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, Uri } from "vscode";
+import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import { createStagingChangelist } from "../stagingModel";
@@ -206,6 +206,105 @@ suite("Staging Tests", () => {
     const status = svn(["status"], checkout.fsPath);
     assert.doesNotMatch(status, /^A\s+new-folder/m);
     assert.match(status, /^\?\s+new-folder/m);
+  });
+
+  test("staging an unversioned folder leaves files.exclude children unadded", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "filtered-folder");
+    const visible = path.join(directory, "visible.txt");
+    const hidden = path.join(directory, "hidden.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(visible, "visible\n");
+    fs.writeFileSync(hidden, "hidden\n");
+
+    const filesConfiguration = workspace.getConfiguration("files", checkout);
+    const previousExclude =
+      filesConfiguration.inspect<Record<string, boolean>>(
+        "exclude"
+      )?.globalValue;
+    await filesConfiguration.update(
+      "exclude",
+      { ...(previousExclude ?? {}), "**/hidden.txt": true },
+      ConfigurationTarget.Global
+    );
+
+    try {
+      await repository.status();
+      const resource = repository.unversioned.resourceStates.find(
+        item => item.resourceUri.fsPath === directory
+      );
+      assert.ok(resource);
+
+      await commands.executeCommand("svn.stage", resource);
+      const status = svn(["status"], checkout.fsPath);
+      assert.match(status, /^A\s+filtered-folder[\\/]visible\.txt/m);
+      assert.match(status, /^\?\s+filtered-folder[\\/]hidden\.txt/m);
+      assert.doesNotMatch(status, /^A\s+filtered-folder[\\/]hidden\.txt/m);
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === visible
+        ),
+        true
+      );
+    } finally {
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
+      );
+    }
+  });
+
+  test("symlinks targeting directories remain stageable files", async () => {
+    if (process.platform === "win32") return;
+
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const link = path.join(checkout.fsPath, "dir-link");
+    fs.symlinkSync("one", link);
+    await repository.status();
+
+    const unversioned = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === link
+    );
+    assert.ok(unversioned);
+    await commands.executeCommand("svn.stage", unversioned);
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === link
+      ),
+      true
+    );
+
+    repository.inputBox.value = "add staged symlink";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+
+    fs.unlinkSync(link);
+    fs.symlinkSync("two", link);
+    await repository.status();
+    const modified = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === link
+    );
+    assert.ok(modified);
+    await commands.executeCommand("svn.stage", modified);
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === link
+      ),
+      true
+    );
   });
 
   test("directory-only versioned changes stay unstaged", async () => {

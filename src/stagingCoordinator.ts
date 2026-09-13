@@ -1,7 +1,7 @@
 import * as path from "path";
 import { Disposable, SourceControlResourceGroup, window } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
-import { stat } from "./fs";
+import { lstat } from "./fs";
 import { configuration } from "./helpers/configuration";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
@@ -425,7 +425,7 @@ export class StagingCoordinator implements Disposable {
       const directories: string[] = [];
       for (const resource of unversioned) {
         try {
-          if ((await stat(resource.resourceUri.fsPath)).isDirectory()) {
+          if ((await lstat(resource.resourceUri.fsPath)).isDirectory()) {
             directories.push(resource.resourceUri.fsPath);
           } else {
             files.push(resource.resourceUri.fsPath);
@@ -445,14 +445,21 @@ export class StagingCoordinator implements Disposable {
 
       for (const directory of directories) {
         await repository.addFiles([directory]);
-        const descendants = this.resourcesUnderPath(
+        let descendants = this.resourcesUnderPath(repository, directory).filter(
+          resource => resource.type === Status.ADDED
+        );
+        await this.cleanupHiddenDirectoryAdditions(
           repository,
-          directory
-        ).filter(resource => resource.type === Status.ADDED);
+          directory,
+          descendants
+        );
+        descendants = this.resourcesUnderPath(repository, directory).filter(
+          resource => resource.type === Status.ADDED
+        );
         const fileDescendants: string[] = [];
         for (const resource of descendants) {
           try {
-            if (!(await stat(resource.resourceUri.fsPath)).isDirectory()) {
+            if (!(await lstat(resource.resourceUri.fsPath)).isDirectory()) {
               fileDescendants.push(resource.resourceUri.fsPath);
             }
           } catch {
@@ -492,7 +499,7 @@ export class StagingCoordinator implements Disposable {
     resource: Resource
   ): Promise<boolean> {
     try {
-      return (await stat(resource.resourceUri.fsPath)).isDirectory();
+      return (await lstat(resource.resourceUri.fsPath)).isDirectory();
     } catch {
       try {
         return (
@@ -520,6 +527,67 @@ export class StagingCoordinator implements Disposable {
     return uniqueResources(resources).filter(resource =>
       isPathInside(parent, resource.resourceUri.fsPath)
     );
+  }
+
+  private async cleanupHiddenDirectoryAdditions(
+    repository: Repository,
+    directory: string,
+    visibleAdded: Resource[]
+  ): Promise<void> {
+    const visible = new Set<string>();
+    const requiredDirectories = new Set<string>();
+
+    for (const resource of visibleAdded) {
+      const resourcePath = resource.resourceUri.fsPath;
+      visible.add(normalizePath(resourcePath));
+
+      let parent = path.dirname(resourcePath);
+      while (isPathInside(directory, parent)) {
+        requiredDirectories.add(normalizePath(parent));
+        if (samePath(parent, directory)) break;
+        const next = path.dirname(parent);
+        if (next === parent) break;
+        parent = next;
+      }
+    }
+
+    const statuses = await repository.repository.getStatus({
+      includeIgnored: true,
+      includeExternals: false,
+      forceFull: true
+    });
+    const hidden = statuses
+      .filter(status => status.status === Status.ADDED)
+      .map(status =>
+        path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(repository.workspaceRoot, status.path)
+      )
+      .filter(candidate => isPathInside(directory, candidate))
+      .filter(candidate => {
+        const key = normalizePath(candidate);
+        return !visible.has(key) && !requiredDirectories.has(key);
+      })
+      .sort((left, right) => left.length - right.length);
+
+    const roots: string[] = [];
+    for (const candidate of hidden) {
+      if (!roots.some(root => isPathInside(root, candidate))) {
+        roots.push(candidate);
+      }
+    }
+
+    for (const hiddenRoot of roots) {
+      let depth: "empty" | "infinity" = "empty";
+      try {
+        if ((await lstat(hiddenRoot)).isDirectory()) {
+          depth = "infinity";
+        }
+      } catch {
+        // SVN status remains authoritative when the filesystem entry vanished.
+      }
+      await repository.revert([hiddenRoot], depth);
+    }
   }
 
   private addedAncestorDirectoriesForUnstage(
