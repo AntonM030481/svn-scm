@@ -1,0 +1,37 @@
+name: Apply staging edge-case fixes
+
+on:
+  push:
+    branches:
+      - feature/git-like-staging
+    paths:
+      - .github/workflows/apply-staging-edge-cases.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          persist-credentials: true
+      - name: Apply fixes
+        run: node tools/fix-staging-edge-cases.cjs
+      - name: Format touched TypeScript
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn prettier --write src/repository.ts src/incrementalStatus.ts src/stagingCoordinator.ts src/test/staging.test.ts
+      - name: Commit result
+        run: |
+          rm tools/fix-staging-edge-cases.cjs
+          rm .github/workflows/apply-staging-edge-cases.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/repository.ts src/incrementalStatus.ts src/stagingCoordinator.ts src/test/staging.test.ts docs/staging.md tools/fix-staging-edge-cases.cjs .github/workflows/apply-staging-edge-cases.yml
+          git commit -m "fix: preserve staged state across edge cases"
+          git push origin HEAD:feature/git-like-staging
