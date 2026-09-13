@@ -80,8 +80,9 @@ the registry, and publishes `onDidCloseRepository`. Disabling SVN closes every
 repository, clears discovery candidates, cancels debounced discovery, and
 disposes workspace watchers. Manager disposal also marks discovery inactive
 before cleanup. Every asynchronous stage of candidate validation and opening
-rechecks that lifecycle state, so neither an in-flight file-type check nor a
-queued SVN lookup can enqueue or open another repository after shutdown.
+rechecks the active enable-generation, so neither an in-flight file-type check
+nor a queued SVN lookup can enqueue or open another repository after shutdown,
+disable, or a disable/re-enable cycle.
 
 ## Synchronous routing
 

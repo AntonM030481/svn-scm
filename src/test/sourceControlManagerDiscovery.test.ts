@@ -65,6 +65,7 @@ suite("Source control repository discovery", () => {
     const candidates: string[] = [];
     (manager as any).enabled = true;
     (manager as any).disposed = false;
+    (manager as any).lifecycleGeneration = 0;
     (manager as any).openRepositories = [];
     (manager as any).getRepository = () => null;
     (manager as any).eventuallyScanPossibleSvnRepository = (
@@ -96,6 +97,7 @@ suite("Source control repository discovery", () => {
     const candidates: string[] = [];
     (manager as any).enabled = true;
     (manager as any).disposed = false;
+    (manager as any).lifecycleGeneration = 0;
     (manager as any).openRepositories = [];
     (manager as any).getRepository = () => null;
     (manager as any).eventuallyScanPossibleSvnRepository = (
@@ -127,6 +129,7 @@ suite("Source control repository discovery", () => {
     const candidates: string[] = [];
     (manager as any).enabled = true;
     (manager as any).disposed = false;
+    (manager as any).lifecycleGeneration = 0;
     (manager as any).openRepositories = [
       { repository: { root, workspaceRoot: root } }
     ];
@@ -145,7 +148,7 @@ suite("Source control repository discovery", () => {
     }
   });
 
-  test("does not open a queued repository after manager disposal", async () => {
+  test("does not open a queued repository after manager disable", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
     const directory = path.join(root, "moved-working-copy");
     fs.mkdirSync(path.join(directory, ".svn"), { recursive: true });
@@ -163,6 +166,8 @@ suite("Source control repository discovery", () => {
     });
     let openCalls = 0;
     (manager as any).disposed = false;
+    (manager as any).enabled = true;
+    (manager as any).lifecycleGeneration = 0;
     (manager as any).openRepositories = [];
     (manager as any)._svn = {
       getRepositoryRoot: () => {
@@ -177,7 +182,8 @@ suite("Source control repository discovery", () => {
     try {
       const deferredOpen = manager.tryOpenRepository(directory, 1, true);
       await lookupStarted;
-      (manager as any).disposed = true;
+      (manager as any).enabled = false;
+      (manager as any).lifecycleGeneration += 1;
       resolveRepositoryRoot(directory);
       await deferredOpen;
 
