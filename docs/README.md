@@ -6,11 +6,15 @@ released.
 
 - [Architecture](architecture.md) — runtime components and data flow
 - [Design principles](design-principles.md) — strategy, rationale, and guardrails
+- [Status and refresh](status-and-refresh.md) — status projection and refresh invariants
+- [Repository discovery](repository-discovery.md) — working-copy discovery and routing
 - [Development](development.md) — local setup and common commands
 - [Testing](testing.md) — unit, integration, and CI coverage
 - [Build and release](build-and-release.md) — bundling, packaging, and releases
 - [Dependencies](dependencies.md) — dependency roles and update constraints
 - [Maintenance](maintenance.md) — compatibility and lifecycle conventions
+
+Coding agents must also follow the repository-level [`AGENTS.md`](../AGENTS.md).
 
 These documents describe the complete current system, not only differences
 from the upstream project. Keep them focused on decisions and workflows that
