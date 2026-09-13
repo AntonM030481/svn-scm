@@ -95,7 +95,8 @@ export abstract class Command implements Disposable {
   }
 
   protected async getResourceStates(
-    resourceStates: SourceControlResourceState[]
+    resourceStates: SourceControlResourceState[],
+    validateForMutation = false
   ): Promise<Resource[]> {
     if (
       resourceStates.length === 0 ||
@@ -110,7 +111,36 @@ export abstract class Command implements Disposable {
       resourceStates = [resource];
     }
 
-    return resourceStates.filter(s => s instanceof Resource) as Resource[];
+    const selection = resourceStates.filter(
+      s => s instanceof Resource
+    ) as Resource[];
+    if (!validateForMutation || !selection.length) return selection;
+    const selected = new Map(
+      selection.map(resource => [resource.resourceUri.toString(), resource])
+    );
+    const groups = await this.runByRepository(
+      selection.map(resource => resource.resourceUri),
+      async (repository, uris) => {
+        await repository.ensureStatus();
+        const current: Resource[] = [];
+        for (const uri of uris) {
+          const before = selected.get(uri.toString())!;
+          const after = repository.getResourceFromFile(uri);
+          // Do not silently reinterpret an old selection as a different operation target.
+          if (
+            after &&
+            after.type === before.type &&
+            after.props === before.props &&
+            after.renameResourceUri?.toString() ===
+              before.renameResourceUri?.toString()
+          ) {
+            current.push(after);
+          }
+        }
+        return current;
+      }
+    );
+    return groups.flat();
   }
 
   protected runByRepository<T>(

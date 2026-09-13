@@ -9,9 +9,15 @@ import {
   SecretStorage,
   Uri,
   ConfigurationTarget,
-  workspace
+  workspace,
+  window
 } from "vscode";
 import { enableIncrementalStatusRefresh } from "../incrementalStatus";
+import { Revert } from "../commands/revert";
+import { Remove } from "../commands/remove";
+import { Commit } from "../commands/commit";
+import { Resolve } from "../commands/resolve";
+import * as messages from "../messages";
 import { DeleteUnversioned } from "../commands/deleteUnversioned";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -377,5 +383,73 @@ suite("Persisted startup status integration", () => {
     await command.execute(selection);
     assert.equal(await fs.readFile(file, "utf8"), "keep me");
     assert.equal(repo.getResourceFromFile(file)!.type, Status.ADDED);
+  });
+  test("SCM mutations discard a stale directory selection before any confirmation", async () => {
+    const f = await fixture();
+    const directory = path.join(f.root, "directory");
+    await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, "child.txt"), "base");
+    await f.base.exec(["add", "directory"]);
+    await f.base.exec(["commit", "directory", "-m", "directory fixture"]);
+    await f.base.exec(["propset", "test:property", "yes", "directory"]);
+    const first = f.open(await manager.svn.open(f.root, f.root));
+    await first.initialStatusSettled;
+    const selection = first.getResourceFromFile(directory)!;
+    assert.ok(selection);
+    first.dispose();
+    await f.base.exec(["revert", "--depth", "empty", "directory"]);
+    await fs.writeFile(path.join(directory, "child.txt"), "new unseen changes");
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      entered.resolve();
+      await release.promise;
+      return getStatus(params);
+    };
+    const repo = f.open(base);
+    const warning = window.showWarningMessage;
+    const quickPick = window.showQuickPick;
+    const commitMessage = messages.inputCommitMessage;
+    let prompts = 0;
+    const unexpectedPrompt = async () => {
+      prompts++;
+      return undefined;
+    };
+    (window as any).showWarningMessage = unexpectedPrompt;
+    (window as any).showQuickPick = unexpectedPrompt;
+    (messages as any).inputCommitMessage = unexpectedPrompt;
+    const pending: Promise<unknown>[] = [];
+    try {
+      await entered.promise;
+      for (const ctor of [Revert, Remove, Commit, Resolve]) {
+        const command = Object.create(ctor.prototype);
+        command.runByRepository = async (uris: Uri[], action: any) => [
+          await action(repo, uris)
+        ];
+        pending.push(command.execute(selection));
+      }
+      await Promise.resolve();
+      assert.equal(prompts, 0);
+      release.resolve();
+      await Promise.all(pending);
+      assert.equal(
+        prompts,
+        0,
+        "removed cached entry must not be confirmed or mutated"
+      );
+      assert.equal(repo.getResourceFromFile(directory), undefined);
+      assert.equal(
+        await fs.readFile(path.join(directory, "child.txt"), "utf8"),
+        "new unseen changes"
+      );
+    } finally {
+      release.resolve();
+      await Promise.allSettled(pending);
+      (window as any).showWarningMessage = warning;
+      (window as any).showQuickPick = quickPick;
+      (messages as any).inputCommitMessage = commitMessage;
+    }
   });
 });
