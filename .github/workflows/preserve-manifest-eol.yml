@@ -1,0 +1,181 @@
+name: Preserve manifest line endings
+
+on:
+  push:
+    branches:
+      - feature/git-like-staging
+    paths:
+      - .github/workflows/preserve-manifest-eol.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Restore manifest and apply byte-preserving edits
+        run: |
+          git show origin/master:package.json > package.json
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('package.json')
+          data = p.read_bytes()
+          nl = b'\r\n' if b'\r\n' in data else b'\n'
+          def B(s):
+              return s.encode().replace(b'\n', nl)
+          def repl(old, new):
+              global data
+              o, n = B(old), B(new)
+              assert o in data, old[:80]
+              data = data.replace(o, n, 1)
+
+          command_anchor = '''            {
+                "command": "svn.commitWithMessage",
+                "title": "Commit Changes",
+                "category": "SVN",
+                "icon": "$(check)"
+            },
+'''
+          repl(command_anchor, command_anchor + '''            {
+                "command": "svn.commitStaged",
+                "title": "Commit Staged",
+                "category": "SVN",
+                "icon": "$(check)"
+            },
+            {
+                "command": "svn.commitAll",
+                "title": "Commit All Changes",
+                "category": "SVN",
+                "icon": "$(check-all)"
+            },
+            {
+                "command": "svn.stage",
+                "title": "Stage Changes",
+                "category": "SVN",
+                "icon": "$(add)"
+            },
+            {
+                "command": "svn.unstage",
+                "title": "Unstage Changes",
+                "category": "SVN",
+                "icon": "$(remove)"
+            },
+            {
+                "command": "svn.stageAll",
+                "title": "Stage All Changes",
+                "category": "SVN",
+                "icon": "$(add)"
+            },
+            {
+                "command": "svn.unstageAll",
+                "title": "Unstage All Changes",
+                "category": "SVN",
+                "icon": "$(remove)"
+            },
+''')
+
+          palette_anchor = '''                {
+                    "command": "svn.commitWithMessage",
+                    "when": "false"
+                },
+'''
+          repl(palette_anchor, palette_anchor + '''                {
+                    "command": "svn.commitStaged",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.commitAll",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.stage",
+                    "when": "false"
+                },
+                {
+                    "command": "svn.unstage",
+                    "when": "false"
+                },
+                {
+                    "command": "svn.stageAll",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.unstageAll",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+''')
+
+          repl('''                {
+                    "command": "svn.commitWithMessage",
+                    "group": "navigation",
+                    "when": "config.svn.enabled && scmProvider == svn"
+                },
+''', '''                {
+                    "command": "svn.commitStaged",
+                    "group": "navigation",
+                    "when": "config.svn.enabled && scmProvider == svn"
+                },
+                {
+                    "command": "svn.commitAll",
+                    "when": "config.svn.enabled && scmProvider == svn"
+                },
+''')
+
+          group_anchor = '''                {
+                    "command": "svn.revertAll",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "group": "navigation"
+                },
+'''
+          repl(group_anchor, '''                {
+                    "command": "svn.stageAll",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "group": "inline"
+                },
+                {
+                    "command": "svn.unstageAll",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "group": "inline"
+                },
+''' + group_anchor)
+
+          repl('''                {
+                    "command": "svn.add",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == unversioned",
+                    "group": "inline"
+                },
+''', '''                {
+                    "command": "svn.stage",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "group": "inline"
+                },
+                {
+                    "command": "svn.unstage",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "group": "inline"
+                },
+''')
+
+          repl('''                {
+                    "command": "svn.changelist",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "group": "inline"
+                },
+''', '')
+          p.write_bytes(data)
+          PY
+      - name: Commit and remove helper
+        run: |
+          rm .github/workflows/preserve-manifest-eol.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json .github/workflows/preserve-manifest-eol.yml
+          git commit -m "chore: preserve package manifest line endings"
+          git push origin HEAD:feature/git-like-staging
