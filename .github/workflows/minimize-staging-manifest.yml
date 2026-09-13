@@ -1,0 +1,69 @@
+name: Minimize staging manifest diff
+
+on:
+  push:
+    branches:
+      - feature/git-like-staging
+    paths:
+      - .github/workflows/minimize-staging-manifest.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Restore manifest and apply focused edits
+        run: |
+          git show origin/master:package.json > package.json
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('package.json')
+          s = p.read_text()
+
+          command_anchor = '''            {\n                "command": "svn.commitWithMessage",\n                "title": "Commit Changes",\n                "category": "SVN",\n                "icon": "$(check)"\n            },\n'''
+          command_insert = command_anchor + '''            {\n                "command": "svn.commitStaged",\n                "title": "Commit Staged",\n                "category": "SVN",\n                "icon": "$(check)"\n            },\n            {\n                "command": "svn.commitAll",\n                "title": "Commit All Changes",\n                "category": "SVN",\n                "icon": "$(check-all)"\n            },\n            {\n                "command": "svn.stage",\n                "title": "Stage Changes",\n                "category": "SVN",\n                "icon": "$(add)"\n            },\n            {\n                "command": "svn.unstage",\n                "title": "Unstage Changes",\n                "category": "SVN",\n                "icon": "$(remove)"\n            },\n            {\n                "command": "svn.stageAll",\n                "title": "Stage All Changes",\n                "category": "SVN",\n                "icon": "$(add)"\n            },\n            {\n                "command": "svn.unstageAll",\n                "title": "Unstage All Changes",\n                "category": "SVN",\n                "icon": "$(remove)"\n            },\n'''
+          assert command_anchor in s
+          s = s.replace(command_anchor, command_insert, 1)
+
+          palette_anchor = '''                {\n                    "command": "svn.commitWithMessage",\n                    "when": "false"\n                },\n'''
+          palette_insert = palette_anchor + '''                {\n                    "command": "svn.commitStaged",\n                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"\n                },\n                {\n                    "command": "svn.commitAll",\n                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"\n                },\n                {\n                    "command": "svn.stage",\n                    "when": "false"\n                },\n                {\n                    "command": "svn.unstage",\n                    "when": "false"\n                },\n                {\n                    "command": "svn.stageAll",\n                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"\n                },\n                {\n                    "command": "svn.unstageAll",\n                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"\n                },\n'''
+          assert palette_anchor in s
+          s = s.replace(palette_anchor, palette_insert, 1)
+
+          scm_title_old = '''                {\n                    "command": "svn.commitWithMessage",\n                    "group": "navigation",\n                    "when": "config.svn.enabled && scmProvider == svn"\n                },\n'''
+          scm_title_new = '''                {\n                    "command": "svn.commitStaged",\n                    "group": "navigation",\n                    "when": "config.svn.enabled && scmProvider == svn"\n                },\n                {\n                    "command": "svn.commitAll",\n                    "when": "config.svn.enabled && scmProvider == svn"\n                },\n'''
+          assert scm_title_old in s
+          s = s.replace(scm_title_old, scm_title_new, 1)
+
+          group_anchor = '''                {\n                    "command": "svn.revertAll",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",\n                    "group": "navigation"\n                },\n'''
+          group_insert = '''                {\n                    "command": "svn.stageAll",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",\n                    "group": "inline"\n                },\n                {\n                    "command": "svn.unstageAll",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",\n                    "group": "inline"\n                },\n''' + group_anchor
+          assert group_anchor in s
+          s = s.replace(group_anchor, group_insert, 1)
+
+          inline_add = '''                {\n                    "command": "svn.add",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == unversioned",\n                    "group": "inline"\n                },\n'''
+          stage_entry = '''                {\n                    "command": "svn.stage",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",\n                    "group": "inline"\n                },\n                {\n                    "command": "svn.unstage",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",\n                    "group": "inline"\n                },\n'''
+          assert inline_add in s
+          s = s.replace(inline_add, stage_entry, 1)
+
+          inline_changelist = '''                {\n                    "command": "svn.changelist",\n                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",\n                    "group": "inline"\n                },\n'''
+          assert inline_changelist in s
+          s = s.replace(inline_changelist, '', 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit focused manifest and remove helper
+        run: |
+          rm .github/workflows/minimize-staging-manifest.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json .github/workflows/minimize-staging-manifest.yml
+          git commit -m "chore: minimize staging manifest diff"
+          git push origin HEAD:feature/git-like-staging
