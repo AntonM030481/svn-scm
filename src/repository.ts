@@ -688,15 +688,15 @@ export class Repository implements IRemoteRepository {
         : undefined;
 
       if (status.reposStatus) {
-        remoteChanges.push(
-          new Resource(
-            uri,
-            status.reposStatus.item,
-            undefined,
-            status.reposStatus.props,
-            true
-          )
+        const remoteResource = new Resource(
+          uri,
+          status.reposStatus.item,
+          undefined,
+          status.reposStatus.props,
+          true
         );
+        if (preview) this.previewResources.add(remoteResource);
+        remoteChanges.push(remoteResource);
       }
 
       const resource = new Resource(

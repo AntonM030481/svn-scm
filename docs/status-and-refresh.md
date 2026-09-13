@@ -219,4 +219,6 @@ mutation selected from the restored list re-resolves that selection after live
 validation and before prompting. Restored directories (or paths whose file kind
 cannot be confirmed) require reselection from the refreshed list: unchanged
 properties on a directory do not prove its recursive target set is unchanged.
-Ordinary live directory selections retain their existing behavior.
+Ordinary live directory selections retain their existing behavior. Incoming
+updates from SCM validate against the refreshed remote group, including
+preview provenance, rather than resolving through local change groups.

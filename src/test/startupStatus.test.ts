@@ -13,6 +13,7 @@ import {
   window
 } from "vscode";
 import { enableIncrementalStatusRefresh } from "../incrementalStatus";
+import { PullIncommingChange } from "../commands/pullIncomingChange";
 import { Revert } from "../commands/revert";
 import { Remove } from "../commands/remove";
 import { Commit } from "../commands/commit";
@@ -215,6 +216,96 @@ suite("Persisted startup status integration", () => {
         .update("remoteChanges.checkFrequency", 0, ConfigurationTarget.Global);
     }
   });
+
+  for (const remoteExists of [false, true]) {
+    test(`incoming update revalidates restored remote selections (remote exists=${remoteExists})`, async () => {
+      const f = await fixture();
+      if (remoteExists) {
+        const other = await testUtil.createRepoCheckout(
+          testUtil.getSvnUrl(server) + "/trunk"
+        );
+        const remote = await manager.svn.open(other.fsPath, other.fsPath);
+        await fs.appendFile(
+          path.join(other.fsPath, "new.txt"),
+          "remote edit\n"
+        );
+        await remote.exec(["commit", "-m", "incoming validation"]);
+      }
+      const snapshot = f.data.get([...f.data.keys()][0]) as any;
+      snapshot.statuses.push({
+        path: "new.txt",
+        status: Status.NORMAL,
+        props: Status.NONE,
+        wcStatus: { locked: false, switched: false },
+        reposStatus: { item: Status.DELETED, props: Status.NONE }
+      });
+      await workspace
+        .getConfiguration("svn")
+        .update(
+          "remoteChanges.checkFrequency",
+          300,
+          ConfigurationTarget.Global
+        );
+      const base = await manager.svn.open(f.root, f.root);
+      const entered = gate();
+      const release = gate();
+      const getStatus = base.getStatus.bind(base);
+      base.getStatus = async params => {
+        entered.resolve();
+        await release.promise;
+        return getStatus(params);
+      };
+      let updates = 0;
+      const pull = base.pullIncomingChange.bind(base);
+      base.pullIncomingChange = async file => {
+        updates++;
+        return pull(file);
+      };
+      const repo = f.open(base);
+      let pending: Promise<unknown> | undefined;
+      try {
+        await entered.promise;
+        const selection = repo.remoteChanges!.resourceStates[0];
+        assert.ok(repo.isPreviewResource(selection));
+        const command = Object.create(
+          PullIncommingChange.prototype
+        ) as PullIncommingChange;
+        (command as any).runByRepository = async (uris: Uri[], action: any) => [
+          await action(repo, uris)
+        ];
+        pending = command.execute(selection);
+        await Promise.resolve();
+        assert.equal(updates, 0);
+        release.resolve();
+        await pending;
+        assert.equal(updates, 0, "obsolete remote selection must not update");
+        assert.equal(
+          await fs.readFile(path.join(f.root, "new.txt"), "utf8"),
+          "base\n"
+        );
+        if (remoteExists) {
+          const fresh = repo.remoteChanges!.resourceStates[0];
+          await command.execute(fresh);
+          assert.equal(updates, 1);
+          assert.equal(
+            await fs.readFile(path.join(f.root, "new.txt"), "utf8"),
+            "base\nremote edit\n"
+          );
+        }
+      } finally {
+        release.resolve();
+        await pending;
+        repo.dispose();
+        await workspace
+          .getConfiguration("svn")
+          .update(
+            "remoteChanges.checkFrequency",
+            0,
+            ConfigurationTarget.Global
+          );
+      }
+    });
+  }
 
   test("restores before scanning, rechecks small files locally and reconciles external edits", async () => {
     const f = await fixture();

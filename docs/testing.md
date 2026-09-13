@@ -114,4 +114,5 @@ fast and full phases independently, including failures and disposal. Sparse
 large-file fixtures exercise size limits without expensive binary comparisons.
 Remote persistence coverage uses a second checkout to verify overlapping and
 remote-only changes survive incremental local refreshes and reopening, and
-clear after a successful remote scan.
+clear after a successful remote scan. Incoming-update regressions cover
+removed/reclassified remote previews and successful updates from live selections.

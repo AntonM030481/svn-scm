@@ -134,7 +134,11 @@ export abstract class Command implements Disposable {
               continue;
             }
           }
-          const after = repository.getResourceFromFile(uri);
+          const after = before.remote
+            ? repository.remoteChanges?.resourceStates.find(
+                resource => resource.resourceUri.toString() === uri.toString()
+              )
+            : repository.getResourceFromFile(uri);
           // Do not silently reinterpret an old selection as a different operation target.
           if (
             after &&
