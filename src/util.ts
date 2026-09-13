@@ -2,6 +2,7 @@ import * as path from "path";
 import { Event, commands } from "vscode";
 import { Operation } from "./common/types";
 import { exists, lstat, readdir, rmdir, unlink } from "./fs";
+import { disposeResources, registerResources } from "./lifecycle";
 
 export interface IDisposable {
   dispose(): void;
@@ -27,9 +28,14 @@ export function combinedDisposable(disposables: IDisposable[]): IDisposable {
 
 export function anyEvent<T>(...events: Array<Event<T>>): Event<T> {
   return (listener: any, thisArgs = null, disposables?: any) => {
-    const result = combinedDisposable(
-      events.map(event => event((i: any) => listener.call(thisArgs, i)))
+    const subscriptions: IDisposable[] = [];
+    registerResources(
+      subscriptions,
+      ...events.map(
+        event => () => event((i: any) => listener.call(thisArgs, i))
+      )
     );
+    const result = toDisposable(() => disposeResources(subscriptions));
 
     if (disposables) {
       disposables.push(result);
@@ -209,7 +215,7 @@ export async function isSvnFolder(
 }
 
 export function setVscodeContext(key: string, value: any) {
-  commands.executeCommand("setContext", key, value);
+  return commands.executeCommand<void>("setContext", key, value);
 }
 
 function isWindowsPath(path: string): boolean {

@@ -104,6 +104,15 @@ disable, or a disable/re-enable cycle.
 The same generation is carried through the entire workspace and recursive scan,
 not recaptured for each folder.
 
+Enable transitions acquire listeners and watchers synchronously under the
+current generation before awaiting discovery. Disable invalidates that generation
+and releases its resources immediately. A failed current enable attempt rolls
+back its watchers/repositories; a failed obsolete attempt cannot clean up a newer
+session. Configuration-triggered failures are handled and logged, not left as
+unhandled rejections. Initial readiness waits for the latest requested transition,
+including rapid enable/disable/enable changes. An initially disabled manager is
+ready with an empty registry rather than leaving restored documents pending.
+
 Discovery has three separate decisions, all owned by the manager:
 
 | Decision | Rule | Enforcement |

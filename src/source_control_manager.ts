@@ -28,7 +28,6 @@ import { Svn, svnErrorCodes } from "./svn";
 import SvnError from "./svnError";
 import {
   anyEvent,
-  dispose,
   filterEvent,
   IDisposable,
   isDescendant,
@@ -38,8 +37,9 @@ import {
   eventToPromise
 } from "./util";
 import { matchAll } from "./util/globMatch";
+import { disposeResources } from "./lifecycle";
 
-type State = "uninitialized" | "initialized";
+type State = "uninitialized" | "initialized" | "disposed";
 
 interface DiscoveryOptions {
   allowNested?: boolean;
@@ -94,6 +94,8 @@ export class SourceControlManager implements IDisposable {
   private enabled = false;
   private disposed = false;
   private lifecycleGeneration = 0;
+  private enableTask: Promise<void> = Promise.resolve();
+  private initialization?: Promise<void>;
   private routingValidations = new WeakMap<
     Repository,
     Map<string, Promise<boolean>>
@@ -119,13 +121,20 @@ export class SourceControlManager implements IDisposable {
   }
 
   get isInitialized(): Promise<void> {
+    if (this.disposed) {
+      return Promise.reject(new Error("Source control manager is disposed"));
+    }
     if (this._state === "initialized") {
       return Promise.resolve();
     }
 
     return eventToPromise(
-      filterEvent(this.onDidchangeState, s => s === "initialized")
-    ) as Promise<any>;
+      filterEvent(this.onDidchangeState, s => s !== "uninitialized")
+    ).then(state => {
+      if (state === "disposed") {
+        throw new Error("Source control manager is disposed");
+      }
+    });
   }
 
   get repositories(): Repository[] {
@@ -141,22 +150,52 @@ export class SourceControlManager implements IDisposable {
     policy: ConstructorPolicy,
     private extensionContact: ExtensionContext
   ) {
-    if (policy !== ConstructorPolicy.Async) {
+    if (
+      policy !== ConstructorPolicy.Async &&
+      policy !== ConstructorPolicy.LateInit
+    ) {
       throw new Error("Unsopported policy");
     }
-    this.enabled = configuration.get<boolean>("enabled") === true;
-
     this.configurationChangeDisposable = workspace.onDidChangeConfiguration(
       this.onDidChangeConfiguration,
       this
     );
 
-    return (async (): Promise<SourceControlManager> => {
-      if (this.enabled) {
-        await this.enable();
+    if (policy === ConstructorPolicy.Async) {
+      return this.initialize().then(
+        () => this
+      ) as unknown as SourceControlManager;
+    }
+  }
+
+  public initialize(): Promise<void> {
+    return (this.initialization ??= (async () => {
+      try {
+        if (this.disposed) {
+          throw new Error("Source control manager is disposed");
+        }
+        this.setEnabled(configuration.get<boolean>("enabled") === true);
+        let task: Promise<void>;
+        do {
+          task = this.enableTask;
+          try {
+            await task;
+          } catch (error) {
+            if (task === this.enableTask) {
+              throw error;
+            }
+          }
+        } while (task !== this.enableTask);
+        if (this.disposed) {
+          throw new Error("Source control manager is disposed");
+        }
+        // A disabled manager is also ready; restored documents must not hang.
+        this.setState("initialized");
+      } catch (error) {
+        this.dispose();
+        throw error;
       }
-      return this;
-    })() as unknown as SourceControlManager;
+    })());
   }
 
   private logRepositoryLifecycle(
@@ -183,10 +222,16 @@ export class SourceControlManager implements IDisposable {
       return;
     }
 
-    const enabled = configuration.get<boolean>("enabled") === true;
-
     this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
+    this.setEnabled(configuration.get<boolean>("enabled") === true);
+    void this.enableTask.catch(error => {
+      this.svn.logOutput(
+        `[activation] Unable to enable SVN: ${String(error)}\n`
+      );
+    });
+  }
 
+  private setEnabled(enabled: boolean): void {
     if (enabled === this.enabled) {
       return;
     }
@@ -195,60 +240,73 @@ export class SourceControlManager implements IDisposable {
     this.lifecycleGeneration += 1;
 
     if (enabled) {
-      this.enable();
+      this.enableTask = this.enable();
     } else {
+      this.enableTask = Promise.resolve();
       this.disable();
     }
   }
 
   private async enable() {
     const lifecycleGeneration = this.lifecycleGeneration;
-    const multipleFolders = configuration.get<boolean>(
-      "multipleFolders.enabled",
-      false
-    );
+    try {
+      const multipleFolders = configuration.get<boolean>(
+        "multipleFolders.enabled",
+        false
+      );
 
-    if (multipleFolders) {
-      this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
+      if (multipleFolders) {
+        this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
 
-      this.ignoreList = configuration.get("multipleFolders.ignore", []);
+        this.ignoreList = configuration.get("multipleFolders.ignore", []);
+      }
+
+      workspace.onDidChangeWorkspaceFolders(
+        this.onDidChangeWorkspaceFolders,
+        this,
+        this.disposables
+      );
+
+      const fsWatcher = workspace.createFileSystemWatcher("**");
+      this.disposables.push(fsWatcher);
+
+      const onWorkspaceChange = anyEvent(
+        fsWatcher.onDidChange,
+        fsWatcher.onDidCreate,
+        fsWatcher.onDidDelete
+      );
+      const onPossibleSvnRepositoryChange = filterEvent(
+        onWorkspaceChange,
+        uri =>
+          uri.scheme === "file" &&
+          getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined &&
+          !this.getRepository(uri)
+      );
+      onPossibleSvnRepositoryChange(
+        this.onPossibleSvnRepositoryChange,
+        this,
+        this.disposables
+      );
+      fsWatcher.onDidCreate(
+        uri => void this.onPossibleSvnRepositoryDirectoryCreate(uri),
+        this,
+        this.disposables
+      );
+
+      await this.scanWorkspaceFolders(lifecycleGeneration);
+      if (this.isDiscoveryActive(lifecycleGeneration)) {
+        this.setState("initialized");
+      }
+    } catch (error) {
+      // A failed obsolete scan must not tear down a newer enable session.
+      if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        return;
+      }
+      this.enabled = false;
+      this.lifecycleGeneration += 1;
+      this.disable();
+      throw error;
     }
-
-    workspace.onDidChangeWorkspaceFolders(
-      this.onDidChangeWorkspaceFolders,
-      this,
-      this.disposables
-    );
-
-    const fsWatcher = workspace.createFileSystemWatcher("**");
-    this.disposables.push(fsWatcher);
-
-    const onWorkspaceChange = anyEvent(
-      fsWatcher.onDidChange,
-      fsWatcher.onDidCreate,
-      fsWatcher.onDidDelete
-    );
-    const onPossibleSvnRepositoryChange = filterEvent(
-      onWorkspaceChange,
-      uri =>
-        uri.scheme === "file" &&
-        getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined &&
-        !this.getRepository(uri)
-    );
-    onPossibleSvnRepositoryChange(
-      this.onPossibleSvnRepositoryChange,
-      this,
-      this.disposables
-    );
-    fsWatcher.onDidCreate(
-      uri => void this.onPossibleSvnRepositoryDirectoryCreate(uri),
-      this,
-      this.disposables
-    );
-
-    this.setState("initialized");
-
-    await this.scanWorkspaceFolders(lifecycleGeneration);
   }
 
   private onPossibleSvnRepositoryChange(uri: Uri): void {
@@ -367,11 +425,14 @@ export class SourceControlManager implements IDisposable {
 
   private disable(): void {
     cancelDebounces(this);
-    this.openRepositories.slice().forEach(repository => repository.dispose());
+    const repositories = this.openRepositories;
+    const disposables = this.disposables;
     this.openRepositories = [];
-
+    this.disposables = [];
     this.possibleSvnRepositoryPaths.clear();
-    this.disposables = dispose(this.disposables);
+    // Detach the old session before close listeners can enable a new one.
+    disposeResources(disposables);
+    disposeResources(repositories);
   }
 
   private async onDidChangeWorkspaceFolders({
@@ -852,5 +913,11 @@ export class SourceControlManager implements IDisposable {
     this.lifecycleGeneration += 1;
     this.disable();
     this.configurationChangeDisposable.dispose();
+    this.setState("disposed");
+    this._onDidChangeState.dispose();
+    this._onDidOpenRepository.dispose();
+    this._onDidCloseRepository.dispose();
+    this._onDidChangeRepository.dispose();
+    this._onDidChangeStatusRepository.dispose();
   }
 }

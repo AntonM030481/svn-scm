@@ -1,6 +1,13 @@
 import * as path from "path";
 import { randomBytes } from "crypto";
-import { commands, Uri, ViewColumn, WebviewPanel, window } from "vscode";
+import {
+  commands,
+  Disposable,
+  Uri,
+  ViewColumn,
+  WebviewPanel,
+  window
+} from "vscode";
 import { SourceControlManager } from "./source_control_manager";
 import { configuration } from "./helpers/configuration";
 import {
@@ -15,14 +22,16 @@ export function noChangesToCommit() {
 let panel: WebviewPanel;
 
 // for tests only
-let callback: (message: string) => void;
-commands.registerCommand("svn.forceCommitMessageTest", (message: string) => {
-  if (callback) {
-    return callback(message);
-  }
-});
+let callback: ((message: string) => void) | undefined;
+export function registerTestCommand(): Disposable {
+  return commands.registerCommand(
+    "svn.forceCommitMessageTest",
+    (message: string) => callback?.(message)
+  );
+}
 
 export function dispose() {
+  callback = undefined;
   if (panel) {
     panel.dispose();
   }

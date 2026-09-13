@@ -3,11 +3,18 @@ import * as semver from "semver";
 import { setVscodeContext } from "../util";
 
 export class IsSvn18orGreater implements Disposable {
+  readonly initialized: Promise<void>;
   constructor(svnVersion: string) {
     const is18orGreater = semver.satisfies(svnVersion, ">= 1.8");
 
-    setVscodeContext("isSvn18orGreater", is18orGreater);
+    this.initialized = Promise.resolve(
+      setVscodeContext("isSvn18orGreater", is18orGreater)
+    );
   }
 
-  dispose() {}
+  dispose() {
+    void Promise.resolve(setVscodeContext("isSvn18orGreater", false)).catch(
+      console.error
+    );
+  }
 }

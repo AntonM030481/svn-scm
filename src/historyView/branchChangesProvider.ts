@@ -1,3 +1,4 @@
+import { registerResources } from "../lifecycle";
 import {
   TreeDataProvider,
   Disposable,
@@ -19,21 +20,25 @@ export class BranchChangesProvider
   public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(private model: SourceControlManager) {
-    this._dispose.push(
-      window.registerTreeDataProvider("branchchanges", this),
-      commands.registerCommand(
-        "svn.branchchanges.openDiff",
-        this.openDiffCmd,
-        this
-      ),
-      commands.registerCommand(
-        "svn.branchchanges.refresh",
-        () => this._onDidChangeTreeData.fire(undefined),
-        this
-      ),
-      this.model.onDidChangeRepository(() =>
-        this._onDidChangeTreeData.fire(undefined)
-      )
+    registerResources(
+      this._dispose,
+      () => window.registerTreeDataProvider("branchchanges", this),
+      () =>
+        commands.registerCommand(
+          "svn.branchchanges.openDiff",
+          this.openDiffCmd,
+          this
+        ),
+      () =>
+        commands.registerCommand(
+          "svn.branchchanges.refresh",
+          () => this._onDidChangeTreeData.fire(undefined),
+          this
+        ),
+      () =>
+        this.model.onDidChangeRepository(() =>
+          this._onDidChangeTreeData.fire(undefined)
+        )
     );
   }
 

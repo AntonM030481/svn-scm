@@ -11,6 +11,7 @@ async function main(): Promise<void> {
   mocha.addFile(path.resolve(__dirname, "globMatch.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnError.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnProcess.test.js"));
+  mocha.addFile(path.resolve(__dirname, "lifecycle.test.js"));
   mocha.addFile(path.resolve(__dirname, "commitMessageHtml.test.js"));
 
   mocha.addFile(path.resolve(__dirname, "settingsDocumentation.test.js"));
