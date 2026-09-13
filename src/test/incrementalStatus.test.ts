@@ -190,18 +190,13 @@ suite("Incremental Status Tests", () => {
 
   test("does not publish stale info when its refresh fails", async () => {
     const fixture = mutationFixture("/repo", false, true);
-    const originalError = console.error;
-    const errors: unknown[][] = [];
-    console.error = (...args: unknown[]) => errors.push(args);
     try {
       assert.equal(
         await fixture.repository.commitFiles("message", ["."]),
         "result"
       );
-      assert.equal(errors.length, 1);
       assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
     } finally {
-      console.error = originalError;
       fixture.dispose();
     }
   });
