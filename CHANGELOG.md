@@ -1,3 +1,8 @@
+# Unreleased
+
+- Restore the previous SCM changes list on startup and quickly validate small
+  known changes before the full working-copy scan.
+
 # [Unreleased]
 
 # [2.20.0](https://github.com/AntonM030481/svn-scm/compare/v2.19.0...v2.20.0) (2026-09-13)
@@ -82,11 +87,6 @@ First maintained release of this fork. Changes below are relative to upstream v2
 ### Features
 
 * replace keyar with vscode SecretStorage ([#1600](https://github.com/JohnstonCode/svn-scm/issues/1600)) ([715171d](https://github.com/JohnstonCode/svn-scm/commit/715171d995ff891e4f7f049687e2b73884e336ea))
-
-## Unreleased
-
-- Restore the previous SCM changes list on startup and quickly validate small
-  known changes before the full working-copy scan.
 
 ## [2.16.1](https://github.com/JohnstonCode/svn-scm/compare/v2.16.0...v2.16.1) (2023-06-19)
 
@@ -950,4 +950,3 @@ First maintained release of this fork. Changes below are relative to upstream v2
 ### Features
 
 - Added command Open Changes with PREV ([#378](https://github.com/JohnstonCode/svn-scm/issues/378)) ([9353d14](https://github.com/JohnstonCode/svn-scm/commit/9353d14))
-
