@@ -19,6 +19,21 @@ the documentation describes the complete current system rather than only the
 fork's differences. Upstream history remains relevant for attribution and for
 understanding older design choices.
 
+The initial tooling modernization is recorded in
+[#45](https://github.com/AntonM030481/svn-scm/issues/45), with dependency
+maintenance completed by [#46](https://github.com/AntonM030481/svn-scm/pull/46).
+The subsequent runtime and quality audit is recorded in
+[#66](https://github.com/AntonM030481/svn-scm/issues/66). These are historical
+completion records; the documents in this directory define current behavior.
+
+Keep future work in focused issues, rather than reopening the modernization
+log or maintaining a second backlog in documentation. Current follow-ups include
+[startup status persistence](https://github.com/AntonM030481/svn-scm/issues/93)
+and [settings interactions](https://github.com/AntonM030481/svn-scm/issues/95);
+their proposed behavior is not a description of shipped functionality.
+Prioritize runtime correctness, responsiveness, and useful SVN workflows over
+dependency upgrades for their own sake.
+
 ## Compatibility
 
 - Treat `engines.vscode` as the public minimum-version contract.
@@ -28,6 +43,14 @@ understanding older design choices.
 - Avoid using newer VS Code APIs unless the minimum engine is raised.
 - The build-time Node version and the extension host's Node version are
   different compatibility targets.
+
+The supported floor remains VS Code 1.86.0. Build/CI uses Node 24 and the
+Yarn 4 version pinned in `package.json`; runtime/API typings remain aligned
+with the minimum host. See [Dependencies](dependencies.md) for pins and their
+rationale, [Testing](testing.md) for the macOS matrix exception, and
+[Build and release](build-and-release.md) for publishing scope.
+Raising the floor is an explicit support/release decision, justified by needed
+APIs or maintenance cost, rather than an overdue dependency update.
 
 ## Lifecycle conventions
 
@@ -54,6 +77,14 @@ resource being released, rather than relying only on coverage of `dispose()`.
 - Prefer targeted status refresh after a known operation, retaining a full
   refresh as the correctness fallback.
 - Avoid redundant `svn info`, `svn list`, and remote-status calls on hot paths.
+
+## Error handling
+
+`SvnError` extends native `Error`. Keep caught values typed as `unknown`;
+narrow with `instanceof SvnError` before reading SVN-specific fields and use
+`getErrorMessage` for generic caught values. Do not restore a global
+`useUnknownInCatchVariables: false` escape hatch. Preserve the error-contract
+regressions when changing subprocess failure handling.
 
 ## Pull-request checklist
 

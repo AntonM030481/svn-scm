@@ -4,7 +4,7 @@ Activation lifecycle regressions are covered by `activationTransaction.test.ts`
 (staged registration failures, deferred readiness, missing-SVN recovery and
 repeated activation) and `sourceControlManagerLifecycle.test.ts` (overlapping
 enable sessions, rollback and close notifications). Pure ownership tests in
-`lifecycle.test.ts` bring the unit suite to 25 tests as of issue #64.
+`lifecycle.test.ts` cover the underlying ownership primitives.
 The activation fault-injection fixture first finishes real host activation, then
 loads an isolated extension module graph while immediately restoring the live
 module cache. It verifies distinct singleton owners and checks the live manager,
@@ -59,7 +59,11 @@ If `CODE_VERSION` is absent, `@vscode/test-electron` chooses its default.
 CI tests the minimum supported VS Code version, 1.86.0, and the current stable
 version on Linux and Windows. macOS runs against stable; VS Code 1.86 is omitted
 there because its Electron runtime crashes on current GitHub macOS runners
-before extension tests start.
+before extension tests start. The modernization investigation observed
+`SIGSEGV` on ARM and `SIGTRAP` on the then-available Intel image; changing
+architecture alone did not restore that coverage. Stable runs on the current
+ARM runner. This is a test-environment limitation, not a higher declared macOS
+VS Code minimum. Revisit it when changing runners or the support floor.
 
 The build job also packages a VSIX, which detects packaging errors and verifies
 that only intended runtime files are shipped.
@@ -68,12 +72,11 @@ that only intended runtime files are shipped.
 
 ### Coverage baseline and limits
 
-The audit baseline after #63 is 16 host-independent tests: glob matching (2),
-SVN error classification (4), commit-message HTML (2), and process execution,
-cancellation, and settlement (8). Decoding regressions are in the host-only
-`svnStreaming.test.ts` suite. This is a test-count baseline, not
-a claim that the extension has adequate percentage coverage. The integration
-suite is separate and grows with discovery, lifecycle, routing, and status
+Host-independent tests cover glob matching, SVN error classification,
+commit-message HTML, process execution/cancellation/settlement, and lifecycle
+ownership. Decoding regressions are in the host-only
+`svnStreaming.test.ts` suite. These suites do not establish a whole-extension
+percentage-coverage claim. The integration suite is separate and grows with discovery, lifecycle, routing, and status
 regressions; its authoritative counts are the logs of each CI matrix job.
 
 No whole-extension percentage gate is currently claimed. Unit tests load
