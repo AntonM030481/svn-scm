@@ -47,6 +47,9 @@ should not be added to this layer unless it is required to execute a command.
 folders, opens and closes repositories, routes file events to the appropriate
 repository, and publishes repository lifecycle events.
 
+Detailed rules and invariants are documented in
+[Repository discovery and routing](repository-discovery.md).
+
 One workspace may contain several working copies. Repository routing therefore
 must use the most specific matching working-copy root and must remain safe for
 multi-root workspaces.
@@ -75,6 +78,9 @@ Workspace and repository file watchers trigger debounced status work. A status
 refresh executes `svn status`, parses its XML output, and updates the repository
 resource groups. Targeted operations can request narrower refreshes, while a
 full refresh remains the correctness fallback.
+
+The full model is documented in
+[Status and refresh model](status-and-refresh.md).
 
 Remote status checks and history queries are separate from local status
 refreshes because they may contact the server and have different latency.

@@ -31,3 +31,5 @@ Read the [design principles](docs/design-principles.md) before changing core
 behavior. The [maintenance guide](docs/maintenance.md) contains compatibility,
 lifecycle, and review conventions. All maintainer documentation is indexed in
 [`docs/`](docs/README.md).
+
+Automated coding agents must also follow [`AGENTS.md`](AGENTS.md).
