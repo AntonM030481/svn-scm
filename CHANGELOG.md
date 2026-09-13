@@ -1,3 +1,9 @@
+# Unreleased
+
+### Bug Fixes
+
+* Make activation transactional: publish readiness only after complete initialization, roll back partial registrations, own the test command explicitly, and isolate enable/disable sessions ([#64](https://github.com/AntonM030481/svn-scm/issues/64)).
+
 # [2.19.0](https://github.com/AntonM030481/svn-scm/compare/v2.18.0...v2.19.0) (2026-09-10)
 
 ### Performance Improvements

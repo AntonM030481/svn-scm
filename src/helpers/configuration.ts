@@ -15,13 +15,21 @@ const SVN = "svn";
 class Configuration implements Disposable {
   private configuration: WorkspaceConfiguration;
   private _onDidChange = new EventEmitter<ConfigurationChangeEvent>();
-  private readonly configurationChangeDisposable: Disposable;
+  private configurationChangeDisposable?: Disposable;
 
   get onDidChange(): Event<ConfigurationChangeEvent> {
     return this._onDidChange.event;
   }
 
   constructor() {
+    this.configuration = workspace.getConfiguration(SVN);
+    this.register();
+  }
+
+  public register(): void {
+    if (this.configurationChangeDisposable) {
+      return;
+    }
     this.configuration = workspace.getConfiguration(SVN);
     this.configurationChangeDisposable = workspace.onDidChangeConfiguration(
       this.onConfigurationChanged,
@@ -56,8 +64,10 @@ class Configuration implements Disposable {
   }
 
   public dispose(): void {
-    this.configurationChangeDisposable.dispose();
+    this.configurationChangeDisposable?.dispose();
+    this.configurationChangeDisposable = undefined;
     this._onDidChange.dispose();
+    this._onDidChange = new EventEmitter<ConfigurationChangeEvent>();
   }
 }
 

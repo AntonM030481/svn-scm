@@ -1,8 +1,8 @@
 import * as path from "path";
 import {
   commands,
-  Disposable,
   ExtensionContext,
+  ExtensionMode,
   OutputChannel,
   Uri,
   window
@@ -28,22 +28,39 @@ import { tempSvnFs } from "./temp_svn_fs";
 import { SvnFileSystemProvider } from "./svnFileSystemProvider";
 import { enableIncrementalStatusRefresh } from "./incrementalStatus";
 import { enableTargetedStatusLogReasons } from "./svnLogReasons";
-
-type SourceControlManagerResolver = (
-  value: SourceControlManager | PromiseLike<SourceControlManager>
-) => void;
-type SourceControlManagerRejecter = (reason?: unknown) => void;
+import { DisposableScope, InitializationTransaction } from "./lifecycle";
 
 async function init(
   extensionContext: ExtensionContext,
   outputChannel: OutputChannel,
-  disposables: Disposable[],
-  resolveSourceControlManager: SourceControlManagerResolver
+  transaction: InitializationTransaction<SourceControlManager>
 ) {
+  const attempt = transaction.add(new DisposableScope());
+  try {
+    return await initializeAttempt(
+      extensionContext,
+      outputChannel,
+      attempt,
+      transaction.ready
+    );
+  } catch (error) {
+    attempt.dispose();
+    throw error;
+  }
+}
+
+async function initializeAttempt(
+  extensionContext: ExtensionContext,
+  outputChannel: OutputChannel,
+  attempt: DisposableScope,
+  ready: Promise<SourceControlManager>
+): Promise<SourceControlManager> {
+  const disposables = attempt.disposables;
   const pathHint = configuration.get<string>("path");
   const svnFinder = new SvnFinder();
 
   const info = await svnFinder.findSvn(pathHint);
+  attempt.assertActive();
   const svn = new Svn({ svnPath: info.path, version: info.version });
 
   const onOutput = (str: string) => outputChannel.append(str);
@@ -54,56 +71,54 @@ async function init(
 
   outputChannel.appendLine(`Using svn "${info.version}" from "${info.path}"`);
 
-  const sourceControlManager = await new SourceControlManager(
-    svn,
-    ConstructorPolicy.Async,
-    extensionContext
+  const sourceControlManager = attempt.add(
+    new SourceControlManager(svn, ConstructorPolicy.LateInit, extensionContext)
   );
-
-  resolveSourceControlManager(sourceControlManager);
 
   enableIncrementalStatusRefresh(sourceControlManager, disposables);
   enableTargetedStatusLogReasons(sourceControlManager, disposables);
-  registerCommands(sourceControlManager, disposables);
+  registerCommands(sourceControlManager, disposables, ready);
 
-  disposables.push(
-    sourceControlManager,
-    new SvnProvider(sourceControlManager),
-    new RepoLogProvider(sourceControlManager),
-    new ItemLogProvider(sourceControlManager),
-    new BranchChangesProvider(sourceControlManager),
-    new CheckActiveEditor(sourceControlManager),
-    new OpenRepositoryCount(sourceControlManager),
-    new IsSvn18orGreater(info.version),
-    new IsSvn19orGreater(info.version)
-  );
+  attempt.add(new SvnProvider(sourceControlManager));
+  attempt.add(new RepoLogProvider(sourceControlManager));
+  attempt.add(new ItemLogProvider(sourceControlManager));
+  attempt.add(new BranchChangesProvider(sourceControlManager));
+  await attempt.add(new CheckActiveEditor(sourceControlManager)).initialized;
+  attempt.assertActive();
+  await attempt.add(new OpenRepositoryCount(sourceControlManager)).initialized;
+  attempt.assertActive();
+  await attempt.add(new IsSvn18orGreater(info.version)).initialized;
+  attempt.assertActive();
+  await attempt.add(new IsSvn19orGreater(info.version)).initialized;
+  attempt.assertActive();
 
   disposables.push(toDisposable(messages.dispose));
+  if (extensionContext.extensionMode === ExtensionMode.Test) {
+    attempt.add(messages.registerTestCommand());
+  }
+  await sourceControlManager.initialize();
+  attempt.assertActive();
+  return sourceControlManager;
 }
 
-async function _activate(context: ExtensionContext, disposables: Disposable[]) {
-  const outputChannel = window.createOutputChannel("Svn");
-  disposables.push(
-    commands.registerCommand("svn.showOutput", () => outputChannel.show()),
-    outputChannel,
-    configuration
+async function _activate(context: ExtensionContext, scope: DisposableScope) {
+  scope.add(configuration);
+  configuration.register();
+  const transaction = scope.add(
+    new InitializationTransaction<SourceControlManager>()
+  );
+  const outputChannel = scope.add(window.createOutputChannel("Svn"));
+  scope.add(
+    commands.registerCommand("svn.showOutput", () => outputChannel.show())
   );
 
+  scope.add(tempSvnFs);
   tempSvnFs.register();
-  disposables.push(tempSvnFs);
 
   // Register the svn: scheme before any asynchronous initialization. VS Code
   // can restore BASE/diff editors immediately when the window opens, even while
   // the SVN executable is still being discovered.
-  let resolveSourceControlManager!: SourceControlManagerResolver;
-  let rejectSourceControlManager!: SourceControlManagerRejecter;
-  const sourceControlManagerReady = new Promise<SourceControlManager>(
-    (resolve, reject) => {
-      resolveSourceControlManager = resolve;
-      rejectSourceControlManager = reject;
-    }
-  );
-  disposables.push(new SvnFileSystemProvider(sourceControlManagerReady));
+  scope.add(new SvnFileSystemProvider(transaction.ready));
 
   const showOutput = configuration.get<boolean>("showOutput");
 
@@ -113,16 +128,11 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
 
   const tryInit = async (): Promise<void> => {
     try {
-      await init(
-        context,
-        outputChannel,
-        disposables,
-        resolveSourceControlManager
-      );
+      transaction.commit(await init(context, outputChannel, transaction));
     } catch (err) {
       const message = getErrorMessage(err);
       if (!/Svn installation not found/.test(message)) {
-        rejectSourceControlManager(err);
+        transaction.fail(err);
         throw err;
       }
 
@@ -131,7 +141,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
           configuration.get<boolean>("ignoreMissingSvnWarning") === true;
 
         if (shouldIgnore) {
-          rejectSourceControlManager(err);
+          transaction.fail(err);
           return;
         }
 
@@ -148,6 +158,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
           download,
           neverShowAgain
         );
+        scope.assertActive();
 
         if (choice === findSvnExecutable) {
           let filters: { [name: string]: string[] } | undefined;
@@ -165,6 +176,7 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
             canSelectMany: false,
             filters
           });
+          scope.assertActive();
 
           if (executable && executable[0]) {
             const file = executable[0].fsPath;
@@ -187,9 +199,9 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
 
         // No further initialization attempt will be made during this activation.
         // Reject restored svn: documents instead of leaving them loading forever.
-        rejectSourceControlManager(err);
+        transaction.fail(err);
       } catch (recoveryError) {
-        rejectSourceControlManager(recoveryError);
+        transaction.fail(recoveryError);
         throw recoveryError;
       }
     }
@@ -199,12 +211,14 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]) {
 }
 
 export async function activate(context: ExtensionContext) {
-  const disposables: Disposable[] = [];
-  context.subscriptions.push(
-    new Disposable(() => Disposable.from(...disposables).dispose())
-  );
-
-  await _activate(context, disposables).catch(err => console.error(err));
+  const scope = new DisposableScope();
+  context.subscriptions.push(scope);
+  try {
+    await _activate(context, scope);
+  } catch (error) {
+    scope.dispose();
+    throw error;
+  }
 }
 
 // this method is called when your extension is deactivated

@@ -28,8 +28,26 @@ flowchart TD
 2. registers the `tempsvnfs:` and `svn:` file-system providers before
    asynchronous SVN discovery, so restored editors can resolve their URIs;
 3. locates the configured or system `svn` executable;
-4. constructs `Svn` and `SourceControlManager`;
-5. registers commands, history providers, contexts, and refresh helpers.
+4. constructs `Svn` and an owned, not-yet-enabled `SourceControlManager`;
+5. registers commands, history providers, contexts, and refresh helpers;
+6. awaits manager initialization and commits readiness.
+
+Activation uses explicit disposable scopes. Every successful acquisition is
+recorded immediately; failure unwinds resources in reverse order, even if one
+cleanup throws. Manager ownership begins before its first asynchronous scan.
+The `svn:` provider and manager command share one readiness promise, which is
+resolved only after the whole initialization transaction succeeds. Disposal or
+fatal initialization failure rejects pending consumers and rolls back the scope.
+
+Missing-SVN recovery keeps only the bootstrap output/configuration/filesystem
+resources alive while the user chooses another executable. Failed attempts are
+rolled back independently; declining recovery rejects restored reads with an
+unavailable error. Bootstrap resources remain activation-owned until disposal.
+View constructors register resources one at a time with constructor-local
+rollback, so a later command-registration failure cannot leak an earlier view.
+The commit-message test command is registered explicitly only in extension test
+mode and is disposed with the successful activation; importing modules does not
+register that command.
 
 The extension activates after startup and when VS Code needs an `svn:` URI.
 

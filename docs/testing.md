@@ -1,5 +1,11 @@
 # Testing
 
+Activation lifecycle regressions are covered by `activationTransaction.test.ts`
+(staged registration failures, deferred readiness, missing-SVN recovery and
+repeated activation) and `sourceControlManagerLifecycle.test.ts` (overlapping
+enable sessions, rollback and close notifications). Pure ownership tests in
+`lifecycle.test.ts` bring the unit suite to 25 tests as of issue #64.
+
 ## Test layers
 
 ### Static checks

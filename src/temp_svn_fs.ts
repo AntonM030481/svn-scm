@@ -1,3 +1,4 @@
+import { registerResources } from "./lifecycle";
 import {
   FileSystemProvider,
   Event,
@@ -68,15 +69,18 @@ export class TempSvnFs implements FileSystemProvider, Disposable {
       return;
     }
 
-    this._disposables.push(
-      workspace.registerFileSystemProvider("tempsvnfs", this, {
-        isCaseSensitive: true
-      }),
-      workspace.onDidCloseTextDocument(event => {
-        if (event.uri.scheme === "tempsvnfs") {
-          this.delete(event.uri);
-        }
-      })
+    registerResources(
+      this._disposables,
+      () =>
+        workspace.registerFileSystemProvider("tempsvnfs", this, {
+          isCaseSensitive: true
+        }),
+      () =>
+        workspace.onDidCloseTextDocument(event => {
+          if (event.uri.scheme === "tempsvnfs") {
+            this.delete(event.uri);
+          }
+        })
     );
   }
 

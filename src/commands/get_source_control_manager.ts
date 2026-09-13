@@ -2,7 +2,10 @@ import { SourceControlManager } from "../source_control_manager";
 import { Command } from "./command";
 
 export class GetSourceControlManager extends Command {
-  constructor(protected sourceControlManager: SourceControlManager) {
+  constructor(
+    protected sourceControlManager:
+      SourceControlManager | PromiseLike<SourceControlManager>
+  ) {
     super("svn.getSourceControlManager");
   }
 
