@@ -104,3 +104,19 @@ or count toward the extension's unit baseline.
   reactivation when the component supports it.
 - Tests that create timers, listeners, temporary repositories, or providers
   must dispose them even when an assertion fails.
+
+
+Startup snapshot tests in `statusSnapshot.test.ts` run in the unit suite and
+cover validation, scope/identity isolation, partial reconciliation, bounded
+file selection and persistence ordering. `startupStatus.test.ts` uses real SVN
+working copies and VS Code SCM groups, with gated scans to verify the restored,
+fast and full phases independently, including failures and disposal. Sparse
+large-file fixtures exercise size limits without expensive binary comparisons.
+Remote persistence coverage uses a second checkout to verify overlapping and
+remote-only changes survive incremental local refreshes and reopening, and
+clear after a successful remote scan. Incoming-update regressions cover
+removed/reclassified remote previews and successful updates from live selections.
+Cleanup recovery coverage injects failing status until real SVN cleanup runs,
+then verifies that its post-operation scan restores readiness. The same
+regression verifies remove-unversioned cannot run before recovery and can run
+after validated cleanup.

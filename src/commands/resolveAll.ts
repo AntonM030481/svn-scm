@@ -10,6 +10,7 @@ export class ResolveAll extends Command {
   }
 
   public async execute(repository: Repository) {
+    await repository.ensureStatus();
     const conflicts = repository.conflicts.resourceStates;
 
     if (!conflicts.length) {

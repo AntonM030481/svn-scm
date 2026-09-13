@@ -8,6 +8,7 @@ async function main(): Promise<void> {
     color: true
   });
 
+  mocha.addFile(path.resolve(__dirname, "statusSnapshot.test.js"));
   mocha.addFile(path.resolve(__dirname, "globMatch.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnError.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnProcess.test.js"));

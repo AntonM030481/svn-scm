@@ -14,7 +14,9 @@ export class ChangeList extends Command {
     let uris: Uri[];
 
     if (args[0] instanceof Resource) {
-      uris = (args as Resource[]).map(resource => resource.resourceUri);
+      const selection = await this.getResourceStates(args as Resource[], true);
+      if (!selection.length) return;
+      uris = selection.map(resource => resource.resourceUri);
     } else if (args[0] instanceof Uri) {
       uris = args[1] as Uri[];
     } else if (window.activeTextEditor) {
@@ -29,9 +31,10 @@ export class ChangeList extends Command {
       ""
     )) as SourceControlManager;
 
-    const promiseArray = uris.map(async uri =>
-      sourceControlManager.getRepositoryFromUri(uri)
-    );
+    const promiseArray = uris.map(async uri => {
+      await sourceControlManager.getRepository(uri)?.ensureStatus();
+      return sourceControlManager.getRepositoryFromUri(uri);
+    });
     let repositories = await Promise.all(promiseArray);
     repositories = repositories.filter(repository => repository);
 

@@ -34,7 +34,9 @@ export class PullIncommingChange extends Command {
       return;
     }
 
-    const uris = changes.map(change => change.resourceUri);
+    const validated = await this.getResourceStates(changes, true);
+    const uris = validated.map(change => change.resourceUri);
+    if (!uris.length) return;
 
     await this.runByRepository(uris, async (repository, resources) => {
       if (!repository) {
@@ -43,13 +45,13 @@ export class PullIncommingChange extends Command {
 
       const files = resources.map(resource => resource.fsPath);
 
-      files.forEach(async path => {
+      for (const path of files) {
         const result = await repository.pullIncomingChange(path);
 
         if (showUpdateMessage) {
           window.showInformationMessage(result);
         }
-      });
+      }
     });
   }
 }
