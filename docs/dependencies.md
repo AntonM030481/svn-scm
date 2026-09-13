@@ -26,6 +26,11 @@ are the source of truth for exact versions.
 Runtime libraries are bundled into `out/extension.js`; `vscode` is the notable
 external supplied by the host. The extension does not ship the SVN executable.
 
+`SvnFinder` validates the local client (minimum SVN 1.6) and publishes a normalized
+`major.minor.patch` version. Vendor suffixes such as SlikSVN build identifiers are
+removed at this boundary. Discovery and other capability checks consume that
+validated value rather than applying different rules to the raw version string.
+
 ## Updating dependencies
 
 For routine patch or minor updates:
