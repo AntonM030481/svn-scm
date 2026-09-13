@@ -24,7 +24,8 @@ suite("Activation transaction", () => {
   let failure: string | undefined;
   let provider: Provider | undefined;
   let context: ExtensionContext;
-  let initialize: () => Promise<void>;
+  let initialize: (manager: Manager) => Promise<void>;
+  const views = new Map<string, any>();
   let configurationListeners: number;
   let editorListeners: number;
   let liveManager: Manager;
@@ -129,6 +130,7 @@ suite("Activation transaction", () => {
     failure = undefined;
     provider = undefined;
     registrations.clear();
+    views.clear();
     configurationListeners = 0;
     editorListeners = 0;
     context = {
@@ -165,9 +167,11 @@ suite("Activation transaction", () => {
       }
       return undefined;
     });
-    stub(window, "registerTreeDataProvider", (name: string) =>
-      acquire(`view:${name}`)
-    );
+    stub(window, "registerTreeDataProvider", (name: string, view: unknown) => {
+      const resource = acquire(`view:${name}`);
+      views.set(name, view);
+      return resource;
+    });
     stub(window, "onDidChangeActiveTextEditor", () =>
       acquire(`editor:${++editorListeners}`)
     );
@@ -199,7 +203,7 @@ suite("Activation transaction", () => {
         if (failure === "initialize") {
           throw new Error("failure at initialize");
         }
-        await initialize();
+        await initialize(this);
         this.setState("initialized");
       }
     );
@@ -291,6 +295,44 @@ suite("Activation transaction", () => {
     }
     assert.ok(resources.every(resource => resource.disposed === 1));
   });
+
+  for (const failAfterDiscovery of [false, true]) {
+    test(`history consumers see discovered repositories; rollback=${failAfterDiscovery}`, async () => {
+      let disposed = 0;
+      let initializedManager!: Manager;
+      const branchRoot = Uri.parse("file:///activation-repository/trunk");
+      initialize = async manager => {
+        initializedManager = manager;
+        manager.openRepositories.push({
+          repository: {
+            root: "/activation-repository",
+            workspaceRoot: "/activation-repository",
+            branchRoot,
+            repository: { info: { revision: "1" } }
+          } as any,
+          dispose: () => {
+            disposed++;
+          }
+        });
+      };
+      if (failAfterDiscovery) {
+        failure = "isSvn19orGreater";
+        await assert.rejects(activate(context), /failure at/);
+        assert.equal(initializedManager.state, "disposed");
+        assert.equal(disposed, 1);
+      } else {
+        await activate(context);
+        assert.equal(disposed, 0);
+      }
+      const repositoryHistory = views.get("repolog");
+      const fileHistory = views.get("itemlog");
+      assert.ok(repositoryHistory.logCache.has(branchRoot.toString(true)));
+      assert.strictEqual(fileHistory.sourceControlManager, initializedManager);
+      if (!failAfterDiscovery) {
+        assert.equal(fileHistory.sourceControlManager.repositories.length, 1);
+      }
+    });
+  }
 
   test("production activation does not register the test-only command", async () => {
     (context as any).extensionMode = ExtensionMode.Production;

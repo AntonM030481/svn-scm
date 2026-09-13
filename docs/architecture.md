@@ -29,8 +29,10 @@ flowchart TD
    asynchronous SVN discovery, so restored editors can resolve their URIs;
 3. locates the configured or system `svn` executable;
 4. constructs `Svn` and an owned, not-yet-enabled `SourceControlManager`;
-5. registers commands, history providers, contexts, and refresh helpers;
-6. awaits manager initialization and commits readiness.
+5. registers commands and refresh helpers;
+6. awaits the owned manager's initial repository discovery;
+7. constructs views and contexts against the discovered model, then commits
+   readiness only after these acquisitions succeed.
 
 Activation uses explicit disposable scopes. Every successful acquisition is
 recorded immediately; failure unwinds resources in reverse order, even if one

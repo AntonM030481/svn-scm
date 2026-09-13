@@ -79,6 +79,12 @@ async function initializeAttempt(
   enableTargetedStatusLogReasons(sourceControlManager, disposables);
   registerCommands(sourceControlManager, disposables, ready);
 
+  // Cache-backed consumers seed their state from the initial repository set.
+  // The manager is already owned, but its public readiness remains gated until
+  // every following view/context acquisition succeeds.
+  await sourceControlManager.initialize();
+  attempt.assertActive();
+
   attempt.add(new SvnProvider(sourceControlManager));
   attempt.add(new RepoLogProvider(sourceControlManager));
   attempt.add(new ItemLogProvider(sourceControlManager));
@@ -96,8 +102,6 @@ async function initializeAttempt(
   if (extensionContext.extensionMode === ExtensionMode.Test) {
     attempt.add(messages.registerTestCommand());
   }
-  await sourceControlManager.initialize();
-  attempt.assertActive();
   return sourceControlManager;
 }
 
