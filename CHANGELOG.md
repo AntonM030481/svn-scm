@@ -1,13 +1,27 @@
 # [Unreleased]
 
+# [2.20.0](https://github.com/AntonM030481/svn-scm/compare/v2.19.0...v2.20.0) (2026-09-13)
+
+Stabilization and maintenance release. No new major SVN workflows are introduced.
+
+### Compatibility
+
+* VS Code 1.86 or newer is now required (previously 1.53). Users on older VS Code versions must upgrade VS Code to install this release.
+* Continue using the system SVN client; no SVN executable is bundled. Distribution remains a GitHub Release with an installable VSIX.
+
+### Performance Improvements
+
+* Defer normal activation until editor startup finishes while preserving restored SVN document activation.
+* Avoid premature quick-diff and file-history lookups while initial status is pending.
+* Filter discovery events and avoid unused external metadata calls; retain correctness checks for ownership and post-mutation metadata.
+
 ### Bug Fixes
 
-* Honor the current avatar URL template and requested size when rendering history icons (#99).
-
-* Keep recursive discovery enabled/depth/ignore settings consistent across configuration changes without triggering additional scans (#98).
-
 * Honor the published conflict auto-resolution and tag capture-group settings; correct nullable/list schemas and keep documented defaults synchronized (#94).
-
+* Keep recursive discovery enabled/depth/ignore settings consistent across configuration changes without triggering additional scans (#98).
+* Honor the current avatar URL template and requested size on the next history render (#99).
+* Prevent stale repository views, duplicate temporary filesystem registration, and restored diff reads hanging after failed SVN initialization.
+* Cancel pending debounce callbacks, temporary filesystem events and cleanup timers when their owner is disabled or disposed.
 * Escape commit-message webview content and restrict its content security policy (#56).
 * Correct watcher lifecycle, history synchronization, and external configuration refreshes (#57, #58, #59).
 * Discover moved working copies without recursive event scans or stale lifecycle publication, preserving legacy SVN and nested workspace ownership (#60).
@@ -19,6 +33,17 @@
 ### Maintenance
 
 * Share the full CI matrix with releases, avoid duplicate feature-push/PR runs, and enforce bundle/VSIX budgets (#65).
+* Restore Windows and macOS integration coverage; test Linux and Windows on minimum and stable VS Code, and macOS on stable.
+* Migrate to Yarn 4 and modernize TypeScript, ESLint, webpack and compatible dependencies. Keep Mocha 10 for the minimum extension-host runtime.
+* Bundle encoding libraries without relying on VS Code's private dependency layout; preserve physical ASAR filesystem behavior without the npm original-fs package.
+* Reduce VSIX contents to runtime assets and bundle; harden GitHub Actions permissions and pins, and add scheduled dependency updates.
+* Generate the README settings table from the manifest and check it in CI. Add architecture, discovery, refresh, testing, dependency and release documentation.
+* Add regression coverage for encoding, process cancellation, activation rollback, discovery, routing and release tooling; enable stricter error handling.
+
+### Known Limitations
+
+* Broader settings interactions remain tracked in [#95](https://github.com/AntonM030481/svn-scm/issues/95); this release does not claim that every inherited setting combination is resolved.
+* The documented Mocha tooling dependency exception remains; see the [dependency audit](https://github.com/AntonM030481/svn-scm/blob/v2.20.0/docs/dependency-audit-2026-09-13.md). The affected serializer is not included in the extension bundle.
 
 # [2.19.0](https://github.com/AntonM030481/svn-scm/compare/v2.18.0...v2.19.0) (2026-09-10)
 
