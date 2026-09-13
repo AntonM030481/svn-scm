@@ -337,7 +337,10 @@ suite("Persisted startup status integration", () => {
     );
     try {
       await entered.promise;
-      const mutation = repo.addChangelist(["clean.txt"], "after-startup");
+      const mutation = repo.addChangelist(
+        [path.join(f.root, "clean.txt")],
+        "after-startup"
+      );
       await Promise.resolve();
       assert.equal(mutations, 0);
       release.resolve();
