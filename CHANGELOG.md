@@ -2,6 +2,8 @@
 
 ### Bug Fixes
 
+* Keep recursive discovery enabled/depth/ignore settings consistent across configuration changes without triggering additional scans (#98).
+
 * Honor the published conflict auto-resolution and tag capture-group settings; correct nullable/list schemas and keep documented defaults synchronized (#94).
 
 * Escape commit-message webview content and restrict its content security policy (#56).

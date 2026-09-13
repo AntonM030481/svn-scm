@@ -3,6 +3,7 @@ import * as path from "path";
 import * as semver from "semver";
 import {
   commands,
+  ConfigurationChangeEvent,
   Disposable,
   Event,
   EventEmitter,
@@ -217,18 +218,38 @@ export class SourceControlManager implements IDisposable {
     );
   }
 
-  private onDidChangeConfiguration(): void {
-    if (this.disposed) {
+  private onDidChangeConfiguration(event: ConfigurationChangeEvent): void {
+    if (
+      this.disposed ||
+      !["svn.enabled", "svn.multipleFolders"].some(section =>
+        event.affectsConfiguration(section)
+      )
+    ) {
       return;
     }
 
-    this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
-    this.setEnabled(configuration.get<boolean>("enabled") === true);
+    this.updateDiscoverySettings();
+    if (event.affectsConfiguration("svn.enabled")) {
+      this.setEnabled(configuration.get<boolean>("enabled") === true);
+    }
     void this.enableTask.catch(error => {
       this.svn.logOutput(
         `[activation] Unable to enable SVN: ${String(error)}\n`
       );
     });
+  }
+
+  private updateDiscoverySettings(): void {
+    const recursive = configuration.get<boolean>(
+      "multipleFolders.enabled",
+      false
+    );
+    this.maxDepth = recursive
+      ? configuration.get<number>("multipleFolders.depth", 0)
+      : 0;
+    this.ignoreList = recursive
+      ? configuration.get<string[]>("multipleFolders.ignore", [])
+      : [];
   }
 
   private setEnabled(enabled: boolean): void {
@@ -250,16 +271,7 @@ export class SourceControlManager implements IDisposable {
   private async enable() {
     const lifecycleGeneration = this.lifecycleGeneration;
     try {
-      const multipleFolders = configuration.get<boolean>(
-        "multipleFolders.enabled",
-        false
-      );
-
-      if (multipleFolders) {
-        this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
-
-        this.ignoreList = configuration.get("multipleFolders.ignore", []);
-      }
+      this.updateDiscoverySettings();
 
       workspace.onDidChangeWorkspaceFolders(
         this.onDidChangeWorkspaceFolders,
