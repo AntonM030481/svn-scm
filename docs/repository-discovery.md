@@ -43,6 +43,13 @@ Recursive scanning is controlled by:
 The scan is depth-bounded and skips matching directories such as dependency or
 vendor trees. It is intentionally not an unbounded search of the filesystem.
 
+The three recursive settings are applied together at enable and when they
+change. Disabling recursive discovery resets its effective depth and ignore
+patterns; unrelated editor settings do not affect discovery. Changes govern
+subsequent discovery work without initiating a workspace rescan or closing
+already-open repositories. Reload the window to repeat initial discovery with
+the new settings.
+
 When an open repository reports ignored items or externals, the manager may
 schedule those paths as additional candidates according to `svn.detectIgnored`
 and `svn.detectExternals`. Candidate paths are collected and debounced before

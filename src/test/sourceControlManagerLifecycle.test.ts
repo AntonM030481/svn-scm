@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import {
+  ConfigurationChangeEvent,
   Disposable,
   EventEmitter,
   ExtensionContext,
@@ -20,6 +21,13 @@ suite("Source control manager lifecycle", () => {
   let scans: Array<{ resolve(): void; reject(error: Error): void }>;
   let logs: string[];
   let restore: Array<() => void>;
+  let settings: Record<string, unknown>;
+  let configurationEvents: EventEmitter<ConfigurationChangeEvent>;
+  const fireConfiguration = (section: string) =>
+    configurationEvents.fire({
+      affectsConfiguration: candidate =>
+        section === candidate || section.startsWith(`${candidate}.`)
+    });
   const stub = (object: any, key: string, value: unknown) => {
     const original = object[key];
     restore.push(() => {
@@ -29,7 +37,7 @@ suite("Source control manager lifecycle", () => {
   };
   const change = (value: boolean) => {
     enabled = value;
-    (manager as any).onDidChangeConfiguration();
+    fireConfiguration("svn.enabled");
   };
   const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -41,8 +49,10 @@ suite("Source control manager lifecycle", () => {
     scans = [];
     logs = [];
     restore = [];
+    settings = {};
+    configurationEvents = new EventEmitter<ConfigurationChangeEvent>();
     stub(configuration, "get", (key: string, fallback: unknown) =>
-      key === "enabled" ? enabled : fallback
+      key === "enabled" ? enabled : (settings[key] ?? fallback)
     );
     const listen = (
       _handler: unknown,
@@ -56,7 +66,15 @@ suite("Source control manager lifecycle", () => {
       disposables?.push(resource);
       return resource;
     };
-    stub(workspace, "onDidChangeConfiguration", listen);
+    stub(
+      workspace,
+      "onDidChangeConfiguration",
+      (handler: any, owner: unknown) => {
+        const counted = listen(handler, owner);
+        const listener = configurationEvents.event(handler, owner);
+        return Disposable.from(counted, listener);
+      }
+    );
     stub(workspace, "onDidChangeWorkspaceFolders", listen);
     stub(workspace, "createFileSystemWatcher", () => {
       if (watcherFailure) {
@@ -85,10 +103,59 @@ suite("Source control manager lifecycle", () => {
   });
 
   teardown(() => {
+    try {
+      manager.dispose();
+      assert.equal(activeWatchers, 0);
+      assert.equal(activeListeners, 0);
+    } finally {
+      configurationEvents.dispose();
+      restore.reverse().forEach(fn => fn());
+    }
+  });
+
+  test("recursive settings remain coherent without rescans or watcher churn", async () => {
+    settings = {
+      "multipleFolders.enabled": false,
+      "multipleFolders.depth": 4,
+      "multipleFolders.ignore": ["vendor"]
+    };
+    const initialization = manager.initialize();
+    scans[0].resolve();
+    await initialization;
+    const snapshot = () => [
+      (manager as any).maxDepth,
+      (manager as any).ignoreList
+    ];
+    assert.deepEqual(snapshot(), [0, []]);
+    fireConfiguration("editor.fontSize");
+    fireConfiguration("svn.hideUnversioned");
+    assert.deepEqual(snapshot(), [0, []]);
+    settings["multipleFolders.enabled"] = true;
+    fireConfiguration("svn.multipleFolders.enabled");
+    assert.deepEqual(snapshot(), [4, ["vendor"]]);
+    settings["multipleFolders.depth"] = 2;
+    fireConfiguration("svn.multipleFolders.depth");
+    assert.deepEqual(snapshot(), [2, ["vendor"]]);
+    settings["multipleFolders.ignore"] = ["build"];
+    fireConfiguration("svn.multipleFolders.ignore");
+    assert.deepEqual(snapshot(), [2, ["build"]]);
+    settings["multipleFolders.enabled"] = false;
+    fireConfiguration("svn.multipleFolders.enabled");
+    assert.deepEqual(snapshot(), [0, []]);
+    assert.equal(scans.length, 1);
+    assert.equal(activeWatchers, 1);
+    assert.equal(activeListeners, 2);
+    change(false);
+    settings["multipleFolders.enabled"] = true;
+    change(true);
+    assert.deepEqual(snapshot(), [2, ["build"]]);
+    scans[1].resolve();
+    await tick();
     manager.dispose();
-    assert.equal(activeWatchers, 0);
-    assert.equal(activeListeners, 0);
-    restore.reverse().forEach(fn => fn());
+    settings["multipleFolders.depth"] = 9;
+    fireConfiguration("svn.multipleFolders.depth");
+    assert.deepEqual(snapshot(), [2, ["build"]]);
+    assert.equal(scans.length, 2);
   });
 
   test("initial readiness waits for the latest enable session", async () => {
