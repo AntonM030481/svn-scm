@@ -172,11 +172,10 @@ export function isTargetInWorkspace(
 
 function relativePath(workspaceRoot: string, file: string): string {
   const paths = pathApi(workspaceRoot);
-  if (!paths.isAbsolute(file)) {
-    return file;
-  }
-
-  const relative = paths.relative(workspaceRoot, file);
+  const relative = paths.relative(
+    workspaceRoot,
+    absolutePath(workspaceRoot, file)
+  );
   return relative || ".";
 }
 
@@ -558,6 +557,12 @@ function patchRepository(repository: Repository): Disposable {
       try {
         const result = await original(...args);
         succeeded = true;
+        if (
+          targets &&
+          !shouldPreserveRepositoryState(repository.workspaceRoot, targets)
+        ) {
+          svnRepository.invalidateInfo();
+        }
         return result;
       } finally {
         state.pendingTargets = undefined;
@@ -570,7 +575,16 @@ function patchRepository(repository: Repository): Disposable {
           endWorkingCopyMutation(repository.root);
         }
         if (succeeded && targets) {
-          repository.notifyRepositoryChanged(Uri.file(repository.root));
+          try {
+            // Clean descendants need no subprocess, but must wait for an
+            // outstanding root refresh or retry metadata left dirty by failure.
+            if (await svnRepository.ensureInfoCurrent()) {
+              repository.notifyRepositoryChanged(Uri.file(repository.root));
+            }
+          } catch (error) {
+            // Never invite a retry of the already successful mutation.
+            console.error("Unable to refresh SVN info after mutation", error);
+          }
         }
       }
     };

@@ -206,6 +206,7 @@ export class Repository implements IRemoteRepository {
     public repository: BaseRepository,
     private secrets: SecretStorage
   ) {
+    repository.setInfoOwner(() => !this.disposed);
     this._fsWatcher = new RepositoryFilesWatcher(repository.root);
     this.disposables.push(this._fsWatcher);
 
@@ -347,6 +348,9 @@ export class Repository implements IRemoteRepository {
   }
 
   public notifyRepositoryChanged(uri: Uri): void {
+    if (this.disposed || !this.repository.isInfoCurrent) {
+      return;
+    }
     this._onDidChangeRepository.fire(uri);
   }
 

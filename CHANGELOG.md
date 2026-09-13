@@ -5,6 +5,7 @@
 * Escape commit-message webview content and restrict its content security policy (#56).
 * Correct watcher lifecycle, history synchronization, and external configuration refreshes (#57, #58, #59).
 * Discover moved working copies without recursive event scans or stale lifecycle publication, preserving legacy SVN and nested workspace ownership (#60).
+* Serialize root metadata refreshes and defer mutation notifications until metadata is current, including failure recovery and repository disposal (#61).
 * Preserve SVN membership validation and most-specific ownership when routing changelist selections (#62).
 * Run log search through the configured SVN executor with encoding, authentication, cancellation, and single-writer lifecycle handling (#63).
 
