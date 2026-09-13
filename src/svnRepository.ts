@@ -112,6 +112,7 @@ export class Repository {
     includeExternals?: boolean;
     checkRemoteChanges?: boolean;
     resolveExternalRepositoryUuid?: boolean;
+    forceFull?: boolean;
   }): Promise<IFileStatus[]> {
     params = Object.assign(
       {},

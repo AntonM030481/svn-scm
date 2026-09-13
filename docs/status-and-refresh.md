@@ -20,7 +20,7 @@ They are not an independent database of the working copy.
 
 ```mermaid
 flowchart TD
-    T[Refresh trigger] --> R[Repository.status]
+    T[Refresh trigger] --> R[Repository.status or fullStatus]
     R --> M[updateModelState]
     M --> S[svn status --xml]
     S --> P[parseStatusXml]
@@ -43,6 +43,11 @@ A remote status contains local working-copy status as well. When remote polling
 is enabled, construction therefore performs one initial remote status instead
 of an immediate local scan followed by another remote scan.
 
+`Repository.fullStatus()` is the explicit correctness path for triggers that
+invalidate how the whole snapshot is interpreted. It waits for mutating work
+to become idle and tells the incremental adapter to discard queued file targets
+before executing the normal full-status pipeline.
+
 ## Refresh triggers
 
 Status work can originate from:
@@ -52,6 +57,7 @@ Status work can originate from:
 - completion of a mutating SVN operation;
 - workspace file create, change, or delete events;
 - `.svn` metadata events;
+- configuration changes that alter repository-wide status interpretation;
 - the configured remote-status interval.
 
 Watcher-driven work is debounced and waits until the repository is idle and the
@@ -92,6 +98,8 @@ A full status is required when:
 - no trustworthy target set is available;
 - a target falls outside the working-copy root;
 - `.svn` metadata changed independently of a known operation;
+- a configuration change invalidates cached externals or other
+  repository-wide classification;
 - remote status was requested;
 - targeted status execution or parsing fails.
 
@@ -132,6 +140,8 @@ publish a mixture of old and new groups as a stable result.
 - All accepted paths must remain inside the working-copy root.
 - Remote status never uses the incremental local snapshot path.
 - Unknown metadata changes force full validation.
+- Repository-wide configuration changes clear pending incremental targets and
+  use the explicit full-status path.
 - Failed targeted work falls back to full status.
 - Watcher suppression cannot hide unrelated external changes.
 - Debounced and scheduled work is cancelled when its owner is disposed.

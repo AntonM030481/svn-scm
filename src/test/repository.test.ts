@@ -2,6 +2,8 @@ import * as assert from "assert";
 import * as fs from "node:fs";
 import * as path from "path";
 import { commands, EventEmitter, Uri, window, workspace } from "vscode";
+import { Status, Operation } from "../common/types";
+import { configuration } from "../helpers/configuration";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { SourceControlManager } from "../source_control_manager";
 import { Repository } from "../repository";
@@ -279,6 +281,139 @@ suite("Repository Tests", () => {
       fs.unlinkSync(file);
       await repository.status();
       await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
+  test("External combination setting refreshes cached status", async () => {
+    const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
+    assert.ok(repository);
+
+    const svnRepository = repository.repository;
+    const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
+    const originalConfigurationGet = configuration.get.bind(configuration);
+    const repositoryUuid = await svnRepository.getRepositoryUuid();
+    let combineExternal = false;
+    const statusParams: any[] = [];
+    const forcedStatusParams: any[] = [];
+    let blockNextStatus: Promise<void> | undefined;
+    let markBlockedStatusStarted: (() => void) | undefined;
+
+    (configuration as any).get = (section: string, defaultValue?: any) => {
+      if (section === "sourceControl.combineExternalIfSameServer") {
+        return combineExternal;
+      }
+      return originalConfigurationGet(section, defaultValue);
+    };
+    svnRepository.getStatus = async (params: any) => {
+      statusParams.push(params);
+      if (params.forceFull) {
+        forcedStatusParams.push(params);
+      }
+      if (blockNextStatus) {
+        const blocked = blockNextStatus;
+        blockNextStatus = undefined;
+        markBlockedStatusStarted?.();
+        await blocked;
+      }
+      return [
+        {
+          path: "cached-external",
+          status: Status.EXTERNAL,
+          props: Status.NONE,
+          wcStatus: { locked: false, switched: false },
+          repositoryUuid: params.resolveExternalRepositoryUuid
+            ? repositoryUuid
+            : undefined
+        },
+        {
+          path: "cached-external/modified.txt",
+          status: Status.MODIFIED,
+          props: Status.NONE,
+          wcStatus: { locked: false, switched: false }
+        }
+      ];
+    };
+
+    const fireSettingChange = async () => {
+      const previousForcedCount = forcedStatusParams.length;
+      const statusFinished = new Promise<void>(resolve => {
+        const listener = repository.onDidRunOperation(operation => {
+          if (
+            operation === Operation.Status &&
+            forcedStatusParams.length > previousForcedCount
+          ) {
+            listener.dispose();
+            resolve();
+          }
+        });
+      });
+      (configuration as any)._onDidChange.fire({
+        affectsConfiguration: (section: string) =>
+          section === "svn.sourceControl.combineExternalIfSameServer"
+      });
+      await statusFinished;
+    };
+
+    try {
+      await repository.status();
+      assert.equal(statusParams.at(-1).resolveExternalRepositoryUuid, false);
+      assert.equal(repository.statusExternal.length, 1);
+      assert.equal(repository.changes.resourceStates.length, 0);
+
+      let releaseBlockedStatus!: () => void;
+      let blockedStatusStarted!: () => void;
+      blockNextStatus = new Promise<void>(resolve => {
+        releaseBlockedStatus = resolve;
+      });
+      const statusStarted = new Promise<void>(resolve => {
+        blockedStatusStarted = resolve;
+      });
+      markBlockedStatusStarted = blockedStatusStarted;
+
+      const activeStatus = repository.status();
+      await statusStarted;
+      const queuedStatus = repository.status();
+      combineExternal = true;
+      const previousForcedCount = forcedStatusParams.length;
+      const fullStatusFinished = new Promise<void>(resolve => {
+        const listener = repository.onDidRunOperation(operation => {
+          if (
+            operation === Operation.Status &&
+            forcedStatusParams.length > previousForcedCount
+          ) {
+            listener.dispose();
+            resolve();
+          }
+        });
+      });
+      (configuration as any)._onDidChange.fire({
+        affectsConfiguration: (section: string) =>
+          section === "svn.sourceControl.combineExternalIfSameServer"
+      });
+      releaseBlockedStatus();
+      await Promise.all([activeStatus, queuedStatus, fullStatusFinished]);
+
+      assert.equal(
+        forcedStatusParams.at(-1).resolveExternalRepositoryUuid,
+        true
+      );
+      assert.equal(forcedStatusParams.at(-1).forceFull, true);
+      assert.equal(repository.statusExternal.length, 0);
+      assert.equal(repository.changes.resourceStates.length, 1);
+
+      combineExternal = false;
+      await fireSettingChange();
+      assert.equal(
+        forcedStatusParams.at(-1).resolveExternalRepositoryUuid,
+        false
+      );
+      assert.equal(forcedStatusParams.at(-1).forceFull, true);
+      assert.equal(repository.statusExternal.length, 1);
+      assert.equal(repository.changes.resourceStates.length, 0);
+    } finally {
+      svnRepository.getStatus = originalGetStatus;
+      (configuration as any).get = originalConfigurationGet;
+      await repository.status();
     }
   });
 
