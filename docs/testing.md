@@ -5,6 +5,10 @@ Activation lifecycle regressions are covered by `activationTransaction.test.ts`
 repeated activation) and `sourceControlManagerLifecycle.test.ts` (overlapping
 enable sessions, rollback and close notifications). Pure ownership tests in
 `lifecycle.test.ts` bring the unit suite to 25 tests as of issue #64.
+The activation fault-injection fixture first finishes real host activation, then
+loads an isolated extension module graph while immediately restoring the live
+module cache. It verifies distinct singleton owners and checks the live manager,
+test command and a real `tempsvnfs:` sentinel after all rollback scenarios.
 
 ## Test layers
 

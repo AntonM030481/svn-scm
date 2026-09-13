@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as path from "path";
 import {
   commands,
   Disposable,
@@ -8,22 +9,27 @@ import {
   window,
   workspace
 } from "vscode";
-import { activate } from "../extension";
-import { configuration } from "../helpers/configuration";
-import { SourceControlManager } from "../source_control_manager";
-import { SvnFinder } from "../svnFinder";
-import { SvnFileSystemProvider } from "../svnFileSystemProvider";
+import type { SourceControlManager as Manager } from "../source_control_manager";
+import type { SvnFileSystemProvider as Provider } from "../svnFileSystemProvider";
+import { activeExtension } from "./testUtil";
 
 suite("Activation transaction", () => {
+  let activate: typeof import("../extension").activate;
+  let configuration: typeof import("../helpers/configuration").configuration;
+  let SourceControlManager: typeof import("../source_control_manager").SourceControlManager;
+  let SvnFinder: typeof import("../svnFinder").SvnFinder;
   const originals = new Map<string, { object: any; value: unknown }>();
   const registrations = new Map<string, (...args: any[]) => any>();
   let resources: Array<{ name: string; disposed: number }>;
   let failure: string | undefined;
-  let provider: SvnFileSystemProvider | undefined;
+  let provider: Provider | undefined;
   let context: ExtensionContext;
   let initialize: () => Promise<void>;
   let configurationListeners: number;
   let editorListeners: number;
+  let liveManager: Manager;
+  const sentinel = Uri.parse("tempsvnfs:/activation-isolation-sentinel.txt");
+  const sentinelBytes = Buffer.from("live activation owns this provider");
 
   const stub = (object: any, key: string, value: unknown) => {
     originals.set(key, { object, value: object[key] });
@@ -44,6 +50,78 @@ suite("Activation transaction", () => {
       .splice(0)
       .reverse()
       .forEach(d => d.dispose());
+
+  suiteSetup(async () => {
+    // Finish the real host activation before patching shared VS Code APIs.
+    await activeExtension();
+    liveManager = (await commands.executeCommand(
+      "svn.getSourceControlManager"
+    ))!;
+    await workspace.fs.writeFile(sentinel, sentinelBytes);
+    const liveConfiguration = require("../helpers/configuration").configuration;
+    const liveTempSvnFs = require("../temp_svn_fs").tempSvnFs;
+    const liveManagerClass =
+      require("../source_control_manager").SourceControlManager;
+    // Fault injection needs separate messages/configuration/temp filesystem
+    // singletons. Keep the original cache intact for the live extension and
+    // other suites; only this fixture retains the isolated module graph.
+    const root = path.resolve(__dirname, "..");
+    const owned = (filename: string) => {
+      const relative = path.relative(root, filename);
+      return (
+        !relative.startsWith("..") &&
+        !path.isAbsolute(relative) &&
+        !relative.startsWith(`test${path.sep}`)
+      );
+    };
+    const originalModules = new Map(
+      Object.entries(require.cache).filter(([filename]) => owned(filename))
+    );
+    for (const filename of originalModules.keys()) {
+      delete require.cache[filename];
+    }
+    try {
+      ({ activate } = require("../extension"));
+      ({ configuration } = require("../helpers/configuration"));
+      configuration.dispose();
+      ({ SourceControlManager } = require("../source_control_manager"));
+      ({ SvnFinder } = require("../svnFinder"));
+      assert.notStrictEqual(configuration, liveConfiguration);
+      assert.notStrictEqual(require("../temp_svn_fs").tempSvnFs, liveTempSvnFs);
+      assert.notStrictEqual(
+        SourceControlManager.prototype,
+        liveManagerClass.prototype
+      );
+    } finally {
+      for (const filename of Object.keys(require.cache).filter(owned)) {
+        delete require.cache[filename];
+      }
+      for (const [filename, module] of originalModules) {
+        require.cache[filename] = module;
+      }
+    }
+  });
+
+  suiteTeardown(async () => {
+    configuration?.dispose();
+    try {
+      assert.strictEqual(
+        await commands.executeCommand("svn.getSourceControlManager"),
+        liveManager
+      );
+      assert.ok(
+        (await commands.getCommands(true)).includes(
+          "svn.forceCommitMessageTest"
+        )
+      );
+      assert.deepStrictEqual(
+        Buffer.from(await workspace.fs.readFile(sentinel)),
+        sentinelBytes
+      );
+    } finally {
+      await workspace.fs.delete(sentinel);
+    }
+  });
 
   setup(() => {
     configuration.dispose();
@@ -100,7 +178,7 @@ suite("Activation transaction", () => {
     stub(
       workspace,
       "registerFileSystemProvider",
-      (scheme: string, instance: SvnFileSystemProvider) => {
+      (scheme: string, instance: Provider) => {
         const resource = acquire(`fs:${scheme}`);
         if (scheme === "svn") {
           provider = instance;
@@ -117,7 +195,7 @@ suite("Activation transaction", () => {
     stub(
       SourceControlManager.prototype,
       "initialize",
-      async function (this: SourceControlManager) {
+      async function (this: Manager) {
         if (failure === "initialize") {
           throw new Error("failure at initialize");
         }
