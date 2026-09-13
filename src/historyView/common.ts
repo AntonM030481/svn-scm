@@ -192,8 +192,6 @@ export async function fetchMore(cached: ICachedLog) {
   entries.push(...moreCommits);
 }
 
-const gravatarCache: Map<string, Uri> = new Map();
-
 function md5(s: string): string {
   const data = createHash("md5");
   data.write(s);
@@ -211,22 +209,13 @@ export function getCommitIcon(
     return new ThemeIcon("git-commit");
   }
 
-  let gravatar = gravatarCache.get(author);
-  if (gravatar !== undefined) {
-    return gravatar;
-  }
-
   const gravitarUrl = configuration
     .get("gravatar.icon_url", "")
     .replace("<AUTHOR>", author)
     .replace("<AUTHOR_MD5>", md5(author))
     .replace("<SIZE>", size.toString());
 
-  gravatar = Uri.parse(gravitarUrl);
-
-  gravatarCache.set(author, gravatar);
-
-  return gravatar;
+  return Uri.parse(gravitarUrl);
 }
 
 export function getCommitDescription(commit: ISvnLogEntry): string {
