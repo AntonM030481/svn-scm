@@ -217,7 +217,12 @@ suite("Svn Repository Tests", () => {
     );
     let active = true;
     let finish!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => {
+      markStarted = resolve;
+    });
     repository.exec = async () => {
+      markStarted();
       await new Promise<void>(resolve => {
         finish = resolve;
       });
@@ -229,6 +234,7 @@ suite("Svn Repository Tests", () => {
       };
     };
     const refresh = repository.updateInfo(() => active);
+    await started;
     active = false;
     finish();
     await refresh;
@@ -251,6 +257,90 @@ suite("Svn Repository Tests", () => {
     });
     await repository.updateInfo(() => true);
     assert.equal(repository.info.revision, "43");
+  });
+
+  for (const firstFails of [false, true]) {
+    test(`Serializes info reads and recovers after failure=${firstFails}`, async () => {
+      const repository = await new Repository(
+        new Svn(options),
+        "/wc",
+        "/wc",
+        ConstructorPolicy.LateInit,
+        info
+      );
+      let calls = 0;
+      let finish!: () => void;
+      let markStarted!: () => void;
+      const started = new Promise<void>(resolve => {
+        markStarted = resolve;
+      });
+      repository.exec = async () => {
+        const call = ++calls;
+        if (call === 1) {
+          markStarted();
+          await new Promise<void>(resolve => {
+            finish = resolve;
+          });
+          if (firstFails) throw new Error("first read failed");
+        }
+        return {
+          exitCode: 0,
+          stderr: "",
+          stdout: `<info><entry kind="dir" path="." revision="${42 + call}"><url>https://example.test/svn/project/trunk</url></entry></info>`
+        };
+      };
+      const first = repository.updateInfo();
+      const checkedFirst = firstFails
+        ? assert.rejects(first, /first read failed/)
+        : first;
+      await started;
+      const second = repository.updateInfo();
+      await Promise.resolve();
+      assert.equal(calls, 1);
+      finish();
+      await checkedFirst;
+      await second;
+      assert.equal(calls, 2);
+      assert.equal(repository.info.revision, "44");
+    });
+  }
+
+  test("Skips a queued info read if its owner was disposed while waiting", async () => {
+    const repository = await new Repository(
+      new Svn(options),
+      "/wc",
+      "/wc",
+      ConstructorPolicy.LateInit,
+      info
+    );
+    let active = true;
+    let calls = 0;
+    let finish!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => {
+      markStarted = resolve;
+    });
+    repository.exec = async () => {
+      calls++;
+      markStarted();
+      await new Promise<void>(resolve => {
+        finish = resolve;
+      });
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout:
+          '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
+      };
+    };
+    const first = repository.updateInfo(() => active);
+    await started;
+    const second = repository.updateInfo(() => active);
+    active = false;
+    finish();
+    await Promise.all([first, second]);
+    assert.equal(calls, 1);
+    assert.strictEqual(repository.info, info);
   });
 
   test("Refreshes repository info after switching branch", async () => {

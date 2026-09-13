@@ -2,6 +2,7 @@ import * as path from "path";
 import { clearInterval, setInterval } from "timers";
 import {
   commands,
+  CancellationTokenSource,
   Disposable,
   Event,
   EventEmitter,
@@ -46,6 +47,7 @@ import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
 import { svnErrorCodes } from "./svn";
 import SvnError from "./svnError";
+import { SvnCancellationError, waitForSvn } from "./svnProcess";
 import { Repository as BaseRepository } from "./svnRepository";
 import { toSvnUri } from "./uri";
 import {
@@ -1043,6 +1045,48 @@ export class Repository implements IRemoteRepository {
     );
   }
 
+  /** Each auth retry starts a new snapshot; cancellation owns all attempts. */
+  public async searchLogByText(
+    search: string,
+    signal: AbortSignal,
+    onContent: (content: string) => void
+  ): Promise<void> {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    const disposal = this.onDidDispose(cancel);
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted || this.disposed) {
+      cancel();
+    }
+    try {
+      if (controller.signal.aborted) {
+        throw new SvnCancellationError();
+      }
+      await this.run(
+        Operation.Log,
+        async () => {
+          if (controller.signal.aborted) {
+            throw new SvnCancellationError();
+          }
+          let content = "";
+          onContent(content);
+          await this.repository.plainLogByText(search, {
+            signal: controller.signal,
+            onStdout: chunk => {
+              content += chunk;
+              onContent(content);
+            }
+          });
+        },
+        false,
+        controller.signal
+      );
+    } finally {
+      signal.removeEventListener("abort", cancel);
+      disposal.dispose();
+    }
+  }
+
   public async plainLogByTextBuffer(search: string) {
     return this.run(Operation.Log, () =>
       this.repository.plainLogByTextBuffer(search)
@@ -1130,13 +1174,28 @@ export class Repository implements IRemoteRepository {
     return key;
   }
 
-  public async loadStoredAuths(): Promise<Array<IStoredAuth>> {
+  public async loadStoredAuths(
+    signal?: AbortSignal
+  ): Promise<Array<IStoredAuth>> {
     // Prevent multiple prompts for auth
     if (this.lastPromptAuth) {
-      await this.lastPromptAuth;
+      try {
+        await waitForSvn(this.lastPromptAuth, signal);
+      } catch (error) {
+        // An independently cancelled prompt must not cancel this operation.
+        if (!(error instanceof SvnCancellationError) || signal?.aborted) {
+          throw error;
+        }
+      }
     }
 
-    const secret = await this.secrets.get(this.getCredentialServiceName());
+    if (signal?.aborted) {
+      throw new SvnCancellationError();
+    }
+    const secret = await waitForSvn(
+      this.secrets.get(this.getCredentialServiceName()),
+      signal
+    );
 
     if (typeof secret === "undefined") {
       return [];
@@ -1170,23 +1229,63 @@ export class Repository implements IRemoteRepository {
     }
   }
 
-  public async promptAuth(): Promise<IAuth | undefined> {
+  public async promptAuth(signal?: AbortSignal): Promise<IAuth | undefined> {
+    if (signal?.aborted) {
+      throw new SvnCancellationError();
+    }
     // Prevent multiple prompts for auth
     if (this.lastPromptAuth) {
-      return this.lastPromptAuth;
+      try {
+        return await waitForSvn(this.lastPromptAuth, signal);
+      } catch (error) {
+        if (error instanceof SvnCancellationError && !signal?.aborted) {
+          return this.promptAuth(signal);
+        }
+        throw error;
+      }
     }
 
-    this.lastPromptAuth = commands.executeCommand("svn.promptAuth");
-    const result = await this.lastPromptAuth;
-
-    if (result) {
-      this.username = result.username;
-      this.password = result.password;
-      this.canSaveAuth = true;
+    const cancellation = new CancellationTokenSource();
+    const request = (async () => {
+      const result = await waitForSvn(
+        commands.executeCommand<IAuth>(
+          "svn.promptAuth",
+          undefined,
+          undefined,
+          cancellation.token
+        ),
+        signal
+      );
+      if (signal?.aborted) {
+        throw new SvnCancellationError();
+      }
+      if (result) {
+        this.username = result.username;
+        this.password = result.password;
+        this.canSaveAuth = true;
+      }
+      return result;
+    })();
+    this.lastPromptAuth = request;
+    const cancel = () => {
+      cancellation.cancel();
+      if (this.lastPromptAuth === request) {
+        this.lastPromptAuth = undefined;
+      }
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) {
+      cancel();
     }
-
-    this.lastPromptAuth = undefined;
-    return result;
+    try {
+      return await request;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+      cancellation.dispose();
+      if (this.lastPromptAuth === request) {
+        this.lastPromptAuth = undefined;
+      }
+    }
   }
 
   public onDidSaveTextDocument(document: TextDocument) {
@@ -1209,7 +1308,8 @@ export class Repository implements IRemoteRepository {
   private async run<T>(
     operation: Operation,
     runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
-    forceFullStatus: boolean = false
+    forceFullStatus: boolean = false,
+    signal?: AbortSignal
   ): Promise<T> {
     if (this.disposed || this.state !== RepositoryState.Idle) {
       throw new Error("Repository not initialized");
@@ -1220,7 +1320,7 @@ export class Repository implements IRemoteRepository {
       this._onRunOperation.fire(operation);
 
       try {
-        const result = await this.retryRun(runOperation);
+        const result = await this.retryRun(runOperation, signal);
 
         const checkRemote = operation === Operation.StatusRemote;
 
@@ -1259,18 +1359,25 @@ export class Repository implements IRemoteRepository {
   }
 
   private async retryRun<T>(
-    runOperation: () => Promise<T> = () => Promise.resolve<any>(null)
+    runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
+    signal?: AbortSignal
   ): Promise<T> {
     let attempt = 0;
     let accounts: IStoredAuth[] = [];
 
     while (true) {
+      if (signal?.aborted) {
+        throw new SvnCancellationError();
+      }
       try {
         attempt++;
         const result = await runOperation();
         this.saveAuth();
         return result;
       } catch (err) {
+        if (signal?.aborted) {
+          throw new SvnCancellationError();
+        }
         if (
           err instanceof SvnError &&
           err.svnErrorCode === svnErrorCodes.RepositoryIsLocked &&
@@ -1285,7 +1392,11 @@ export class Repository implements IRemoteRepository {
         ) {
           // First attempt load all stored auths
           if (attempt === 1) {
-            accounts = await this.loadStoredAuths();
+            accounts = await this.loadStoredAuths(signal);
+          }
+
+          if (signal?.aborted) {
+            throw new SvnCancellationError();
           }
 
           // each attempt, try a different account
@@ -1299,7 +1410,7 @@ export class Repository implements IRemoteRepository {
           err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
           attempt <= 3 + accounts.length
         ) {
-          const result = await this.promptAuth();
+          const result = await this.promptAuth(signal);
           if (!result) {
             throw err;
           }

@@ -108,6 +108,9 @@ the notification without turning an already successful mutation into a reported
 failure. The owning repository supplies a lifecycle predicate to the info read:
 disposal prevents a new read and rejects an in-flight result before cache
 assignment. Repository-change publication is also suppressed after disposal.
+Info refreshes are serialized per SVN repository, including after failures, so
+an older read cannot finish last and overwrite a newer accepted revision.
+Queued refreshes recheck owner liveness when they actually start.
 
 ## Full-refresh fallbacks
 
