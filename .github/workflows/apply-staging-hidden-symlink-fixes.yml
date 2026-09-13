@@ -1,0 +1,81 @@
+name: Apply staging hidden-file and symlink fixes
+on: push
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Apply fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, got {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "src/stagingCoordinator.ts",
+              'import { stat } from "./fs";',
+              'import { lstat } from "./fs";'
+          )
+          p = Path("src/stagingCoordinator.ts")
+          text = p.read_text()
+          if text.count("await stat(") != 3:
+              raise SystemExit(f"Expected three stat calls, got {text.count('await stat(')}")
+          p.write_text(text.replace("await stat(", "await lstat("))
+
+          replace_once(
+              "src/stagingCoordinator.ts",
+              '''      for (const directory of directories) {\n        await repository.addFiles([directory]);\n        const descendants = this.resourcesUnderPath(\n          repository,\n          directory\n        ).filter(resource => resource.type === Status.ADDED);\n        const fileDescendants: string[] = [];''',
+              '''      for (const directory of directories) {\n        await repository.addFiles([directory]);\n        let descendants = this.resourcesUnderPath(\n          repository,\n          directory\n        ).filter(resource => resource.type === Status.ADDED);\n        await this.cleanupHiddenDirectoryAdditions(\n          repository,\n          directory,\n          descendants\n        );\n        descendants = this.resourcesUnderPath(repository, directory).filter(\n          resource => resource.type === Status.ADDED\n        );\n        const fileDescendants: string[] = [];'''
+          )
+
+          marker = '''  private addedAncestorDirectoriesForUnstage(\n    repository: Repository,\n    paths: string[]\n  ): string[] {'''
+          p = Path("src/stagingCoordinator.ts")
+          text = p.read_text()
+          if text.count(marker) != 1:
+              raise SystemExit("Expected addedAncestorDirectoriesForUnstage marker once")
+          helper = '''  private async cleanupHiddenDirectoryAdditions(\n    repository: Repository,\n    directory: string,\n    visibleAdded: Resource[]\n  ): Promise<void> {\n    const visible = new Set<string>();\n    const requiredDirectories = new Set<string>();\n\n    for (const resource of visibleAdded) {\n      const resourcePath = resource.resourceUri.fsPath;\n      visible.add(normalizePath(resourcePath));\n\n      let parent = path.dirname(resourcePath);\n      while (isPathInside(directory, parent)) {\n        requiredDirectories.add(normalizePath(parent));\n        if (samePath(parent, directory)) break;\n        const next = path.dirname(parent);\n        if (next === parent) break;\n        parent = next;\n      }\n    }\n\n    const statuses = await repository.repository.getStatus({\n      includeIgnored: true,\n      includeExternals: false,\n      forceFull: true\n    });\n    const hidden = statuses\n      .filter(status => status.status === Status.ADDED)\n      .map(status =>\n        path.isAbsolute(status.path)\n          ? status.path\n          : path.resolve(repository.workspaceRoot, status.path)\n      )\n      .filter(candidate => isPathInside(directory, candidate))\n      .filter(candidate => {\n        const key = normalizePath(candidate);\n        return !visible.has(key) && !requiredDirectories.has(key);\n      })\n      .sort((left, right) => left.length - right.length);\n\n    const roots: string[] = [];\n    for (const candidate of hidden) {\n      if (!roots.some(root => isPathInside(root, candidate))) {\n        roots.push(candidate);\n      }\n    }\n\n    for (const hiddenRoot of roots) {\n      let depth: "empty" | "infinity" = "empty";\n      try {\n        if ((await lstat(hiddenRoot)).isDirectory()) {\n          depth = "infinity";\n        }\n      } catch {\n        // SVN status remains authoritative when the filesystem entry vanished.\n      }\n      await repository.revert([hiddenRoot], depth);\n    }\n  }\n\n'''
+          p.write_text(text.replace(marker, helper + marker, 1))
+
+          replace_once(
+              "src/test/staging.test.ts",
+              'import { commands, Uri } from "vscode";',
+              'import { commands, ConfigurationTarget, Uri, workspace } from "vscode";'
+          )
+
+          test_marker = '''  test("directory-only versioned changes stay unstaged", async () => {'''
+          p = Path("src/test/staging.test.ts")
+          text = p.read_text()
+          if text.count(test_marker) != 1:
+              raise SystemExit("Expected directory-only test marker once")
+          tests = '''  test("staging an unversioned folder leaves files.exclude children unadded", async () => {\n    const checkout = await createCheckoutWithFiles();\n    await sourceControlManager.tryOpenRepository(checkout.fsPath);\n    const repository = sourceControlManager.getRepository(\n      checkout\n    ) as Repository;\n    opened.push(repository);\n\n    const directory = path.join(checkout.fsPath, "filtered-folder");\n    const visible = path.join(directory, "visible.txt");\n    const hidden = path.join(directory, "hidden.txt");\n    fs.mkdirSync(directory);\n    fs.writeFileSync(visible, "visible\\n");\n    fs.writeFileSync(hidden, "hidden\\n");\n\n    const filesConfiguration = workspace.getConfiguration("files", checkout);\n    const previousExclude = filesConfiguration.inspect<Record<string, boolean>>(\n      "exclude"\n    )?.globalValue;\n    await filesConfiguration.update(\n      "exclude",\n      { ...(previousExclude ?? {}), "**/hidden.txt": true },\n      ConfigurationTarget.Global\n    );\n\n    try {\n      await repository.status();\n      const resource = repository.unversioned.resourceStates.find(\n        item => item.resourceUri.fsPath === directory\n      );\n      assert.ok(resource);\n\n      await commands.executeCommand("svn.stage", resource);\n      const status = svn(["status"], checkout.fsPath);\n      assert.match(status, /^A\\s+filtered-folder[\\\\/]visible\\.txt/m);\n      assert.match(status, /^\\?\\s+filtered-folder[\\\\/]hidden\\.txt/m);\n      assert.doesNotMatch(\n        status,\n        /^A\\s+filtered-folder[\\\\/]hidden\\.txt/m\n      );\n      assert.equal(\n        repository.staged?.resourceStates.some(\n          item => item.resourceUri.fsPath === visible\n        ),\n        true\n      );\n    } finally {\n      await filesConfiguration.update(\n        "exclude",\n        previousExclude,\n        ConfigurationTarget.Global\n      );\n    }\n  });\n\n  test("symlinks targeting directories remain stageable files", async () => {\n    if (process.platform === "win32") return;\n\n    const checkout = await createCheckoutWithFiles();\n    await sourceControlManager.tryOpenRepository(checkout.fsPath);\n    const repository = sourceControlManager.getRepository(\n      checkout\n    ) as Repository;\n    opened.push(repository);\n\n    const link = path.join(checkout.fsPath, "dir-link");\n    fs.symlinkSync("one", link);\n    await repository.status();\n\n    const unversioned = repository.unversioned.resourceStates.find(\n      item => item.resourceUri.fsPath === link\n    );\n    assert.ok(unversioned);\n    await commands.executeCommand("svn.stage", unversioned);\n    assert.equal(\n      repository.staged?.resourceStates.some(\n        item => item.resourceUri.fsPath === link\n      ),\n      true\n    );\n\n    repository.inputBox.value = "add staged symlink";\n    await commands.executeCommand("svn.commitStaged", repository.sourceControl);\n    assert.equal(svn(["status"], checkout.fsPath).trim(), "");\n\n    fs.unlinkSync(link);\n    fs.symlinkSync("two", link);\n    await repository.status();\n    const modified = repository.changes.resourceStates.find(\n      item => item.resourceUri.fsPath === link\n    );\n    assert.ok(modified);\n    await commands.executeCommand("svn.stage", modified);\n    assert.equal(\n      repository.staged?.resourceStates.some(\n        item => item.resourceUri.fsPath === link\n      ),\n      true\n    );\n  });\n\n'''
+          p.write_text(text.replace(test_marker, tests + test_marker, 1))
+      - name: Format and validate
+        run: |
+          yarn prettier --write src/stagingCoordinator.ts src/test/staging.test.ts
+          yarn check
+          yarn test:unit
+      - name: Commit fixes and remove helper
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git rm .github/workflows/apply-staging-hidden-symlink-fixes.yml
+          git add src/stagingCoordinator.ts src/test/staging.test.ts
+          git commit -m "fix: keep hidden paths out of staged directory adds"
+          git push origin HEAD:feature/git-like-staging
