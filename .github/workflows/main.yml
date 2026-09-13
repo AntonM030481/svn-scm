@@ -3,10 +3,12 @@ name: CI
 on:
   push:
     branches:
-      - "**"
+      - master
   pull_request:
     branches:
       - master
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -38,8 +40,14 @@ jobs:
       - name: Run unit tests
         run: yarn test:unit
 
+      - name: Test release tooling
+        run: node --test scripts/*.test.cjs
+
       - name: Package extension
         run: yarn vsce package --no-yarn -o svn-scm.vsix
+
+      - name: Check package budgets
+        run: node scripts/check-package-size.cjs svn-scm.vsix
 
       - name: Upload VSIX
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

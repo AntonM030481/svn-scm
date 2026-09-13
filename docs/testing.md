@@ -61,6 +61,34 @@ that only intended runtime files are shipped.
 
 ## Regression-test placement
 
+### Coverage baseline and limits
+
+The audit baseline after #63 is 16 host-independent tests: glob matching (2),
+SVN error classification (4), commit-message HTML (2), and process execution,
+cancellation, and settlement (8). Decoding regressions are in the host-only
+`svnStreaming.test.ts` suite. This is a test-count baseline, not
+a claim that the extension has adequate percentage coverage. The integration
+suite is separate and grows with discovery, lifecycle, routing, and status
+regressions; its authoritative counts are the logs of each CI matrix job.
+
+No whole-extension percentage gate is currently claimed. Unit tests load
+compiled modules, while a separate VS Code/Electron process loads the compiled
+unbundled extension and host tests (`test-compile`, not webpack, runs in the
+matrix jobs). The separate packaging job builds the production bundle; the
+matrix is not a claim of packaged-bundle execution coverage. Instrumenting only
+the unit runner would omit most production behavior. A future coverage gate
+must collect both processes and
+merge their source-mapped results before choosing a threshold. Until then,
+require regression assertions and the full host matrix; prioritize extracting
+pure parsing, path classification, and scheduling decisions into the unit
+runner without creating a second behavioral implementation.
+
+Packaging guard tests run independently with Node's built-in test runner:
+`node --test scripts/check-package-size.test.cjs`. They do not require VS Code
+or count toward the extension's unit baseline.
+
+### Placement rules
+
 - Put pure tests under `src/test/` and include them from `src/test/unit.ts`.
 - Use the extension-host suite for VS Code registrations, activation, restored
   editors, SCM UI integration, and workspace events.
