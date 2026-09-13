@@ -1332,6 +1332,10 @@ export class Repository implements IRemoteRepository {
             accounts = await this.loadStoredAuths();
           }
 
+          if (signal?.aborted) {
+            throw new SvnCancellationError();
+          }
+
           // each attempt, try a different account
           const index = accounts.length - 1;
           if (typeof accounts[index] !== "undefined") {

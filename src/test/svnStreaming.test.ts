@@ -37,6 +37,7 @@ suite("Configured SVN streaming executor", () => {
     const controller = new AbortController();
     let attempts = 0;
     let prompts = 0;
+    repository.repository = {};
     repository.loadStoredAuths = async () => {
       controller.abort();
       return [{ account: "user", password: "password" }];
@@ -53,6 +54,7 @@ suite("Configured SVN streaming executor", () => {
     );
     assert.equal(attempts, 1);
     assert.equal(prompts, 0);
+    assert.equal(repository.repository.username, undefined);
   });
 
   test("auth retries replace partial snapshots and release lifecycle listeners", async () => {
