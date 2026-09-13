@@ -18,7 +18,8 @@ test command and a real `tempsvnfs:` sentinel after all rollback scenarios.
 
 1. ESLint over TypeScript sources;
 2. Prettier in check mode;
-3. strict TypeScript compilation.
+3. strict TypeScript compilation;
+4. generated README settings consistency.
 
 This is the common local and CI quality gate.
 

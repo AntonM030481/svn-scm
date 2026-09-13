@@ -14,6 +14,8 @@ async function main(): Promise<void> {
   mocha.addFile(path.resolve(__dirname, "lifecycle.test.js"));
   mocha.addFile(path.resolve(__dirname, "commitMessageHtml.test.js"));
 
+  mocha.addFile(path.resolve(__dirname, "settingsDocumentation.test.js"));
+
   const failures = await new Promise<number>(resolve => {
     mocha.run(resolve);
   });

@@ -34,7 +34,7 @@
     "main": "./out/extension",
     "scripts": {
         "build": "webpack --mode production",
-        "check": "yarn lint && yarn style-check && yarn test-compile",
+        "check": "yarn lint && yarn style-check && yarn test-compile && yarn docs:check",
         "compile": "webpack --mode development --watch",
         "lint": "eslint \"src/**/*.ts\"",
         "lint:fix": "eslint \"src/**/*.ts\" --fix",
@@ -45,8 +45,9 @@
         "test:unit": "node ./out/test/unit.js",
         "test:integration": "node ./out/test/runTest.js",
         "test-compile": "tsc -p ./",
-        "tools:genReadme": "node ./out/tools/generateConfigSectionForReadme.js",
-        "vscode:prepublish": "yarn check && yarn build"
+        "tools:genReadme": "node ./out/tools/generateConfigSectionForReadme.js --write",
+        "vscode:prepublish": "yarn check && yarn build",
+        "docs:check": "node ./out/tools/generateConfigSectionForReadme.js --check"
     },
     "vsce": {
         "dependencies": false
@@ -988,7 +989,7 @@
                 },
                 "svn.conflicts.autoResolve": {
                     "type": "boolean",
-                    "description": "Set file to status resolved after fix conflicts",
+                    "description": "Automatically mark a conflicted file as resolved after saving it without conflict markers. When disabled, ask for confirmation.",
                     "default": false
                 },
                 "svn.default.encoding": {
@@ -1000,7 +1001,10 @@
                     "default": null
                 },
                 "svn.defaultCheckoutDirectory": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
                     "default": null,
                     "description": "The default location to checkout a svn repository."
                 },
@@ -1057,7 +1061,10 @@
                             "GB18030",
                             "windows-1251"
                         ]
-                    ]
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.gravatar.icon_url": {
                     "type": "string",
@@ -1080,11 +1087,14 @@
                 "svn.ignoreRepositories": {
                     "type": [
                         "array",
-                        null
+                        "null"
                     ],
                     "default": null,
                     "scope": "resource",
-                    "description": "List of SVN repositories to ignore."
+                    "description": "List of SVN repositories to ignore.",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.ignoreWorkingCopyIsTooOld": {
                     "type": "boolean",
@@ -1168,7 +1178,10 @@
                         "**/.hg",
                         "**/vendor",
                         "**/node_modules"
-                    ]
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.path": {
                     "type": [
@@ -1180,7 +1193,10 @@
                     "scope": "machine"
                 },
                 "svn.previousCommitsUser": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
                     "description": "Only show previous commits for a given user. Requires svn >= 1.8",
                     "default": null
                 },
@@ -1240,21 +1256,30 @@
                             "/.vscode/*",
                             "!/.vscode/settings.json"
                         ]
-                    ]
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.sourceControl.ignoreOnCommit": {
                     "type": "array",
                     "description": "Changelists to ignore on commit",
                     "default": [
                         "ignore-on-commit"
-                    ]
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.sourceControl.ignoreOnStatusCount": {
                     "type": "array",
                     "description": "Changelists to ignore on status count",
                     "default": [
                         "ignore-on-commit"
-                    ]
+                    ],
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "svn.update.ignoreExternals": {
                     "type": "boolean",
