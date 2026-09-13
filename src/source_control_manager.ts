@@ -728,7 +728,9 @@ export class SourceControlManager implements IDisposable {
         "repository-routing"
       );
 
-      await repository.info(path);
+      // getInfo explicitly bypasses BaseRepository's two-minute metadata cache.
+      // info() is suitable for display metadata, not current SVN membership.
+      await repository.getInfo(path);
 
       return true;
     } catch (_error) {

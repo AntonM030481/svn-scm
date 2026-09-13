@@ -45,7 +45,7 @@ suite("Validated repository routing", () => {
         onDidChangeRepository: change.event,
         onDidChangeState: state.event,
         getResourceFromFile: () => undefined,
-        info: async () => {
+        getInfo: async () => {
           calls += 1;
         },
         dispose: () => undefined
@@ -119,7 +119,7 @@ suite("Validated repository routing", () => {
     let mutationCalls = 0;
     let prompts = 0;
     const errors: string[] = [];
-    owner.repository.info = async () => {
+    owner.repository.getInfo = async () => {
       infoCalls += 1;
       throw new Error("Unversioned");
     };
@@ -161,7 +161,7 @@ suite("Validated repository routing", () => {
     const gate = new Promise<void>(resolve => {
       release = resolve;
     });
-    owner.repository.info = async () => {
+    owner.repository.getInfo = async () => {
       calls += 1;
       await gate;
     };
@@ -179,7 +179,7 @@ suite("Validated repository routing", () => {
         owner.repository
       );
       assert.strictEqual(calls, 2);
-      owner.repository.info = async () => {
+      owner.repository.getInfo = async () => {
         calls += 1;
         throw new Error("Unversioned now");
       };
@@ -219,7 +219,7 @@ suite("Validated repository routing", () => {
     const f = fixture();
     const ancestor = f.add(root);
     const nested = f.add(path.join(root, "nested"));
-    nested.repository.info = async () => {
+    nested.repository.getInfo = async () => {
       throw new Error("Unversioned");
     };
     try {
@@ -240,7 +240,7 @@ suite("Validated repository routing", () => {
       const f = fixture();
       const owner = f.add(root);
       let release!: () => void;
-      owner.repository.info = () =>
+      owner.repository.getInfo = () =>
         new Promise<void>(resolve => {
           release = resolve;
         });

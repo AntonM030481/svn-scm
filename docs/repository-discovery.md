@@ -157,6 +157,9 @@ absent from SCM groups is still unknown and requires SVN validation.
 Concurrent lookups of the same normalized path in the same repository share one
 in-flight validation. Completed results are not cached: changing SVN membership
 must be observable on the next request even with automatic refresh disabled.
+Membership validation uses `Repository.getInfo()`, which explicitly bypasses
+the lower-level two-minute metadata cache; cached `Repository.info()` is not
+appropriate for this decision.
 Status/repository changes and closure invalidate in-flight results. Before an
 asynchronous result is returned, the manager verifies both that it was not
 invalidated and that the same repository still owns the path. A newly opened
