@@ -552,14 +552,15 @@ export class SourceControlManager implements IDisposable {
       // Legacy directory metadata cannot identify the WC root. An automatic
       // child projection is provisional until a broader owner is discovered,
       // even if the two candidates arrived in different debounce batches.
+      const workspaceOwners = new Set(
+        workspaceFolders.map(folder => this.getRepository(folder.uri))
+      );
       const children = this.openRepositories.filter(
         ({ repository: child }) =>
           this.provisionalLegacyRepositories.has(child) &&
           normalizePath(child.workspaceRoot) !==
             normalizePath(repository.workspaceRoot) &&
-          !workspaceFolders.some(folder =>
-            isDescendant(child.workspaceRoot, folder.uri.fsPath)
-          ) &&
+          !workspaceOwners.has(child) &&
           isDescendant(repository.workspaceRoot, child.workspaceRoot)
       );
       for (const child of children) {

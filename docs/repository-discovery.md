@@ -75,7 +75,9 @@ Explicit workspace projections and modern nested working copies are not replaced
 by this legacy-only policy.
 Replacement consults the current workspace folders, so an automatic child that
 later becomes an explicit workspace owner is protected without a second cached
-copy of workspace membership.
+copy of workspace membership. Protection uses the manager's actual routed owner,
+not containment alone: a folder belonging to a more-specific nested repository
+does not promote its provisional ancestor.
 Ownership is checked both before asynchronous validation and immediately before
 construction, including legacy parent ownership that appeared during the lookup.
 

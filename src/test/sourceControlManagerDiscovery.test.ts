@@ -17,7 +17,8 @@ suite("Source control repository discovery", () => {
       "explicit",
       "automatic",
       "promoted",
-      "promoted subfolder"
+      "promoted subfolder",
+      "nested owner"
     ]) {
       const automaticChild = source !== "explicit";
       test(`registers a later parent with SVN ${version}, child source=${source}`, () => {
@@ -42,31 +43,54 @@ suite("Source control repository discovery", () => {
           manager.openRepositories.push(entry);
           events.push(`open:${repository.workspaceRoot}`);
         };
-        const parent = { workspaceRoot: "/parent" };
-        const child = { workspaceRoot: "/parent/child" };
-        const sibling = { workspaceRoot: "/other" };
+        const makeRepository = (workspaceRoot: string) => ({
+          workspaceRoot,
+          root: workspaceRoot,
+          statusExternal: [],
+          statusIgnored: []
+        });
+        const parent = makeRepository("/parent");
+        const child = makeRepository("/parent/child");
+        const sibling = makeRepository("/other");
+        const nested = makeRepository("/parent/child/subfolder");
         manager.registerDiscoveredRepository(child, 0, automaticChild);
         manager.registerDiscoveredRepository(sibling, 0, true);
-        const folders = source.startsWith("promoted")
-          ? [
-              {
-                uri: Uri.file(
-                  source === "promoted"
-                    ? "/parent/child"
-                    : "/parent/child/subfolder"
-                )
-              }
-            ]
-          : [];
+        if (source === "nested owner") {
+          manager.registerDiscoveredRepository(nested, 0, false);
+        }
+        const folders =
+          source.startsWith("promoted") || source === "nested owner"
+            ? [
+                {
+                  uri: Uri.file(
+                    source === "promoted"
+                      ? "/parent/child"
+                      : "/parent/child/subfolder"
+                  )
+                }
+              ]
+            : [];
         manager.registerDiscoveredRepository(parent, 0, true, folders);
-        const replaced = version === "1.6.23" && source === "automatic";
+        const replaced =
+          version === "1.6.23" &&
+          (source === "automatic" || source === "nested owner");
         assert.deepStrictEqual(
-          manager.openRepositories.map((entry: any) => entry.repository),
-          replaced ? [sibling, parent] : [child, sibling, parent]
+          new Set(
+            manager.openRepositories.map((entry: any) => entry.repository)
+          ),
+          new Set([
+            ...(replaced ? [] : [child]),
+            sibling,
+            ...(source === "nested owner" ? [nested] : []),
+            parent
+          ])
         );
         assert.deepStrictEqual(events, [
           "open:/parent/child",
           "open:/other",
+          ...(source === "nested owner"
+            ? ["open:/parent/child/subfolder"]
+            : []),
           ...(replaced ? ["close:/parent/child"] : []),
           "open:/parent"
         ]);
