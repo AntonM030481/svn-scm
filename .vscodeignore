@@ -15,6 +15,11 @@ package.json.bak
 scss/**
 src/**
 svn-scm.vsix
+*.vsix
+AGENTS.md
+docs/**
+scripts/**
+package-budgets.json
 test-reports
 test/**
 tsconfig.json
