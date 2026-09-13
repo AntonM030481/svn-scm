@@ -12,7 +12,7 @@ Partial/hunk staging is deliberately separate and tracked by issue #90.
 
 Whole-file staged state is stored in reserved SVN changelist names. This keeps staging with the working copy and survives an extension-host or VS Code restart without a second extension-owned database.
 
-The reserved changelist name also encodes whether a file came from a user changelist. Unstage can therefore restore the original changelist even after a reload. Files that were unversioned before staging are marked separately so unstage can return them to an uncommitted state.
+The `__svn_scm_staged__` changelist namespace is reserved for extension-owned staging metadata. The reserved name also encodes whether a file came from a user changelist. Unstage can therefore restore the original changelist even after a reload. Files that were unversioned before staging are marked separately so unstage can return them to an uncommitted state.
 
 Reserved staging changelists are implementation details and are presented as one `Staged Changes` SCM group rather than as ordinary user changelists.
 
