@@ -69,6 +69,9 @@ suite("Staging Tests", () => {
     assert.ok(
       repository.changelists.has(createStagingChangelist("personal-work"))
     );
+    assert.equal(repository.getResourceFromFile(Uri.file(file))?.resourceUri.fsPath, file);
+    assert.equal(repository.staged?.repository, repository);
+    assert.equal(sourceControlManager.getRepository(repository.staged), repository);
 
     await commands.executeCommand("svn.unstage", userResource);
     assert.equal(

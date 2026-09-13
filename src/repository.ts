@@ -79,6 +79,7 @@ export class Repository implements IRemoteRepository {
   public statusBar: StatusBarCommands;
   public changes: ISvnResourceGroup;
   public unversioned: ISvnResourceGroup;
+  public staged?: ISvnResourceGroup;
   public remoteChanges?: ISvnResourceGroup;
   public changelists: Map<string, ISvnResourceGroup> = new Map();
   public conflicts: ISvnResourceGroup;
@@ -156,6 +157,9 @@ export class Repository implements IRemoteRepository {
 
     this.changes.resourceStates = [];
     this.unversioned.resourceStates = [];
+    if (this.staged) {
+      this.staged.resourceStates = [];
+    }
     this.conflicts.resourceStates = [];
     this.changelists.forEach((group, _changelist) => {
       group.resourceStates = [];
@@ -815,6 +819,7 @@ export class Repository implements IRemoteRepository {
       this.changes,
       this.conflicts,
       this.unversioned,
+      ...(this.staged ? [this.staged] : []),
       ...this.changelists.values()
     ];
 

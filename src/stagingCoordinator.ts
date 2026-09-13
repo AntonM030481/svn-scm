@@ -262,6 +262,8 @@ export class StagingCoordinator implements Disposable {
       "Staged Changes"
     ) as ISvnResourceGroup;
     group.hideWhenEmpty = true;
+    group.repository = repository;
+    repository.staged = group;
 
     const state: RepositoryStagingState = {
       group,
@@ -296,6 +298,9 @@ export class StagingCoordinator implements Disposable {
 
     while (state.disposables.length) {
       state.disposables.pop()?.dispose();
+    }
+    if (repository.staged === state.group) {
+      repository.staged = undefined;
     }
     this.states.delete(repository);
   }
