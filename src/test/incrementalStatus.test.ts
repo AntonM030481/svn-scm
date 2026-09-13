@@ -1,6 +1,11 @@
 import * as assert from "assert";
 import { Disposable, EventEmitter } from "vscode";
-import { IFileStatus, Status } from "../common/types";
+import {
+  ConstructorPolicy,
+  IFileStatus,
+  ISvnInfo,
+  Status
+} from "../common/types";
 import {
   fileSnapshotsEqual,
   enableIncrementalStatusRefresh,
@@ -12,13 +17,40 @@ import {
 } from "../incrementalStatus";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
+import { Repository as SvnRepository } from "../svnRepository";
+import { Svn } from "../svn";
 
-function mutationFixture(
+async function mutationFixture(
   workspaceRoot: string,
   failOperation = false,
   failInfo = false
 ) {
   const events: string[] = [];
+  const notifiedRevisions: string[] = [];
+  const svnRepository = await new SvnRepository(
+    {} as Svn,
+    workspaceRoot,
+    workspaceRoot,
+    ConstructorPolicy.LateInit,
+    { revision: "42" } as ISvnInfo
+  );
+  svnRepository.getStatus = async () => {
+    events.push("full-status");
+    return [];
+  };
+  svnRepository.exec = async args => {
+    if (args[0] === "info") {
+      events.push("info");
+      if (failInfo) throw new Error("info failed");
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout: '<info><entry kind="dir" path="." revision="43"/></info>'
+      };
+    }
+    events.push("targeted-status");
+    return { exitCode: 0, stderr: "", stdout: "<status></status>" };
+  };
   const subscribe = () => ({ dispose() {} });
   const operation = async () => {
     events.push("mutation");
@@ -35,30 +67,16 @@ function mutationFixture(
     conflicts: { resourceStates: [] },
     unversioned: { resourceStates: [] },
     changelists: new Map(),
-    repository: {
-      workspaceRoot,
-      getStatus: async () => {
-        events.push("full-status");
-        return [];
-      },
-      exec: async () => {
-        events.push("targeted-status");
-        return { stdout: "<status></status>" };
-      },
-      removeAbsolutePath: (target: string) => target,
-      updateInfo: async (isCurrent: () => boolean = () => true) => {
-        if (!isCurrent()) return;
-        events.push("info");
-        if (failInfo) throw new Error("info failed");
-      }
-    },
+    repository: svnRepository,
     disposed: false,
-    get isDisposed() {
-      return this.disposed;
-    },
     disposables: [],
     _onDidDispose: new EventEmitter<void>(),
-    _onDidChangeRepository: { fire: () => events.push("notify") },
+    _onDidChangeRepository: {
+      fire: () => {
+        events.push("notify");
+        notifiedRevisions.push(svnRepository.info.revision);
+      }
+    },
     dispose: Repository.prototype.dispose,
     notifyRepositoryChanged: Repository.prototype.notifyRepositoryChanged,
     onDidAnyFileChanged() {},
@@ -83,6 +101,7 @@ function mutationFixture(
     rename: operation
   };
   const disposables: Disposable[] = [];
+  svnRepository.setInfoOwner(() => !repository.disposed);
   enableIncrementalStatusRefresh(
     {
       repositories: [repository],
@@ -93,6 +112,7 @@ function mutationFixture(
   return {
     repository: repository as Repository,
     events,
+    notifiedRevisions,
     dispose: () => {
       repository.dispose();
       disposables.forEach(disposable => disposable.dispose());
@@ -120,7 +140,7 @@ suite("Incremental Status Tests", () => {
   ] as Array<[string, string[]]>) {
     for (const target of targets) {
       test(`refreshes info once before notifying for root ${root} target ${target}`, async () => {
-        const fixture = mutationFixture(root);
+        const fixture = await mutationFixture(root);
         try {
           assert.equal(shouldPreserveRepositoryState(root, [target]), false);
           assert.deepEqual(
@@ -147,7 +167,7 @@ suite("Incremental Status Tests", () => {
   }
 
   test("does not refresh root info for strict descendants", async () => {
-    const fixture = mutationFixture("/repo");
+    const fixture = await mutationFixture("/repo");
     try {
       await fixture.repository.commitFiles("message", [
         "src/file.ts",
@@ -164,7 +184,7 @@ suite("Incremental Status Tests", () => {
   });
 
   test("refreshes info for a property mutation of the workspace subfolder", async () => {
-    const fixture = mutationFixture("/wc/client");
+    const fixture = await mutationFixture("/wc/client");
     Object.defineProperty(fixture.repository, "root", { value: "/wc" });
     try {
       await fixture.repository.addToIgnore(["*.tmp"], "/wc/client");
@@ -180,7 +200,7 @@ suite("Incremental Status Tests", () => {
   });
 
   test("does not refresh or notify when the mutation fails", async () => {
-    const fixture = mutationFixture("/repo", true);
+    const fixture = await mutationFixture("/repo", true);
     try {
       await assert.rejects(
         fixture.repository.commitFiles("message", ["."]),
@@ -193,7 +213,7 @@ suite("Incremental Status Tests", () => {
   });
 
   test("does not publish stale info when its refresh fails", async () => {
-    const fixture = mutationFixture("/repo", false, true);
+    const fixture = await mutationFixture("/repo", false, true);
     try {
       assert.equal(
         await fixture.repository.commitFiles("message", ["."]),
@@ -206,18 +226,22 @@ suite("Incremental Status Tests", () => {
   });
 
   test("does not notify after disposal while info refresh is pending", async () => {
-    const fixture = mutationFixture("/repo");
+    const fixture = await mutationFixture("/repo");
     let completeInfo!: () => void;
     let infoStarted!: () => void;
     const started = new Promise<void>(resolve => {
       infoStarted = resolve;
     });
-    fixture.repository.repository.updateInfo = async () => {
-      fixture.events.push("info");
-      infoStarted();
-      await new Promise<void>(resolve => {
-        completeInfo = resolve;
-      });
+    const exec = fixture.repository.repository.exec;
+    fixture.repository.repository.exec = async args => {
+      const result = await exec(args);
+      if (args[0] === "info") {
+        infoStarted();
+        await new Promise<void>(resolve => {
+          completeInfo = resolve;
+        });
+      }
+      return result;
     };
     try {
       const mutation = fixture.repository.commitFiles("message", ["."]);
@@ -232,7 +256,7 @@ suite("Incremental Status Tests", () => {
   });
 
   test("does not launch info when disposed before mutation completion", async () => {
-    const fixture = mutationFixture("/repo");
+    const fixture = await mutationFixture("/repo");
     const getStatus = fixture.repository.repository.getStatus;
     fixture.repository.repository.getStatus = async params => {
       const statuses = await getStatus(params);
@@ -242,6 +266,90 @@ suite("Incremental Status Tests", () => {
     try {
       await fixture.repository.commitFiles("message", ["."]);
       assert.deepEqual(fixture.events, ["mutation", "targeted-status"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  for (const recover of [false, true]) {
+    test(`retries dirty info before a descendant notification, recover=${recover}`, async () => {
+      const fixture = await mutationFixture("/repo", false, true);
+      try {
+        assert.equal(
+          await fixture.repository.commitFiles("root", ["."]),
+          "result"
+        );
+        assert.equal(fixture.repository.repository.isInfoCurrent, false);
+        assert.deepEqual(fixture.notifiedRevisions, []);
+        if (recover) {
+          const exec = fixture.repository.repository.exec;
+          fixture.repository.repository.exec = async args => {
+            if (args[0] !== "info") return exec(args);
+            fixture.events.push("info");
+            return {
+              exitCode: 0,
+              stderr: "",
+              stdout: '<info><entry revision="43"/></info>'
+            };
+          };
+        }
+        assert.equal(
+          await fixture.repository.commitFiles("descendant", ["file.ts"]),
+          "result"
+        );
+        assert.equal(
+          fixture.events.filter(event => event === "info").length,
+          2
+        );
+        assert.deepEqual(fixture.notifiedRevisions, recover ? ["43"] : []);
+      } finally {
+        fixture.dispose();
+      }
+    });
+  }
+
+  test("orders descendant notification after a pending root info refresh", async () => {
+    const fixture = await mutationFixture("/repo");
+    let finish!: () => void;
+    let markStarted!: () => void;
+    let markQueued!: () => void;
+    const started = new Promise<void>(resolve => {
+      markStarted = resolve;
+    });
+    const queued = new Promise<void>(resolve => {
+      markQueued = resolve;
+    });
+    const exec = fixture.repository.repository.exec;
+    fixture.repository.repository.exec = async args => {
+      const result = await exec(args);
+      if (args[0] === "info") {
+        markStarted();
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+      }
+      return result;
+    };
+    const ensure = fixture.repository.repository.ensureInfoCurrent.bind(
+      fixture.repository.repository
+    );
+    let callers = 0;
+    fixture.repository.repository.ensureInfoCurrent = async () => {
+      if (++callers === 2) markQueued();
+      return ensure();
+    };
+    try {
+      const root = fixture.repository.commitFiles("root", ["."]);
+      await started;
+      const descendant = fixture.repository.commitFiles("descendant", [
+        "file.ts"
+      ]);
+      await queued;
+      assert.deepEqual(fixture.notifiedRevisions, []);
+      finish();
+      await Promise.all([root, descendant]);
+      assert.deepEqual(fixture.notifiedRevisions, ["43", "43"]);
+      assert.equal(fixture.events.filter(event => event === "info").length, 1);
     } finally {
       fixture.dispose();
     }

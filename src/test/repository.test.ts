@@ -1,12 +1,20 @@
 import * as assert from "assert";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, EventEmitter, Uri, window, workspace } from "vscode";
+import {
+  commands,
+  ConfigurationTarget,
+  EventEmitter,
+  Uri,
+  window,
+  workspace
+} from "vscode";
 import { Status, Operation } from "../common/types";
 import { configuration } from "../helpers/configuration";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { SourceControlManager } from "../source_control_manager";
 import { Repository } from "../repository";
+import { normalizePath } from "../util";
 import * as testUtil from "./testUtil";
 
 suite("Repository Tests", () => {
@@ -97,9 +105,9 @@ suite("Repository Tests", () => {
       assert.ok(repository);
       assert.equal(repository.sourceControl.quickDiffProvider, undefined);
 
-      const originalInfo = repository.info.bind(repository);
+      const originalInfo = repository.getInfo.bind(repository);
       let infoCalls = 0;
-      (repository as any).info = async (...args: any[]) => {
+      (repository as any).getInfo = async (...args: any[]) => {
         infoCalls += 1;
         return originalInfo.apply(repository, args as [string]);
       };
@@ -109,7 +117,7 @@ suite("Repository Tests", () => {
       );
       assert.equal(repositoryFromUri, repository);
       assert.equal(infoCalls, 0);
-      (repository as any).info = originalInfo;
+      (repository as any).getInfo = originalInfo;
 
       const statusChanged = new Promise<void>(resolve => {
         const disposable = repository.onDidChangeStatus(() => {
@@ -159,7 +167,7 @@ suite("Repository Tests", () => {
       const repositoryFromUri = await sourceControlManager.getRepositoryFromUri(
         Uri.file(file)
       );
-      assert.equal(repositoryFromUri, repository);
+      assert.equal(repositoryFromUri, null);
       assert.equal(
         repository.provideOriginalResource(Uri.file(file)),
         undefined
@@ -167,6 +175,126 @@ suite("Repository Tests", () => {
     } finally {
       fs.unlinkSync(file);
       await repository.status();
+    }
+  });
+
+  for (const omittedBy of [
+    "files.exclude",
+    "svn.sourceControl.ignore",
+    "not-refreshed"
+  ]) {
+    test(`Validated routing rejects unversioned paths omitted by ${omittedBy}`, async () => {
+      const repository = sourceControlManager.getRepository(checkoutDir);
+      assert.ok(repository);
+      await repository.initialStatusSettled;
+      const name = "routing-hidden.txt";
+      const uri = Uri.file(path.join(checkoutDir.fsPath, name));
+      const config = workspace.getConfiguration();
+      const previous =
+        omittedBy === "not-refreshed"
+          ? undefined
+          : config.inspect(omittedBy)?.globalValue;
+      const originalInfo = repository.getInfo;
+      let infoCalls = 0;
+      repository.getInfo = async target => {
+        infoCalls += 1;
+        return originalInfo.call(repository, target);
+      };
+      try {
+        if (omittedBy !== "not-refreshed") {
+          await config.update(
+            omittedBy,
+            omittedBy === "files.exclude" ? { [name]: true } : [name],
+            ConfigurationTarget.Global
+          );
+        }
+        fs.writeFileSync(uri.fsPath, "unversioned");
+        if (omittedBy !== "not-refreshed") {
+          await repository.status();
+        }
+        assert.strictEqual(repository.getResourceFromFile(uri), undefined);
+        assert.strictEqual(
+          await sourceControlManager.getRepositoryFromUri(uri),
+          null
+        );
+        assert.strictEqual(infoCalls, 1);
+      } finally {
+        repository.getInfo = originalInfo;
+        fs.rmSync(uri.fsPath, { force: true });
+        if (omittedBy !== "not-refreshed") {
+          await config.update(omittedBy, previous, ConfigurationTarget.Global);
+        }
+        await repository.status();
+      }
+    });
+  }
+
+  test("Membership validation bypasses an actual cached info result after external revert", async () => {
+    const repository = sourceControlManager.getRepository(checkoutDir);
+    assert.ok(repository);
+    await repository.initialStatusSettled;
+    const config = workspace.getConfiguration("svn");
+    const previous = config.inspect("autorefresh")?.globalValue;
+    const uri = Uri.file(path.join(checkoutDir.fsPath, "routing-cache.txt"));
+    const target = normalizePath(uri.fsPath);
+    const base = repository.repository;
+    const originalExec = base.exec;
+    let infoProcesses = 0;
+    let scheduled = false;
+    base.exec = async (args, options) => {
+      if (args[0] === "info" && args.includes(target)) {
+        infoProcesses += 1;
+      }
+      return originalExec.call(base, args, options);
+    };
+    try {
+      await config.update("autorefresh", false, ConfigurationTarget.Global);
+      fs.writeFileSync(uri.fsPath, "external SVN mutation");
+      // Execute outside Repository operations, without publishing a new SCM
+      // snapshot, exactly as another SVN client would with autorefresh off.
+      await sourceControlManager.svn.exec(checkoutDir.fsPath, ["add", target]);
+      scheduled = true;
+      assert.strictEqual(repository.getResourceFromFile(uri), undefined);
+      assert.strictEqual(
+        await sourceControlManager.getRepositoryFromUri(uri),
+        repository
+      );
+      assert.strictEqual(infoProcesses, 1);
+
+      await sourceControlManager.svn.exec(checkoutDir.fsPath, [
+        "revert",
+        target
+      ]);
+      scheduled = false;
+      assert.ok(fs.existsSync(uri.fsPath));
+      assert.strictEqual(repository.getResourceFromFile(uri), undefined);
+      // Prove the successful lower-level metadata cache is still present.
+      assert.ok(await repository.info(target));
+      assert.strictEqual(infoProcesses, 1);
+
+      assert.strictEqual(
+        await sourceControlManager.getRepositoryFromUri(uri),
+        null
+      );
+      assert.strictEqual(infoProcesses, 2);
+    } finally {
+      base.exec = originalExec;
+      try {
+        if (scheduled) {
+          await sourceControlManager.svn.exec(checkoutDir.fsPath, [
+            "revert",
+            target
+          ]);
+        }
+      } finally {
+        fs.rmSync(uri.fsPath, { force: true });
+        await config.update(
+          "autorefresh",
+          previous,
+          ConfigurationTarget.Global
+        );
+        await repository.status();
+      }
     }
   });
 

@@ -557,6 +557,12 @@ function patchRepository(repository: Repository): Disposable {
       try {
         const result = await original(...args);
         succeeded = true;
+        if (
+          targets &&
+          !shouldPreserveRepositoryState(repository.workspaceRoot, targets)
+        ) {
+          svnRepository.invalidateInfo();
+        }
         return result;
       } finally {
         state.pendingTargets = undefined;
@@ -569,24 +575,15 @@ function patchRepository(repository: Repository): Disposable {
           endWorkingCopyMutation(repository.root);
         }
         if (succeeded && targets) {
-          let infoCurrent = true;
-          // Cached info describes workspaceRoot, including when it is only a
-          // subfolder of the canonical working copy. Descendant mutations do
-          // not change that node's working revision.
-          if (
-            !shouldPreserveRepositoryState(repository.workspaceRoot, targets)
-          ) {
-            try {
-              await svnRepository.updateInfo(() => !repository.isDisposed);
-            } catch (error) {
-              // The mutation already succeeded. Do not report it as failed
-              // (and invite a retry) because this follow-up read failed.
-              infoCurrent = false;
-              console.error("Unable to refresh SVN info after mutation", error);
+          try {
+            // Clean descendants need no subprocess, but must wait for an
+            // outstanding root refresh or retry metadata left dirty by failure.
+            if (await svnRepository.ensureInfoCurrent()) {
+              repository.notifyRepositoryChanged(Uri.file(repository.root));
             }
-          }
-          if (infoCurrent) {
-            repository.notifyRepositoryChanged(Uri.file(repository.root));
+          } catch (error) {
+            // Never invite a retry of the already successful mutation.
+            console.error("Unable to refresh SVN info after mutation", error);
           }
         }
       }

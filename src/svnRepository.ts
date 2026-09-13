@@ -39,6 +39,9 @@ export class Repository {
     [index: string]: ISvnInfo;
   } = {};
   private _info?: ISvnInfo;
+  private infoGeneration = 0;
+  private acceptedInfoGeneration = -1;
+  private infoOwnerActive: () => boolean = () => true;
 
   public username?: string;
   public password?: string;
@@ -51,6 +54,7 @@ export class Repository {
     initialInfo?: ISvnInfo
   ) {
     this._info = initialInfo;
+    if (initialInfo) this.acceptedInfoGeneration = this.infoGeneration;
 
     if (policy === ConstructorPolicy.LateInit) {
       return (async (): Promise<Repository> => {
@@ -65,21 +69,43 @@ export class Repository {
     })() as unknown as Repository;
   }
 
-  @sequentialize
-  public async updateInfo(isCurrent: () => boolean = () => true) {
-    if (!isCurrent()) {
-      return;
-    }
-    const result = await this.exec([
-      "info",
-      "--xml",
-      fixPegRevision(this.workspaceRoot ? this.workspaceRoot : this.root)
-    ]);
+  public setInfoOwner(isActive: () => boolean): void {
+    this.infoOwnerActive = isActive;
+  }
 
-    const info = await parseInfoXml(result.stdout);
-    if (isCurrent()) {
-      this._info = info;
+  public get isInfoCurrent(): boolean {
+    return (
+      this.infoOwnerActive() &&
+      !!this._info &&
+      this.acceptedInfoGeneration === this.infoGeneration
+    );
+  }
+
+  public invalidateInfo(): void {
+    this.infoGeneration++;
+  }
+
+  public async updateInfo(): Promise<void> {
+    this.invalidateInfo();
+    await this.ensureInfoCurrent();
+  }
+
+  @sequentialize
+  public async ensureInfoCurrent(): Promise<boolean> {
+    while (this.infoOwnerActive() && !this.isInfoCurrent) {
+      const generation = this.infoGeneration;
+      const result = await this.exec([
+        "info",
+        "--xml",
+        fixPegRevision(this.workspaceRoot ? this.workspaceRoot : this.root)
+      ]);
+      const info = await parseInfoXml(result.stdout);
+      if (this.infoOwnerActive() && generation === this.infoGeneration) {
+        this._info = info;
+        this.acceptedInfoGeneration = generation;
+      }
     }
+    return this.isInfoCurrent;
   }
 
   public async exec(

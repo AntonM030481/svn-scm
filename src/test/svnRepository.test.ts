@@ -202,7 +202,8 @@ suite("Svn Repository Tests", () => {
       calls++;
       throw new Error("must not execute");
     };
-    await repository.updateInfo(() => false);
+    repository.setInfoOwner(() => false);
+    await repository.updateInfo();
     assert.equal(calls, 0);
     assert.strictEqual(repository.info, info);
   });
@@ -233,7 +234,8 @@ suite("Svn Repository Tests", () => {
           '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
       };
     };
-    const refresh = repository.updateInfo(() => active);
+    repository.setInfoOwner(() => active);
+    const refresh = repository.updateInfo();
     await started;
     active = false;
     finish();
@@ -255,7 +257,8 @@ suite("Svn Repository Tests", () => {
       stdout:
         '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
     });
-    await repository.updateInfo(() => true);
+    repository.setInfoOwner(() => true);
+    await repository.updateInfo();
     assert.equal(repository.info.revision, "43");
   });
 
@@ -270,9 +273,14 @@ suite("Svn Repository Tests", () => {
       );
       let calls = 0;
       let finish!: () => void;
+      let finishSecond!: () => void;
       let markStarted!: () => void;
+      let markSecondStarted!: () => void;
       const started = new Promise<void>(resolve => {
         markStarted = resolve;
+      });
+      const secondStarted = new Promise<void>(resolve => {
+        markSecondStarted = resolve;
       });
       repository.exec = async () => {
         const call = ++calls;
@@ -282,6 +290,11 @@ suite("Svn Repository Tests", () => {
             finish = resolve;
           });
           if (firstFails) throw new Error("first read failed");
+        } else {
+          markSecondStarted();
+          await new Promise<void>(resolve => {
+            finishSecond = resolve;
+          });
         }
         return {
           exitCode: 0,
@@ -298,6 +311,10 @@ suite("Svn Repository Tests", () => {
       await Promise.resolve();
       assert.equal(calls, 1);
       finish();
+      await secondStarted;
+      assert.strictEqual(repository.info, info);
+      assert.equal(repository.isInfoCurrent, false);
+      finishSecond();
       await checkedFirst;
       await second;
       assert.equal(calls, 2);
@@ -333,9 +350,10 @@ suite("Svn Repository Tests", () => {
           '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
       };
     };
-    const first = repository.updateInfo(() => active);
+    repository.setInfoOwner(() => active);
+    const first = repository.updateInfo();
     await started;
-    const second = repository.updateInfo(() => active);
+    const second = repository.updateInfo();
     active = false;
     finish();
     await Promise.all([first, second]);

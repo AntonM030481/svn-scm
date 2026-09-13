@@ -103,14 +103,20 @@ cache describes the opened workspace root even when it is a subfolder of the
 canonical working copy. Strict descendant mutations skip this extra command.
 Relative root aliases, absolute paths, and Windows case/separator variants use
 the same root comparison as repository-wide status flags. Failed mutations do
-not refresh info or notify. A failed follow-up info refresh is logged and skips
-the notification without turning an already successful mutation into a reported
-failure. The owning repository supplies a lifecycle predicate to the info read:
-disposal prevents a new read and rejects an in-flight result before cache
-assignment. Repository-change publication is also suppressed after disposal.
-Info refreshes are serialized per SVN repository, including after failures, so
-an older read cannot finish last and overwrite a newer accepted revision.
-Queued refreshes recheck owner liveness when they actually start.
+not refresh info or notify. Root mutations invalidate info before their follow-up
+work. All targeted notifications then pass through `ensureInfoCurrent()`:
+clean descendants need no subprocess, while descendants following a pending or
+failed root refresh wait for or retry that read. A failed read leaves info dirty,
+logs the error and skips notification without reporting the mutation as failed.
+
+`SvnRepository` keeps one info cache and one serialized refresh queue. An
+invalidation during a pending read rejects that result and triggers a fresh read
+before publication. `updateInfo()` (startup, watcher and switch callers) uses the
+same validity boundary. The owning `Repository` binds its lifecycle once, so
+every queued or pending info refresh checks the same owner before execution and
+cache assignment. Repository-change publication checks both liveness and cache
+validity. The last accepted info remains available after failure but is not
+advertised as current in a change notification.
 
 ## Full-refresh fallbacks
 
