@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { commands, Uri } from "vscode";
+import { Operation } from "../common/types";
 import { configuration } from "../helpers/configuration";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -31,7 +32,7 @@ suite("Repository Lifecycle", () => {
     testUtil.destroyAllTempPaths();
   });
 
-  test("dispose removes the repository configuration listener", () => {
+  test("dispose cancels deferred refresh and configuration listener", async () => {
     const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
     assert.ok(repository);
 
@@ -44,7 +45,19 @@ suite("Repository Lifecycle", () => {
       updateRemoteCalls += 1;
     };
 
+    let runCalls = 0;
+    (repository as any).run = () => {
+      runCalls += 1;
+      return Promise.resolve();
+    };
+    (repository as any)._operations.start(Operation.Status);
+    const deferredFullStatus = repository.fullStatus();
+    await Promise.resolve();
+
     repository.dispose();
+    (repository as any)._operations.end(Operation.Status);
+    (repository as any)._onDidRunOperation.fire(Operation.Status);
+    await deferredFullStatus;
 
     (configuration as any)._onDidChange.fire({
       affectsConfiguration: (section: string) =>
@@ -53,5 +66,6 @@ suite("Repository Lifecycle", () => {
 
     assert.equal(createIntervalCalls, 0);
     assert.equal(updateRemoteCalls, 0);
+    assert.equal(runCalls, 0);
   });
 });

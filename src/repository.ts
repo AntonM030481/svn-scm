@@ -93,6 +93,10 @@ export class Repository implements IRemoteRepository {
   private canSaveAuth: boolean = false;
   private _initialStatusPending = true;
   public readonly initialStatusSettled: Promise<void>;
+  private disposed = false;
+
+  private _onDidDispose = new EventEmitter<void>();
+  private readonly onDidDispose: Event<void> = this._onDidDispose.event;
 
   public get isInitialStatusPending(): boolean {
     return this._initialStatusPending;
@@ -824,8 +828,32 @@ export class Repository implements IRemoteRepository {
 
   @throttle
   public async fullStatus() {
-    while (!this.operations.isIdle()) {
-      await eventToPromise(this.onDidRunOperation);
+    while (!this.operations.isIdle() && !this.disposed) {
+      const operationFinished = await new Promise<boolean>(resolve => {
+        let listeners: Disposable[] = [];
+        let settled = false;
+        const finish = (value: boolean) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          listeners = dispose(listeners);
+          resolve(value);
+        };
+
+        listeners = [
+          this.onDidRunOperation(() => finish(true)),
+          this.onDidDispose(() => finish(false))
+        ];
+      });
+
+      if (!operationFinished) {
+        return;
+      }
+    }
+
+    if (this.disposed) {
+      return;
     }
 
     return this.run(Operation.Status, undefined, true);
@@ -1153,7 +1181,7 @@ export class Repository implements IRemoteRepository {
     runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
     forceFullStatus: boolean = false
   ): Promise<T> {
-    if (this.state !== RepositoryState.Idle) {
+    if (this.disposed || this.state !== RepositoryState.Idle) {
       throw new Error("Repository not initialized");
     }
 
@@ -1253,6 +1281,13 @@ export class Repository implements IRemoteRepository {
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this._onDidDispose.fire();
+    this._onDidDispose.dispose();
     cancelDebounces(this);
     this.disposables = dispose(this.disposables);
   }

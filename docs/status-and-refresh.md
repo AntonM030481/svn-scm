@@ -47,6 +47,8 @@ of an immediate local scan followed by another remote scan.
 invalidate how the whole snapshot is interpreted. It waits for mutating work
 to become idle and tells the incremental adapter to discard queued file targets
 before executing the normal full-status pipeline.
+If the repository is disposed while waiting, the lifecycle-owned waiter is
+cancelled and cannot start or publish a later status operation.
 
 ## Refresh triggers
 
