@@ -3,12 +3,15 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import {
   commands,
+  Disposable,
   Memento,
   SecretStorage,
   Uri,
   ConfigurationTarget,
   workspace
 } from "vscode";
+import { enableIncrementalStatusRefresh } from "../incrementalStatus";
+import { DeleteUnversioned } from "../commands/deleteUnversioned";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import { Status } from "../common/types";
@@ -272,5 +275,91 @@ suite("Persisted startup status integration", () => {
       release.resolve();
       listener.dispose();
     }
+  });
+  test("failed full refresh retains the snapshot and a mutation retries authoritative status", async () => {
+    const f = await fixture();
+    const before = JSON.stringify([...f.data]);
+    const base = await manager.svn.open(f.root, f.root);
+    const getStatus = base.getStatus.bind(base);
+    let fail = true;
+    base.getStatus = async params => {
+      if (fail) throw new Error("full scan failed");
+      return getStatus(params);
+    };
+    const repo = f.open(base);
+    await repo.initialStatusSettled;
+    assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
+    assert.equal(JSON.stringify([...f.data]), before);
+    await assert.rejects(repo.ensureStatus(), /full scan failed/);
+    fail = false;
+    await repo.ensureStatus();
+    assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
+  });
+
+  test("mutations wait for the initial full scan", async () => {
+    const f = await fixture();
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      entered.resolve();
+      await release.promise;
+      return getStatus(params);
+    };
+    let mutations = 0;
+    const addChangelist = base.addChangelist.bind(base);
+    base.addChangelist = async (files, name) => {
+      mutations++;
+      return addChangelist(files, name);
+    };
+    const repo = f.open(base);
+    const adapters: Disposable[] = [];
+    enableIncrementalStatusRefresh(
+      {
+        repositories: [repo],
+        onDidOpenRepository: () => ({ dispose() {} })
+      } as unknown as SourceControlManager,
+      adapters
+    );
+    try {
+      await entered.promise;
+      const mutation = repo.addChangelist(["clean.txt"], "after-startup");
+      await Promise.resolve();
+      assert.equal(mutations, 0);
+      release.resolve();
+      await mutation;
+      assert.equal(mutations, 1);
+      assert.equal(
+        repo.changelists.get("after-startup")!.resourceStates.length,
+        1
+      );
+    } finally {
+      release.resolve();
+      await repo.initialStatusSettled;
+      adapters.forEach(adapter => adapter.dispose());
+    }
+  });
+
+  test("delete-unversioned revalidates a cached selection before deleting", async () => {
+    const f = await fixture();
+    const file = path.join(f.root, "unversioned.txt");
+    await fs.writeFile(file, "keep me");
+    const first = f.open(await manager.svn.open(f.root, f.root));
+    await first.initialStatusSettled;
+    const selection = first.getResourceFromFile(file)!;
+    assert.equal(selection.type, Status.UNVERSIONED);
+    first.dispose();
+    await f.base.exec(["add", "unversioned.txt"]);
+    const repo = f.open(await manager.svn.open(f.root, f.root));
+    const command = Object.create(
+      DeleteUnversioned.prototype
+    ) as DeleteUnversioned;
+    (command as any).runByRepository = async (uris: Uri[], action: any) => [
+      await action(repo, uris)
+    ];
+    await command.execute(selection);
+    assert.equal(await fs.readFile(file, "utf8"), "keep me");
+    assert.equal(repo.getResourceFromFile(file)!.type, Status.ADDED);
   });
 });

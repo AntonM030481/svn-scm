@@ -31,7 +31,12 @@ export function isSnapshotPath(value: unknown): value is string {
     !/^[a-z]:/i.test(value) &&
     !value
       .split(/[\\/]/)
-      .some(part => part === ".." || part === ".svn" || part === "_svn")
+      .some(
+        part =>
+          part === ".." ||
+          part.toLowerCase() === ".svn" ||
+          part.toLowerCase() === "_svn"
+      )
   );
 }
 
@@ -69,6 +74,7 @@ export function readStatusSnapshot(
     !snapshot.statuses.every(isStatus)
   )
     return;
+  if (Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) return;
   const keys = snapshot.statuses.map(s => snapshotPathKey(s.path));
   if (new Set(keys).size !== keys.length) return;
   return snapshot.statuses;
@@ -178,7 +184,10 @@ export async function selectStartupTargets(
       statuses.some(
         s =>
           s.status === Status.EXTERNAL &&
-          (status.path === s.path || status.path.startsWith(s.path + path.sep))
+          (snapshotPathKey(status.path) === snapshotPathKey(s.path) ||
+            snapshotPathKey(status.path).startsWith(
+              snapshotPathKey(s.path) + path.sep
+            ))
       )
     )
       continue;

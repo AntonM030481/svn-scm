@@ -1,4 +1,5 @@
 import { SourceControlResourceState, window } from "vscode";
+import { Status } from "../common/types";
 import { exists, lstat, unlink } from "../fs";
 import { deleteDirectory } from "../util";
 import { Command } from "./command";
@@ -13,7 +14,18 @@ export class DeleteUnversioned extends Command {
     if (selection.length === 0) {
       return;
     }
-    const uris = selection.map(resource => resource.resourceUri);
+    const groups = await this.runByRepository(
+      selection.map(resource => resource.resourceUri),
+      async (repository, resources) => {
+        await repository.ensureStatus();
+        return resources.filter(
+          uri =>
+            repository.getResourceFromFile(uri)?.type === Status.UNVERSIONED
+        );
+      }
+    );
+    const uris = groups.flat();
+    if (!uris.length) return;
     const answer = await window.showWarningMessage(
       "Would you like to delete selected files?",
       { modal: true },
