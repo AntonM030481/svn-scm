@@ -1,8 +1,8 @@
 import { Event, Uri, workspace, EventEmitter, RelativePattern } from "vscode";
-import { watch } from "node:fs";
+import { FSWatcher, watch } from "node:fs";
 import { physicalFs } from "../fs/physical";
 import { exists } from "../fs";
-import { join } from "path";
+import { isAbsolute, join, normalize, resolve } from "path";
 import { cancelDebounces, debounce } from "../decorators";
 import {
   anyEvent,
@@ -23,8 +23,28 @@ export function isWorkspaceFileChange(uri: Uri): boolean {
   }
 }
 
+export function resolveNativeWatcherPath(
+  metadataRoot: string,
+  filename: string | Buffer | null
+): string | undefined {
+  if (filename === null) {
+    return undefined;
+  }
+
+  const value = Buffer.isBuffer(filename) ? filename.toString() : filename;
+  return normalize(isAbsolute(value) ? value : resolve(metadataRoot, value));
+}
+
+type NativeWatchFactory = (
+  path: string,
+  listener: (event: string, filename: string | Buffer | null) => void
+) => FSWatcher;
+
 export class RepositoryFilesWatcher implements IDisposable {
   private disposables: IDisposable[] = [];
+  private nativeWatcher?: FSWatcher;
+  private nativeMetadataRoot?: string;
+  private disposed = false;
 
   private _onRepoChange: EventEmitter<Uri>;
   private _onRepoCreate: EventEmitter<Uri>;
@@ -45,7 +65,10 @@ export class RepositoryFilesWatcher implements IDisposable {
   public onDidSvnDelete: Event<Uri>;
   public onDidSvnAny: Event<Uri>;
 
-  constructor(readonly root: string) {
+  constructor(
+    readonly root: string,
+    nativeWatch: NativeWatchFactory = watch as NativeWatchFactory
+  ) {
     const fsWatcher = workspace.createFileSystemWatcher(
       new RelativePattern(fixPathSeparator(root), "**")
     );
@@ -57,17 +80,18 @@ export class RepositoryFilesWatcher implements IDisposable {
     let onRepoDelete: Event<Uri> | undefined;
 
     if (
-      typeof workspace.workspaceFolders !== "undefined" &&
-      !workspace.workspaceFolders.filter(w => isDescendant(w.uri.fsPath, root))
-        .length
+      !workspace.workspaceFolders?.some(w => isDescendant(w.uri.fsPath, root))
     ) {
-      const repoWatcher = watch(
-        join(root, getSvnDir()),
+      this.nativeMetadataRoot = join(root, getSvnDir());
+      this.nativeWatcher = nativeWatch(
+        this.nativeMetadataRoot,
         this.repoWatch.bind(this)
       );
 
-      repoWatcher.on("error", error => {
-        throw error;
+      this.nativeWatcher.on("error", error => {
+        if (!this.disposed) {
+          console.error(`SVN metadata watcher failed for "${root}"`, error);
+        }
       });
 
       onRepoChange = this._onRepoChange.event;
@@ -135,25 +159,44 @@ export class RepositoryFilesWatcher implements IDisposable {
   }
 
   @debounce(1000)
-  private repoWatch(event: string, filename: string | null): void {
-    if (filename === null) {
+  private repoWatch(event: string, filename: string | Buffer | null): void {
+    if (this.disposed || this.nativeMetadataRoot === undefined) {
       return;
     }
 
+    const filePath = resolveNativeWatcherPath(
+      this.nativeMetadataRoot,
+      filename
+    );
+    if (filePath === undefined) {
+      return;
+    }
+
+    const uri = Uri.file(filePath);
+
     if (event === "change") {
-      this._onRepoChange.fire(Uri.parse(filename));
+      this._onRepoChange.fire(uri);
     } else if (event === "rename") {
-      exists(filename).then(doesExist => {
+      exists(filePath).then(doesExist => {
+        if (this.disposed) {
+          return;
+        }
         if (doesExist) {
-          this._onRepoCreate.fire(Uri.parse(filename));
+          this._onRepoCreate.fire(uri);
         } else {
-          this._onRepoDelete.fire(Uri.parse(filename));
+          this._onRepoDelete.fire(uri);
         }
       });
     }
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.nativeWatcher?.close();
+    this.nativeWatcher = undefined;
     cancelDebounces(this);
     this.disposables.forEach(d => d.dispose());
   }
