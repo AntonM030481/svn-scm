@@ -421,6 +421,51 @@ suite("Persisted startup status integration", () => {
     assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
   });
 
+  test("cleanup recovers after failed startup and fallback status validation", async () => {
+    const f = await fixture();
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    let recovered = false;
+    let scans = 0;
+    let cleanups = 0;
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      scans++;
+      entered.resolve();
+      await release.promise;
+      if (!recovered) throw new Error("status requires cleanup");
+      return getStatus(params);
+    };
+    const cleanup = base.cleanup.bind(base);
+    base.cleanup = async () => {
+      cleanups++;
+      const result = await cleanup();
+      recovered = true;
+      return result;
+    };
+    const repo = f.open(base);
+    try {
+      await entered.promise;
+      release.resolve();
+      await repo.initialStatusSettled;
+      await assert.rejects(repo.ensureStatus(), /status requires cleanup/);
+      assert.equal(scans, 2);
+      await repo.cleanup();
+      assert.equal(cleanups, 1);
+      assert.equal(
+        scans,
+        3,
+        "cleanup must execute before another status attempt"
+      );
+      await repo.ensureStatus();
+      assert.equal(scans, 3, "post-cleanup status must establish readiness");
+      assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
+    } finally {
+      release.resolve();
+    }
+  });
+
   test("corrupt snapshot uses normal full startup without targeted work", async () => {
     const f = await fixture();
     f.data.set([...f.data.keys()][0], { version: 1, statuses: null });

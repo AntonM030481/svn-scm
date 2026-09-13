@@ -1466,7 +1466,13 @@ export class Repository implements IRemoteRepository {
       operation !== Operation.Status &&
       operation !== Operation.StatusRemote
     ) {
-      await this.ensureStatus();
+      if (operation === Operation.CleanUp) {
+        // Recovery must remain available when status itself cannot succeed.
+        // Let startup settle first so cleanup never races its status subprocess.
+        await this.initialStatusSettled;
+      } else {
+        await this.ensureStatus();
+      }
     }
     if (this.disposed) throw new Error("Repository disposed");
 

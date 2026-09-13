@@ -194,7 +194,9 @@ status, under ordinary SCM progress. It adds no stale-state labels or warnings.
 Preview application does not publish authoritative status events or enable
 automatic deletion/conflict actions. Diff navigation remains available. Commands
 that build a complete commit/revert selection wait for successful live status;
-mutations also wait for initial validation. Failed startup validation retains
+mutations also wait for initial validation. Cleanup waits for startup to settle
+but does not require successful status, so it can recover a working copy whose
+status fails; its normal post-operation scan establishes live readiness. Failed startup validation retains
 the visible list and reports the ordinary refresh error.
 
 For at most 50 saved changed entries, startup selects existing regular files up
