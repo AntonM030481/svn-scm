@@ -8,17 +8,17 @@ import { configuration } from "./configuration";
 
 export function getBranchName(folder: string): IBranchItem | undefined {
   const confs = [
-    "layout.trunkRegex",
-    "layout.branchesRegex",
-    "layout.tagsRegex"
+    ["layout.trunkRegex", "layout.trunkRegexName"],
+    ["layout.branchesRegex", "layout.branchesRegexName"],
+    ["layout.tagsRegex", "layout.tagRegexName"]
   ];
 
-  for (const conf of confs) {
+  for (const [conf, nameSetting] of confs) {
     const layout = configuration.get<string>(conf);
     if (!layout) {
       continue;
     }
-    const group = configuration.get<number>(`${conf}Name`, 1) + 2;
+    const group = configuration.get<number>(nameSetting, 1) + 2;
 
     const regex = new RegExp(`(^|/)(${layout})$`);
 

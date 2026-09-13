@@ -13,7 +13,7 @@ export class Resolved extends Command {
       return;
     }
 
-    const autoResolve = configuration.get<boolean>("conflict.autoResolve");
+    const autoResolve = configuration.get<boolean>("conflicts.autoResolve");
 
     if (!autoResolve) {
       const basename = path.basename(uri.fsPath);

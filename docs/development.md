@@ -49,7 +49,11 @@ The extension uses the machine's `svn` executable. If it is not on `PATH`, set
 
 - `out/extension.js` is the webpack bundle loaded by VS Code.
 - `out/test/` contains JavaScript emitted by `yarn test-compile`.
-- `src/tools/generateConfigSectionForReadme.ts` updates the generated settings
+- `yarn test-compile && yarn tools:genReadme` updates the generated settings
   block in the user README.
 
 Do not edit generated output as the source of a change.
+
+`yarn docs:check` checks the README settings block against `package.json` after
+compilation and is included in `yarn check`. Generate the block rather than
+editing it by hand. The generator preserves content outside its markers.

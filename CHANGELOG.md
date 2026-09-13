@@ -2,6 +2,8 @@
 
 ### Bug Fixes
 
+* Honor the published conflict auto-resolution and tag capture-group settings; correct nullable/list schemas and keep documented defaults synchronized (#94).
+
 * Escape commit-message webview content and restrict its content security policy (#56).
 * Correct watcher lifecycle, history synchronization, and external configuration refreshes (#57, #58, #59).
 * Discover moved working copies without recursive event scans or stale lifecycle publication, preserving legacy SVN and nested workspace ownership (#60).
