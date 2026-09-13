@@ -1254,7 +1254,13 @@ export class Repository implements IRemoteRepository {
   }
 
   public async cleanup() {
-    return this.run(Operation.CleanUp, () => this.repository.cleanup());
+    return this.run(
+      Operation.CleanUp,
+      () => this.repository.cleanup(),
+      false,
+      undefined,
+      true
+    );
   }
 
   public async removeUnversioned() {
@@ -1455,7 +1461,8 @@ export class Repository implements IRemoteRepository {
     operation: Operation,
     runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
     forceFullStatus: boolean = false,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    allowStatusRecovery = false
   ): Promise<T> {
     if (this.disposed || this.state !== RepositoryState.Idle) {
       throw new Error("Repository not initialized");
@@ -1466,7 +1473,7 @@ export class Repository implements IRemoteRepository {
       operation !== Operation.Status &&
       operation !== Operation.StatusRemote
     ) {
-      if (operation === Operation.CleanUp) {
+      if (operation === Operation.CleanUp && allowStatusRecovery) {
         // Recovery must remain available when status itself cannot succeed.
         // Let startup settle first so cleanup never races its status subprocess.
         await this.initialStatusSettled;

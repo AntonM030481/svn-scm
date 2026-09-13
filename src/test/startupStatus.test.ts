@@ -429,6 +429,14 @@ suite("Persisted startup status integration", () => {
     let recovered = false;
     let scans = 0;
     let cleanups = 0;
+    let removals = 0;
+    const unversioned = path.join(f.root, "keep-unversioned.txt");
+    await fs.writeFile(unversioned, "keep until validated");
+    const removeUnversioned = base.removeUnversioned.bind(base);
+    base.removeUnversioned = async () => {
+      removals++;
+      return removeUnversioned();
+    };
     const getStatus = base.getStatus.bind(base);
     base.getStatus = async params => {
       scans++;
@@ -449,7 +457,12 @@ suite("Persisted startup status integration", () => {
       await entered.promise;
       release.resolve();
       await repo.initialStatusSettled;
-      await assert.rejects(repo.ensureStatus(), /status requires cleanup/);
+      await assert.rejects(repo.removeUnversioned(), /status requires cleanup/);
+      assert.equal(removals, 0, "destructive cleanup must require live status");
+      assert.equal(
+        await fs.readFile(unversioned, "utf8"),
+        "keep until validated"
+      );
       assert.equal(scans, 2);
       await repo.cleanup();
       assert.equal(cleanups, 1);
@@ -461,6 +474,13 @@ suite("Persisted startup status integration", () => {
       await repo.ensureStatus();
       assert.equal(scans, 3, "post-cleanup status must establish readiness");
       assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
+      await repo.removeUnversioned();
+      assert.equal(
+        removals,
+        1,
+        "validated destructive cleanup remains available"
+      );
+      await assert.rejects(fs.stat(unversioned), /ENOENT/);
     } finally {
       release.resolve();
     }

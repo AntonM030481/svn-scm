@@ -117,4 +117,6 @@ remote-only changes survive incremental local refreshes and reopening, and
 clear after a successful remote scan. Incoming-update regressions cover
 removed/reclassified remote previews and successful updates from live selections.
 Cleanup recovery coverage injects failing status until real SVN cleanup runs,
-then verifies that its post-operation scan restores readiness.
+then verifies that its post-operation scan restores readiness. The same
+regression verifies remove-unversioned cannot run before recovery and can run
+after validated cleanup.
