@@ -12,7 +12,8 @@ import {
   Uri,
   window
 } from "vscode";
-import { ISvnLogEntry } from "../common/types";
+import { ISvnLogEntry, Operation } from "../common/types";
+import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import { dispose, pathEquals, unwrap } from "../util";
 import {
@@ -42,6 +43,8 @@ export class ItemLogProvider
 
   private currentItem?: ICachedLog;
   private _dispose: Disposable[] = [];
+  private statusWaitCancellations?: Set<() => void>;
+  private disposed = false;
 
   constructor(private sourceControlManager: SourceControlManager) {
     this._dispose.push(
@@ -72,7 +75,54 @@ export class ItemLogProvider
   }
 
   public dispose() {
+    this.disposed = true;
+    this.statusWaitCancellations?.forEach(cancel => cancel());
+    this.statusWaitCancellations?.clear();
     dispose(this._dispose);
+  }
+
+  private isCurrentEditor(uri: Uri): boolean {
+    return window.activeTextEditor?.document.uri.toString() === uri.toString();
+  }
+
+  private async waitForStatusOperations(repo: Repository): Promise<boolean> {
+    while (
+      repo.operations.isRunning(Operation.Status) ||
+      repo.operations.isRunning(Operation.StatusRemote)
+    ) {
+      const completed = await new Promise<boolean>(resolve => {
+        const cancellations = (this.statusWaitCancellations ??= new Set());
+        let settled = false;
+        const finish = (value: boolean) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          subscription.dispose();
+          cancellations.delete(cancel);
+          resolve(value);
+        };
+        const cancel = () => finish(false);
+
+        cancellations.add(cancel);
+        const subscription = repo.onDidRunOperation(operation => {
+          if (
+            (operation === Operation.Status ||
+              operation === Operation.StatusRemote) &&
+            !repo.operations.isRunning(Operation.Status) &&
+            !repo.operations.isRunning(Operation.StatusRemote)
+          ) {
+            finish(true);
+          }
+        });
+      });
+
+      if (!completed || this.disposed) {
+        return false;
+      }
+    }
+
+    return !this.disposed;
   }
 
   public async openFileRemoteCmd(element: ILogTreeItem) {
@@ -125,8 +175,15 @@ export class ItemLogProvider
         if (repo !== null) {
           await repo.initialStatusSettled;
 
-          const activeUri = window.activeTextEditor?.document.uri;
-          if (activeUri && activeUri.toString() !== uri.toString()) {
+          if (!this.isCurrentEditor(uri)) {
+            return;
+          }
+
+          if (!(await this.waitForStatusOperations(repo))) {
+            return;
+          }
+
+          if (!this.isCurrentEditor(uri)) {
             return;
           }
 
@@ -139,6 +196,9 @@ export class ItemLogProvider
           } else {
             try {
               const info = await repo.getInfo(uri.fsPath);
+              if (!this.isCurrentEditor(uri)) {
+                return;
+              }
               this.currentItem = {
                 isComplete: false,
                 entries: [],

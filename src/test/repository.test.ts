@@ -210,6 +210,78 @@ suite("Repository Tests", () => {
     }
   });
 
+  test("File history waits for a later status operation", async () => {
+    const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
+    assert.ok(repository);
+
+    const file = path.join(checkoutDir.fsPath, "history-after-status.txt");
+    fs.writeFileSync(file, "test");
+    await repository.addFiles([file]);
+
+    const svnRepository = repository.repository;
+    const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
+    let releaseStatus!: () => void;
+    let markStatusStarted!: () => void;
+    const statusGate = new Promise<void>(resolve => {
+      releaseStatus = resolve;
+    });
+    const statusStarted = new Promise<void>(resolve => {
+      markStatusStarted = resolve;
+    });
+    let getInfoCalls = 0;
+
+    svnRepository.getStatus = async (params: any) => {
+      markStatusStarted();
+      await statusGate;
+      return originalGetStatus(params);
+    };
+    const repositoryForHistory = {
+      initialStatusSettled: repository.initialStatusSettled,
+      operations: repository.operations,
+      onDidRunOperation: repository.onDidRunOperation,
+      unversioned: repository.unversioned,
+      getInfo: async (filePath: string) => {
+        getInfoCalls += 1;
+        return repository.getInfo(filePath);
+      }
+    };
+
+    const itemLogProvider = Object.create(
+      ItemLogProvider.prototype
+    ) as ItemLogProvider;
+    const changeEmitter = new EventEmitter<any>();
+    (itemLogProvider as any).sourceControlManager = {
+      getRepository: () => repositoryForHistory
+    };
+    (itemLogProvider as any)._onDidChangeTreeData = changeEmitter;
+
+    const document = await workspace.openTextDocument(file);
+    const editor = await window.showTextDocument(document);
+    const status = repository.status();
+
+    try {
+      await statusStarted;
+      const refresh = itemLogProvider.refresh(undefined, editor);
+      await Promise.resolve();
+      assert.equal(getInfoCalls, 0);
+
+      releaseStatus();
+      await status;
+      await refresh;
+
+      assert.equal(getInfoCalls, 1);
+      assert.ok((itemLogProvider as any).currentItem);
+    } finally {
+      releaseStatus();
+      svnRepository.getStatus = originalGetStatus;
+      changeEmitter.dispose();
+      await repository.revert([file], "empty");
+      fs.unlinkSync(file);
+      await repository.status();
+      await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
   test("Try commit file", async function () {
     this.timeout(60000);
     const repository: Repository | null = sourceControlManager.getRepository(
