@@ -16,7 +16,8 @@ import {
   ConstructorPolicy,
   RepositoryChangeEvent,
   IOpenRepository,
-  RepositoryState
+  RepositoryState,
+  Status
 } from "./common/types";
 import { cancelDebounces, debounce } from "./decorators";
 import { readdir, stat } from "./fs";
@@ -93,6 +94,10 @@ export class SourceControlManager implements IDisposable {
   private enabled = false;
   private disposed = false;
   private lifecycleGeneration = 0;
+  private routingValidations = new WeakMap<
+    Repository,
+    Map<string, Promise<boolean>>
+  >();
   private possibleSvnRepositoryPaths = new Map<string, boolean>();
   private provisionalLegacyRepositories = new WeakSet<Repository>();
   private ignoreList: string[] = [];
@@ -611,34 +616,33 @@ export class SourceControlManager implements IDisposable {
     }
 
     if (hint instanceof Uri) {
-      return this.openRepositoriesSorted().find(liveRepository => {
-        if (
-          !isDescendant(liveRepository.repository.workspaceRoot, hint.fsPath)
-        ) {
-          return false;
-        }
+      const owner = this.openRepositoriesSorted().find(liveRepository =>
+        isDescendant(liveRepository.repository.workspaceRoot, hint.fsPath)
+      );
+      if (!owner) {
+        return undefined;
+      }
 
-        for (const external of liveRepository.repository.statusExternal) {
-          const externalPath = path.join(
-            liveRepository.repository.workspaceRoot,
-            external.path
-          );
-          if (isDescendant(externalPath, hint.fsPath)) {
-            return false;
-          }
+      for (const external of owner.repository.statusExternal) {
+        const externalPath = path.join(
+          owner.repository.workspaceRoot,
+          external.path
+        );
+        if (isDescendant(externalPath, hint.fsPath)) {
+          return undefined;
         }
-        for (const ignored of liveRepository.repository.statusIgnored) {
-          const ignoredPath = path.join(
-            liveRepository.repository.workspaceRoot,
-            ignored.path
-          );
-          if (isDescendant(ignoredPath, hint.fsPath)) {
-            return false;
-          }
+      }
+      for (const ignored of owner.repository.statusIgnored) {
+        const ignoredPath = path.join(
+          owner.repository.workspaceRoot,
+          ignored.path
+        );
+        if (isDescendant(ignoredPath, hint.fsPath)) {
+          return undefined;
         }
+      }
 
-        return true;
-      });
+      return owner;
     }
 
     for (const liveRepository of this.openRepositories) {
@@ -657,52 +661,79 @@ export class SourceControlManager implements IDisposable {
   }
 
   public async getRepositoryFromUri(uri: Uri): Promise<Repository | null> {
-    for (const liveRepository of this.openRepositoriesSorted()) {
-      const repository = liveRepository.repository;
-
-      if (!isDescendant(repository.workspaceRoot, uri.fsPath)) {
-        continue;
-      }
-
-      if (repository.getResourceFromFile(uri)) {
-        return repository;
-      }
-
-      if (repository.isInitialStatusPending) {
-        this.logRepositoryLifecycle(
-          repository,
-          `initial status pending; skipping path validation: ${uri.fsPath}`,
-          "repository-routing"
-        );
-        return repository;
-      }
-
-      try {
-        const path = normalizePath(uri.fsPath);
-        this.logRepositoryLifecycle(
-          repository,
-          `validating path with svn info: ${path}`,
-          "repository-routing"
-        );
-
-        await repository.info(path);
-
-        this.logRepositoryLifecycle(
-          repository,
-          `path validation succeeded: ${path}`,
-          "repository-routing"
-        );
-        return repository;
-      } catch (_error) {
-        this.logRepositoryLifecycle(
-          repository,
-          `path validation rejected: ${uri.fsPath}`,
-          "repository-routing"
-        );
-      }
+    const repository = this.getOpenRepository(uri)?.repository;
+    if (!repository) {
+      return null;
     }
 
-    return null;
+    const resource = repository.getResourceFromFile(uri);
+    if (resource) {
+      return resource.type === Status.UNVERSIONED ||
+        resource.type === Status.IGNORED
+        ? null
+        : repository;
+    }
+
+    if (repository.isInitialStatusPending) {
+      this.logRepositoryLifecycle(
+        repository,
+        `initial status pending; skipping path validation: ${uri.fsPath}`,
+        "repository-routing"
+      );
+      return repository;
+    }
+
+    // Share only concurrent lookups. A completed svn info is not a durable
+    // version-control fact: files may change even with autorefresh disabled.
+    const filePath = normalizePath(uri.fsPath);
+    let validations = this.routingValidations.get(repository);
+    if (!validations) {
+      validations = new Map();
+      this.routingValidations.set(repository, validations);
+    }
+    let validation = validations.get(filePath);
+    if (!validation) {
+      validation = this.validateRepositoryPath(repository, filePath);
+      validations.set(filePath, validation);
+    }
+    try {
+      const valid = await validation;
+      if (
+        this.routingValidations.get(repository) !== validations ||
+        this.getOpenRepository(uri)?.repository !== repository
+      ) {
+        return null;
+      }
+      this.logRepositoryLifecycle(
+        repository,
+        `path validation ${valid ? "succeeded" : "rejected"}: ${filePath}`,
+        "repository-routing"
+      );
+      return valid ? repository : null;
+    } finally {
+      if (validations.get(filePath) === validation) {
+        validations.delete(filePath);
+      }
+    }
+  }
+
+  private async validateRepositoryPath(
+    repository: Repository,
+    path: string
+  ): Promise<boolean> {
+    try {
+      this.logRepositoryLifecycle(
+        repository,
+        `validating path with svn info: ${path}`,
+        "repository-routing"
+      );
+
+      await repository.info(path);
+
+      return true;
+    } catch (_error) {
+      return false;
+    }
   }
 
   private open(repository: Repository, lifecycleGeneration: number): void {
@@ -734,11 +765,13 @@ export class SourceControlManager implements IDisposable {
 
     const disappearListener = onDidDisappearRepository(() => dispose());
 
-    const changeListener = repository.onDidChangeRepository(uri =>
-      this._onDidChangeRepository.fire({ repository, uri })
-    );
+    const changeListener = repository.onDidChangeRepository(uri => {
+      this.routingValidations.delete(repository);
+      this._onDidChangeRepository.fire({ repository, uri });
+    });
 
     const changeStatus = repository.onDidChangeStatus(() => {
+      this.routingValidations.delete(repository);
       this._onDidChangeStatusRepository.fire(repository);
     });
 
@@ -750,6 +783,7 @@ export class SourceControlManager implements IDisposable {
     this.scanIgnored(repository);
 
     const dispose = () => {
+      this.routingValidations.delete(repository);
       this.logRepositoryLifecycle(repository, "closed");
       quickDiffLoggingListener.dispose();
       disappearListener.dispose();

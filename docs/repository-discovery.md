@@ -130,21 +130,37 @@ Path routing sorts open repositories by descending root length. The most
 specific matching root therefore wins for nested working copies. Paths below an
 external or ignored item reported by the parent are excluded from that parent,
 allowing a separately opened child repository to own them.
+Once the most-specific containing repository is selected, an excluded subtree
+must not fall through to a less-specific ancestor. Synchronous ownership does
+not prove that an individual path is versioned; commands such as Add need this
+lexical route for unversioned files too.
 
 This in-memory route is the normal and performance-critical path.
 
 ## Validated routing
 
-`getRepositoryFromUri()` is used when a URI lies under a known root but is not
-already represented by an SCM resource.
+`getRepositoryFromUri()` combines that same ownership decision with path
+validation for callers requiring version-control membership, such as changelists:
 
-For each candidate repository, it follows this order:
+1. reject paths without an eligible owner, including its excluded subtrees;
+2. accept known versioned SCM resources and reject known unversioned/ignored
+   resources entirely in memory;
+3. while initial status is pending, tentatively route unknown descendants without
+   waiting or issuing SVN calls (the existing startup contract);
+4. otherwise validate an unknown path with targeted local `svn info`.
 
-1. return immediately when the URI matches a known resource;
-2. while initial status is pending, tentatively route by containment so startup
-   does not issue redundant validation calls;
-3. otherwise validate the path with targeted `svn info`;
-4. continue to the next candidate if validation fails.
+A failed validation is final for that path, not an invitation for an ancestor to
+claim it. Hidden, excluded, or newly created unversioned files therefore cannot
+pass validation merely because they lie below a working-copy root. A clean file
+absent from SCM groups is still unknown and requires SVN validation.
+
+Concurrent lookups of the same normalized path in the same repository share one
+in-flight validation. Completed results are not cached: changing SVN membership
+must be observable on the next request even with automatic refresh disabled.
+Status/repository changes and closure invalidate in-flight results. Before an
+asynchronous result is returned, the manager verifies both that it was not
+invalidated and that the same repository still owns the path. A newly opened
+nested owner cannot receive its parent's stale validation result.
 
 Targeted validation is a fallback for ambiguity, not the default route for every
 file access.

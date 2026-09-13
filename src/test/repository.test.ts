@@ -1,7 +1,14 @@
 import * as assert from "assert";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, EventEmitter, Uri, window, workspace } from "vscode";
+import {
+  commands,
+  ConfigurationTarget,
+  EventEmitter,
+  Uri,
+  window,
+  workspace
+} from "vscode";
 import { Status, Operation } from "../common/types";
 import { configuration } from "../helpers/configuration";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
@@ -159,7 +166,7 @@ suite("Repository Tests", () => {
       const repositoryFromUri = await sourceControlManager.getRepositoryFromUri(
         Uri.file(file)
       );
-      assert.equal(repositoryFromUri, repository);
+      assert.equal(repositoryFromUri, null);
       assert.equal(
         repository.provideOriginalResource(Uri.file(file)),
         undefined
@@ -169,6 +176,57 @@ suite("Repository Tests", () => {
       await repository.status();
     }
   });
+
+  for (const omittedBy of [
+    "files.exclude",
+    "svn.sourceControl.ignore",
+    "not-refreshed"
+  ]) {
+    test(`Validated routing rejects unversioned paths omitted by ${omittedBy}`, async () => {
+      const repository = sourceControlManager.getRepository(checkoutDir);
+      assert.ok(repository);
+      await repository.initialStatusSettled;
+      const name = "routing-hidden.txt";
+      const uri = Uri.file(path.join(checkoutDir.fsPath, name));
+      const config = workspace.getConfiguration();
+      const previous =
+        omittedBy === "not-refreshed"
+          ? undefined
+          : config.inspect(omittedBy)?.globalValue;
+      const originalInfo = repository.info;
+      let infoCalls = 0;
+      repository.info = async target => {
+        infoCalls += 1;
+        return originalInfo.call(repository, target);
+      };
+      try {
+        if (omittedBy !== "not-refreshed") {
+          await config.update(
+            omittedBy,
+            omittedBy === "files.exclude" ? { [name]: true } : [name],
+            ConfigurationTarget.Global
+          );
+        }
+        fs.writeFileSync(uri.fsPath, "unversioned");
+        if (omittedBy !== "not-refreshed") {
+          await repository.status();
+        }
+        assert.strictEqual(repository.getResourceFromFile(uri), undefined);
+        assert.strictEqual(
+          await sourceControlManager.getRepositoryFromUri(uri),
+          null
+        );
+        assert.strictEqual(infoCalls, 1);
+      } finally {
+        repository.info = originalInfo;
+        fs.rmSync(uri.fsPath, { force: true });
+        if (omittedBy !== "not-refreshed") {
+          await config.update(omittedBy, previous, ConfigurationTarget.Global);
+        }
+        await repository.status();
+      }
+    });
+  }
 
   test("File history skips info for unversioned file", async () => {
     const repository: Repository | null = sourceControlManager.getRepository(
