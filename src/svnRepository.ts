@@ -824,8 +824,11 @@ export class Repository {
     return result.stdout;
   }
 
-  public async plainLogByText(search: string) {
-    const result = await this.exec(["log", "--search", search]);
+  public async plainLogByText(search: string, options: ICpOptions = {}) {
+    const result = await this.exec(["log", "--search", search], {
+      ...options,
+      logReason: "log-search"
+    });
 
     return result.stdout;
   }
