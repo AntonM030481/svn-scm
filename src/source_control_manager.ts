@@ -549,7 +549,8 @@ export class SourceControlManager implements IDisposable {
 
         const repository = new Repository(
           baseRepository,
-          this.extensionContact.secrets
+          this.extensionContact.secrets,
+          this.extensionContact.workspaceState
         );
 
         this.registerDiscoveredRepository(

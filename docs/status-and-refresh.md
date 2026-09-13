@@ -178,3 +178,36 @@ publish a mixture of old and new groups as a stable result.
 Tests for this area should cover target containment, merge behavior, deletes,
 rename pairs, repository-wide flags, watcher echoes, metadata fallback, failed
 targeted status, and disposal.
+
+
+## Reopening a working copy
+
+A workspace-scoped `StatusSnapshotStore` saves accepted status metadata through
+VS Code's Memento storage. It stores no file contents or diffs. Snapshots are
+versioned and bounded to 4 MiB / 50,000 records, validated on read, and bound to
+the canonical working-copy root, opened workspace scope, UUID, URL and the
+administrative directory's filesystem identity. Replacement checkouts and
+switches detected through that identity do not reuse the previous projection.
+
+Startup restores that projection using the same grouping/filtering code as live
+status, under ordinary SCM progress. It adds no stale-state labels or warnings.
+Preview application does not publish authoritative status events or enable
+automatic deletion/conflict actions. Diff navigation remains available. Commands
+that build a complete commit/revert selection wait for successful live status;
+mutations also wait for initial validation. Failed startup validation retains
+the visible list and reports the ordinary refresh error.
+
+For at most 50 saved changed entries, startup selects existing regular files up
+to 10 MiB each and 50 MiB total, in deterministic path order. A single local
+`svn stat --xml --verbose --depth empty --ignore-externals` checks them before
+the full scan. Missing files, directories, rename pairs, external descendants
+and oversized files retain their saved entries until full reconciliation.
+Explicit clean results remove files from visible change groups; absent results
+are not interpreted as clean. Only selected exact paths are replaced, preserving
+other entries and remote state. Thresholds are internal starting values.
+
+The normal initial full scan always follows, including remote status only when
+configured. It explicitly resets incremental targets, seeds the normal adapter
+and discovers changes outside the saved list. Fast-phase errors fall through to
+that scan. Only accepted live snapshots are persisted; previews never overwrite
+stored state. Disposal prevents late preview/full publication and new writes.

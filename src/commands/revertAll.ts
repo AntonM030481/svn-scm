@@ -1,4 +1,5 @@
-import { SourceControlResourceGroup, window } from "vscode";
+import { window } from "vscode";
+import { ISvnResourceGroup } from "../common/types";
 import { checkAndPromptDepth, confirmRevert } from "../input/revert";
 import { Command } from "./command";
 
@@ -7,7 +8,18 @@ export class RevertAll extends Command {
     super("svn.revertAll");
   }
 
-  public async execute(resourceGroup: SourceControlResourceGroup) {
+  public async execute(resourceGroup: ISvnResourceGroup) {
+    const owner = resourceGroup.repository;
+    if (owner) {
+      await owner.ensureStatus();
+      resourceGroup =
+        [
+          owner.changes,
+          owner.conflicts,
+          owner.unversioned,
+          ...owner.changelists.values()
+        ].find(group => group.id === resourceGroup.id) || resourceGroup;
+    }
     const resourceStates = resourceGroup.resourceStates;
 
     if (resourceStates.length === 0 || !(await confirmRevert())) {

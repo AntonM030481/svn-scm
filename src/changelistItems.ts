@@ -97,6 +97,7 @@ export async function inputSwitchChangelist(
 }
 
 export async function inputCommitChangelist(repository: Repository) {
+  await repository.ensureStatus();
   const picks: ChangeListItem[] = getCommitChangelistPickOptions(repository);
 
   if (picks.length === 0) {

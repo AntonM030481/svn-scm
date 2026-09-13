@@ -163,3 +163,11 @@ has only partially completed.
 
 Crossing one of these boundaries should be treated as an architecture change,
 not as a local refactor.
+
+
+`src/statusSnapshot.ts` owns the optional workspace-scoped startup snapshot,
+validation and bounded target selection. `Repository` applies restored and live
+records through one SCM projection function. Restoration is a display
+optimization; authoritative status events, automatic actions and normal
+incremental operation state remain gated on live validation. See the reopening
+section in [Status and refresh](status-and-refresh.md).

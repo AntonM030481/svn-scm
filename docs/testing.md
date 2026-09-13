@@ -104,3 +104,11 @@ or count toward the extension's unit baseline.
   reactivation when the component supports it.
 - Tests that create timers, listeners, temporary repositories, or providers
   must dispose them even when an assertion fails.
+
+
+Startup snapshot tests in `statusSnapshot.test.ts` run in the unit suite and
+cover validation, scope/identity isolation, partial reconciliation, bounded
+file selection and persistence ordering. `startupStatus.test.ts` uses real SVN
+working copies and VS Code SCM groups, with gated scans to verify the restored,
+fast and full phases independently, including failures and disposal. Sparse
+large-file fixtures exercise size limits without expensive binary comparisons.

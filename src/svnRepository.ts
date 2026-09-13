@@ -14,6 +14,7 @@ import {
   ISvnPath,
   ISvnListItem
 } from "./common/types";
+import { isSnapshotPath } from "./statusSnapshot";
 import { sequentialize } from "./decorators";
 import * as encodeUtil from "./encoding";
 import { exists, writeFile, stat, readdir } from "./fs";
@@ -138,6 +139,26 @@ export class Repository {
     }
 
     return fixPegRevision(file);
+  }
+
+  /** Shallow local validation of existing small files, independent of incremental state. */
+  public async getStartupStatus(targets: string[]): Promise<IFileStatus[]> {
+    if (!targets.length) return [];
+    if (targets.some(target => !isSnapshotPath(target) || target === ".")) {
+      throw new Error("Invalid startup status target");
+    }
+    const result = await this.exec([
+      "stat",
+      "--xml",
+      "--verbose",
+      "--depth",
+      "empty",
+      "--ignore-externals",
+      "--no-ignore",
+      "--",
+      ...targets.map(target => fixPegRevision(fixPathSeparator(target)))
+    ]);
+    return parseStatusXml(result.stdout);
   }
 
   public async getStatus(params: {
