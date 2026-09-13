@@ -142,22 +142,30 @@ export class Repository {
   }
 
   /** Shallow local validation of existing small files, independent of incremental state. */
-  public async getStartupStatus(targets: string[]): Promise<IFileStatus[]> {
+  public async getStartupStatus(
+    targets: string[],
+    signal?: AbortSignal
+  ): Promise<IFileStatus[]> {
     if (!targets.length) return [];
     if (targets.some(target => !isSnapshotPath(target) || target === ".")) {
       throw new Error("Invalid startup status target");
     }
-    const result = await this.exec([
-      "stat",
-      "--xml",
-      "--verbose",
-      "--depth",
-      "empty",
-      "--ignore-externals",
-      "--no-ignore",
-      "--",
-      ...targets.map(target => fixPegRevision(fixPathSeparator(target)))
-    ]);
+    const result = await this.exec(
+      [
+        "stat",
+        "--xml",
+        "--verbose",
+        "--depth",
+        "empty",
+        "--ignore-externals",
+        "--no-ignore",
+        // Prefix paths instead of using --: the executor appends global/auth options.
+        ...targets.map(target =>
+          fixPegRevision("./" + fixPathSeparator(target))
+        )
+      ],
+      { signal }
+    );
     return parseStatusXml(result.stdout);
   }
 

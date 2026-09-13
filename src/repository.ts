@@ -104,6 +104,7 @@ export class Repository implements IRemoteRepository {
   private disposed = false;
   private snapshotStore?: StatusSnapshotStore;
   private hasLiveStatus = false;
+  private readonly startupAbort = new AbortController();
 
   private _onDidDispose = new EventEmitter<void>();
   private readonly onDidDispose: Event<void> = this._onDidDispose.event;
@@ -877,7 +878,10 @@ export class Repository implements IRemoteRepository {
       );
       const targets = await selectStartupTargets(this.workspaceRoot, saved);
       if (this.disposed || !targets.length) return;
-      const updated = await this.repository.getStartupStatus(targets);
+      const updated = await this.repository.getStartupStatus(
+        targets,
+        this.startupAbort.signal
+      );
       if (this.disposed || identity !== (await this.getSnapshotIdentity()))
         return;
       this.applyStatus(
@@ -1541,6 +1545,7 @@ export class Repository implements IRemoteRepository {
     }
 
     this.disposed = true;
+    this.startupAbort?.abort();
     this._onDidDispose.fire();
     this._onDidDispose.dispose();
     cancelDebounces(this);

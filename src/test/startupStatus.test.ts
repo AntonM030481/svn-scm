@@ -4,6 +4,7 @@ import * as path from "path";
 import {
   commands,
   Disposable,
+  TextDocument,
   Memento,
   SecretStorage,
   Uri,
@@ -92,6 +93,7 @@ suite("Persisted startup status integration", () => {
       "new.txt",
       "missing.txt",
       "large.bin",
+      "-dash.txt",
       "name@peg.txt"
     ]) {
       await fs.writeFile(path.join(root, file), "base\n");
@@ -102,6 +104,7 @@ suite("Persisted startup status integration", () => {
       "clean.txt",
       "missing.txt",
       "large.bin",
+      "-dash.txt",
       "name@peg.txt"
     ]) {
       await fs.appendFile(path.join(root, file), "changed\n");
@@ -130,6 +133,9 @@ suite("Persisted startup status integration", () => {
 
   test("restores before scanning, rechecks small files locally and reconciles external edits", async () => {
     const f = await fixture();
+    const cached = f.data.get([...f.data.keys()][0]) as any;
+    cached.statuses.find((s: any) => s.path === "clean.txt").status =
+      Status.CONFLICTED;
     await f.base.exec(["revert", "clean.txt"]);
     await fs.unlink(path.join(f.root, "missing.txt"));
     await fs.appendFile(path.join(f.root, "new.txt"), "external edit\n");
@@ -141,11 +147,11 @@ suite("Persisted startup status integration", () => {
     let targets: string[] = [];
     let fullCalls = 0;
     const originalTargeted = base.getStartupStatus.bind(base);
-    base.getStartupStatus = async files => {
+    base.getStartupStatus = async (files, signal) => {
       targets = files;
       targetedEntered.resolve();
       await allowTargeted.promise;
-      return originalTargeted(files);
+      return originalTargeted(files, signal);
     };
     const originalFull = base.getStatus.bind(base);
     base.getStatus = async params => {
@@ -162,9 +168,16 @@ suite("Persisted startup status integration", () => {
       await targetedEntered.promise;
       assert.ok(repo.getResourceFromFile(path.join(f.root, "clean.txt")));
       assert.ok(repo.sourceControl.quickDiffProvider);
+      repo.onDidSaveTextDocument({
+        uri: Uri.file(path.join(f.root, "clean.txt")),
+        getText: () => {
+          assert.fail("saved conflict must not trigger automatic resolution");
+        }
+      } as unknown as TextDocument);
       assert.equal(repo.isInitialStatusPending, true);
       assert.equal(fullCalls, 0);
       assert.ok(targets.includes("name@peg.txt"));
+      assert.ok(targets.includes("-dash.txt"));
       assert.ok(!targets.includes("large.bin"));
       assert.ok(!targets.includes("missing.txt"));
       let ready = false;
