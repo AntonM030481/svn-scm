@@ -37,6 +37,12 @@ tests, packaging, and the full integration-test matrix. Feature-branch pushes
 do not run a second identical matrix alongside their PR. Open a PR for a feature
 branch or use the CI workflow's manual dispatch to validate an arbitrary branch.
 The build job uploads its VSIX as a workflow artifact for manual validation.
+It also runs the release-tooling regressions with `node --test scripts/*.test.cjs`.
+
+Keep GitHub Actions pinned to immutable commit SHAs, checkout credentials
+unpersisted, and workflow permissions explicit. Validation uses `contents: read`;
+only the publishing job receives `contents: write`. Dependabot checks Actions
+weekly. CI and release validation share `.github/workflows/main.yml`.
 
 `package-budgets.json` sets explicit ceilings of 1.5 MiB for the uncompressed
 webpack bundle and 768 KiB for the VSIX. Both CI and release packaging reject
@@ -68,3 +74,11 @@ if the requested section is missing or empty. Preview without publishing using
 Do not move or reuse a published version tag. If a release fails, fix the cause
 on a new commit and create the appropriate new version according to the impact
 of the change.
+
+## Publishing scope
+
+The automated distribution contract is a validated VSIX attached to a tagged
+GitHub Release. Microsoft Marketplace publishing is not configured in the
+release workflow. Automating it is a separate release decision requiring
+explicit credentials, permissions, and dry-run validation; it is not unfinished
+work in the current GitHub Release + VSIX pipeline.
