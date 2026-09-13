@@ -1,7 +1,6 @@
 import * as cp from "child_process";
 import { EventEmitter } from "events";
 import * as proc from "process";
-import { Readable } from "stream";
 import {
   ConstructorPolicy,
   ICpOptions,
@@ -14,7 +13,7 @@ import { configuration } from "./helpers/configuration";
 import { parseInfoXml } from "./parser/infoParser";
 import SvnError from "./svnError";
 import { Repository } from "./svnRepository";
-import { dispose, IDisposable, toDisposable } from "./util";
+import { runSvnProcess } from "./svnProcess";
 import * as iconv from "@vscode/iconv-lite-umd";
 
 const SLOW_COMMAND_LOG_MS = 250;
@@ -148,6 +147,8 @@ export class Svn {
     options: ICpOptions = {},
     explicitReason?: string
   ): Promise<IExecutionResult> {
+    args = [...args];
+    options = { ...options };
     if (cwd) {
       this.lastCwd = cwd;
       options.cwd = cwd;
@@ -203,50 +204,33 @@ export class Svn {
       LANG: "en_US.UTF-8"
     });
 
-    const process = cp.spawn(this.svnPath, args, defaults);
-
-    const disposables: IDisposable[] = [];
-
-    const once = (
-      ee: NodeJS.EventEmitter,
-      eventName: string,
-      fn: (...args: any[]) => void
-    ) => {
-      ee.once(eventName, fn);
-      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
-    };
-
-    const on = (
-      ee: NodeJS.EventEmitter,
-      eventName: string,
-      fn: (...args: any[]) => void
-    ) => {
-      ee.on(eventName, fn);
-      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
-    };
-
-    const [exitCode, stdout, stderr] = await Promise.all<any>([
-      new Promise<number>((resolve, reject) => {
-        once(process, "error", reject);
-        once(process, "exit", resolve);
-      }),
-      new Promise<Buffer>(resolve => {
-        const buffers: Buffer[] = [];
-        on(process.stdout as Readable, "data", (b: Buffer) => buffers.push(b));
-        once(process.stdout as Readable, "close", () =>
-          resolve(Buffer.concat(buffers))
-        );
-      }),
-      new Promise<string>(resolve => {
-        const buffers: Buffer[] = [];
-        on(process.stderr as Readable, "data", (b: Buffer) => buffers.push(b));
-        once(process.stderr as Readable, "close", () =>
-          resolve(Buffer.concat(buffers).toString())
-        );
-      })
-    ]);
-
-    dispose(disposables);
+    // A streaming decoder retains incomplete multibyte characters between chunks.
+    // Detection requires complete output; streaming instead uses the configured encoding.
+    if (options.onStdout && !encoding) {
+      encoding = configuration.get<string>("default.encoding");
+    }
+    if (options.onStdout && (!encoding || !iconv.encodingExists(encoding))) {
+      encoding = "utf8";
+    }
+    const decoder = options.onStdout ? iconv.getDecoder(encoding!) : undefined;
+    const { exitCode, stdout, stderr } = await runSvnProcess(
+      this.svnPath,
+      args,
+      defaults,
+      options.signal,
+      decoder
+        ? chunk => {
+            const text = decoder.write(chunk);
+            if (text) {
+              options.onStdout!(text);
+            }
+          }
+        : undefined
+    );
+    const tail = decoder?.end();
+    if (tail) {
+      options.onStdout!(tail);
+    }
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {
@@ -316,6 +300,8 @@ export class Svn {
     options: ICpOptions = {},
     explicitReason?: string
   ): Promise<BufferResult> {
+    args = [...args];
+    options = { ...options };
     if (cwd) {
       this.lastCwd = cwd;
       options.cwd = cwd;
@@ -363,50 +349,12 @@ export class Svn {
       LANG: "en_US.UTF-8"
     });
 
-    const process = cp.spawn(this.svnPath, args, defaults);
-
-    const disposables: IDisposable[] = [];
-
-    const once = (
-      ee: NodeJS.EventEmitter,
-      eventName: string,
-      fn: (...args: any[]) => void
-    ) => {
-      ee.once(eventName, fn);
-      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
-    };
-
-    const on = (
-      ee: NodeJS.EventEmitter,
-      eventName: string,
-      fn: (...args: any[]) => void
-    ) => {
-      ee.on(eventName, fn);
-      disposables.push(toDisposable(() => ee.removeListener(eventName, fn)));
-    };
-
-    const [exitCode, stdout, stderr] = await Promise.all<any>([
-      new Promise<number>((resolve, reject) => {
-        once(process, "error", reject);
-        once(process, "exit", resolve);
-      }),
-      new Promise<Buffer>(resolve => {
-        const buffers: Buffer[] = [];
-        on(process.stdout as Readable, "data", (b: Buffer) => buffers.push(b));
-        once(process.stdout as Readable, "close", () =>
-          resolve(Buffer.concat(buffers))
-        );
-      }),
-      new Promise<string>(resolve => {
-        const buffers: Buffer[] = [];
-        on(process.stderr as Readable, "data", (b: Buffer) => buffers.push(b));
-        once(process.stderr as Readable, "close", () =>
-          resolve(Buffer.concat(buffers).toString())
-        );
-      })
-    ]);
-
-    dispose(disposables);
+    const { exitCode, stdout, stderr } = await runSvnProcess(
+      this.svnPath,
+      args,
+      defaults,
+      options.signal
+    );
 
     const duration = Date.now() - startedAt.getTime();
     if (options.log !== false && duration >= SLOW_COMMAND_LOG_MS) {

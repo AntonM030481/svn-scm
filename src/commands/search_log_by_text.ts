@@ -1,64 +1,88 @@
 import { Command } from "./command";
-import { window, Uri, commands, ProgressLocation } from "vscode";
+import { window, Uri, commands, ProgressLocation, workspace } from "vscode";
 import { Repository } from "../repository";
-import * as cp from "child_process";
 import { tempSvnFs } from "../temp_svn_fs";
+import SvnError, { getErrorMessage } from "../svnError";
+import { SvnCancellationError } from "../svnProcess";
 
 export class SearchLogByText extends Command {
+  private activeSearch?: AbortController;
+  private disposed = false;
+
   constructor() {
     super("svn.searchLogByText", { repository: true });
   }
 
   public async execute(repository: Repository) {
     const input = await window.showInputBox({ prompt: "Search query" });
-    if (!input) {
+    if (!input || this.disposed) {
       return;
     }
 
+    // The shared result document has exactly one active writer.
+    this.activeSearch?.abort();
+    const controller = new AbortController();
+    this.activeSearch = controller;
     const uri = Uri.parse("tempsvnfs:/svn.log");
-    tempSvnFs.writeFile(uri, Buffer.from(""), {
-      create: true,
-      overwrite: true
+    const closed = workspace.onDidCloseTextDocument(document => {
+      if (document.uri.toString() === uri.toString()) {
+        controller.abort();
+      }
     });
-
-    await commands.executeCommand<void>("vscode.open", uri);
-
-    const proc = cp.spawn("svn", ["log", "--search", input], {
-      cwd: repository.workspaceRoot
-    });
-
-    let content = "";
-
-    proc.stdout.on("data", data => {
-      content += data.toString();
-
-      tempSvnFs.writeFile(uri, Buffer.from(content), {
+    try {
+      tempSvnFs.writeFile(uri, Buffer.from(""), {
         create: true,
         overwrite: true
       });
-    });
-
-    window.withProgress(
-      {
-        cancellable: true,
-        location: ProgressLocation.Notification,
-        title: "Searching Log"
-      },
-      (_progress, token) => {
-        token.onCancellationRequested(() => {
-          proc.kill("SIGINT");
-        });
-
-        return new Promise<void>((resolve, reject) => {
-          proc.on("exit", (code: number) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject();
-            }
-          });
-        });
+      await commands.executeCommand<void>("vscode.open", uri);
+      await window.withProgress(
+        {
+          cancellable: true,
+          location: ProgressLocation.Notification,
+          title: "Searching Log"
+        },
+        async (_progress, token) => {
+          const cancellation = token.onCancellationRequested(() =>
+            controller.abort()
+          );
+          if (token.isCancellationRequested) {
+            controller.abort();
+          }
+          try {
+            await repository.searchLogByText(
+              input,
+              controller.signal,
+              content => {
+                if (!controller.signal.aborted) {
+                  tempSvnFs.writeFile(uri, Buffer.from(content), {
+                    create: true,
+                    overwrite: true
+                  });
+                }
+              }
+            );
+          } finally {
+            cancellation.dispose();
+          }
+        }
+      );
+    } catch (error) {
+      if (!(error instanceof SvnCancellationError)) {
+        await window.showErrorMessage(
+          `Unable to search SVN log: ${error instanceof SvnError ? error.displayMessage : getErrorMessage(error)}`
+        );
       }
-    );
+    } finally {
+      closed.dispose();
+      if (this.activeSearch === controller) {
+        this.activeSearch = undefined;
+      }
+    }
+  }
+
+  public dispose(): void {
+    this.disposed = true;
+    this.activeSearch?.abort();
+    super.dispose();
   }
 }

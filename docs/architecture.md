@@ -41,6 +41,22 @@ The extension activates after startup and when VS Code needs an `svn:` URI.
 and conversion of command failures into `SvnError`. Repository-aware logic
 should not be added to this layer unless it is required to execute a command.
 
+Text-log search uses the same configured executor, credentials, non-interactive
+arguments, environment and error classification as other SVN commands. It is an
+explicit user-triggered network operation, logged as `log-search`; it does not
+run from local status or editor events. `Svn.exec` can deliver decoded stdout
+chunks while retaining its normal completion result. Streaming uses the explicit
+encoding or `svn.default.encoding` (UTF-8 fallback), with a stateful decoder so
+split multibyte characters survive. Buffered calls retain automatic detection.
+
+The common process runner settles only after the child and its pipes close and
+removes cancellation/listener resources on success, failure and cancellation.
+Cancellation terminates the child and is distinct from an SVN failure.
+`Repository` owns authentication retries and resets the search snapshot on each
+attempt. The command awaits progress and owns the single writer for
+`tempsvnfs:/svn.log`: a new search cancels the previous one, and closing the
+document or disposing the command/repository cancels active work.
+
 ### `SourceControlManager`
 
 `src/source_control_manager.ts` discovers SVN working copies in workspace
