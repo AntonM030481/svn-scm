@@ -46,7 +46,9 @@ suite("Staging Tests", () => {
   test("unstage restores a pre-existing user changelist", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     const file = path.join(checkout.fsPath, "one", "a.txt");
@@ -119,7 +121,10 @@ suite("Staging Tests", () => {
     await commands.executeCommand("svn.stage", resourceTwo);
 
     repositoryOne.inputBox.value = "shared staged commit";
-    await commands.executeCommand("svn.commitStaged", repositoryOne.sourceControl);
+    await commands.executeCommand(
+      "svn.commitStaged",
+      repositoryOne.sourceControl
+    );
 
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
     const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);

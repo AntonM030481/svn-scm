@@ -34,7 +34,10 @@ function samePath(left: string, right: string): boolean {
 
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
 }
 
 function uniqueResources(resources: Resource[]): Resource[] {
@@ -55,8 +58,12 @@ export class StagingCoordinator implements Disposable {
     }
 
     this.disposables.push(
-      sourceControlManager.onDidOpenRepository(repository => this.attach(repository)),
-      sourceControlManager.onDidCloseRepository(repository => this.detach(repository))
+      sourceControlManager.onDidOpenRepository(repository =>
+        this.attach(repository)
+      ),
+      sourceControlManager.onDidCloseRepository(repository =>
+        this.detach(repository)
+      )
     );
   }
 
@@ -100,7 +107,10 @@ export class StagingCoordinator implements Disposable {
     const resources: Resource[] = [];
 
     for (const peer of this.repositoriesForWorkingCopy(repository)) {
-      resources.push(...peer.changes.resourceStates, ...peer.unversioned.resourceStates);
+      resources.push(
+        ...peer.changes.resourceStates,
+        ...peer.unversioned.resourceStates
+      );
       for (const [changelist, group] of peer.changelists) {
         if (
           !isStagingChangelist(changelist) &&
@@ -153,7 +163,9 @@ export class StagingCoordinator implements Disposable {
   public async stage(resources: Resource[]): Promise<void> {
     const byRepository = new Map<Repository, Resource[]>();
     for (const resource of uniqueResources(resources)) {
-      const repository = this.sourceControlManager.getRepository(resource.resourceUri);
+      const repository = this.sourceControlManager.getRepository(
+        resource.resourceUri
+      );
       if (!repository) continue;
       const list = byRepository.get(repository) ?? [];
       list.push(resource);
@@ -173,7 +185,9 @@ export class StagingCoordinator implements Disposable {
   public async unstage(resources: Resource[]): Promise<void> {
     const byRepository = new Map<Repository, Resource[]>();
     for (const resource of uniqueResources(resources)) {
-      const repository = this.sourceControlManager.getRepository(resource.resourceUri);
+      const repository = this.sourceControlManager.getRepository(
+        resource.resourceUri
+      );
       if (!repository) continue;
       const list = byRepository.get(repository) ?? [];
       list.push(resource);
@@ -209,7 +223,10 @@ export class StagingCoordinator implements Disposable {
     );
   }
 
-  public findResource(repository: Repository, filePath: string): Resource | undefined {
+  public findResource(
+    repository: Repository,
+    filePath: string
+  ): Resource | undefined {
     const state = this.states.get(repository);
     const groups: SourceControlResourceGroup[] = [
       repository.changes,
@@ -379,9 +396,10 @@ export class StagingCoordinator implements Disposable {
 
       for (const directory of directories) {
         await repository.addFiles([directory]);
-        const descendants = this.resourcesUnderPath(repository, directory).filter(
-          resource => resource.type === Status.ADDED
-        );
+        const descendants = this.resourcesUnderPath(
+          repository,
+          directory
+        ).filter(resource => resource.type === Status.ADDED);
         const fileDescendants: string[] = [];
         for (const resource of descendants) {
           try {
@@ -415,7 +433,10 @@ export class StagingCoordinator implements Disposable {
     }
   }
 
-  private resourcesUnderPath(repository: Repository, parent: string): Resource[] {
+  private resourcesUnderPath(
+    repository: Repository,
+    parent: string
+  ): Resource[] {
     const resources: Resource[] = [
       ...repository.changes.resourceStates,
       ...repository.unversioned.resourceStates
