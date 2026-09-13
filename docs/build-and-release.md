@@ -19,10 +19,11 @@ Create the same VSIX shape used by CI with:
 
 ```sh
 yarn vsce package --no-yarn -o svn-scm.vsix
+node scripts/check-package-size.cjs svn-scm.vsix
 ```
 
 `vscode:prepublish` runs the full static check and production build. The
-`.vscodeignore` allowlist leaves the webpack bundle, manifest, README,
+`.vscodeignore` exclusions leave the webpack bundle, manifest, README,
 changelog, license, styles, icons, and images in the package; sources, tests,
 tooling, and development configuration are excluded.
 
@@ -31,9 +32,18 @@ change.
 
 ## CI artifacts
 
-Every branch push and pull request runs static checks, unit tests, packaging,
-and the integration-test matrix. The build job uploads its VSIX as a workflow
-artifact for manual validation.
+Pull requests targeting `master` and pushes to `master` run static checks, unit
+tests, packaging, and the full integration-test matrix. Feature-branch pushes
+do not run a second identical matrix alongside their PR. Open a PR for a feature
+branch or use the CI workflow's manual dispatch to validate an arbitrary branch.
+The build job uploads its VSIX as a workflow artifact for manual validation.
+
+`package-budgets.json` sets explicit ceilings of 1.5 MiB for the uncompressed
+webpack bundle and 768 KiB for the VSIX. Both CI and release packaging reject
+missing, empty, non-file, or oversized outputs. Run the guard's boundary tests
+with `node --test scripts/check-package-size.test.cjs`. Budget changes require
+an explanation of the size increase and inspection of the packaged file list;
+do not increase a limit merely to silence a failure.
 
 ## Release workflow
 
@@ -45,8 +55,15 @@ Releases are driven by tags matching `v*`:
 4. create and push tag `v<package-version>`.
 
 The release workflow verifies that the tag equals the package version, reruns
-quality and integration tests, creates `svn-scm-v<version>.vsix`, extracts the
+the same reusable CI workflow (including the full OS/minimum/stable matrix),
+creates `svn-scm-v<version>.vsix`, checks its budgets, extracts the
 matching changelog section, and publishes a GitHub Release.
+
+Release notes are selected by literal version with `scripts/release-notes.cjs`.
+The parser stops at the next release heading, including prereleases, and fails
+if the requested section is missing or empty. Preview without publishing using
+`node scripts/release-notes.cjs 2.19.0`. Run all release-tooling regressions with
+`node --test scripts/*.test.cjs`.
 
 Do not move or reuse a published version tag. If a release fails, fix the cause
 on a new commit and create the appropriate new version according to the impact

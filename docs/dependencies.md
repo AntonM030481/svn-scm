@@ -33,6 +33,11 @@ validated value rather than applying different rules to the raw version string.
 
 ## Updating dependencies
 
+See the [2026-09-13 audit](dependency-audit-2026-09-13.md) for reproducible
+commands, reviewed advisory IDs, compatible lockfile updates, and the explicit
+Mocha tooling exception. Audit the entire graph: bundled runtime libraries also
+live in `devDependencies`, so a production-only dependency audit is insufficient.
+
 For routine patch or minor updates:
 
 1. update the lockfile with Yarn;

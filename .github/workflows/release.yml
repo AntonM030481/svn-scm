@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  quality:
+  verify-tag:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,12 +22,6 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: yarn install --immutable
 
       - name: Verify tag matches package version
         run: |
@@ -37,55 +31,13 @@ jobs:
             exit 1
           }
 
-      - name: Check
-        run: yarn check
-
-      - name: Run unit tests
-        run: yarn test:unit
-
-  integration:
-    needs: quality
-    runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        vscode-version:
-          - 1.86.0
-          - stable
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install Subversion
-        run: sudo apt-get update && sudo apt-get install -y subversion
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Compile tests
-        run: yarn test-compile
-
-      - name: Run integration tests
-        run: xvfb-run -a yarn test:integration
-        env:
-          CODE_VERSION: ${{ matrix.vscode-version }}
+  validation:
+    needs: verify-tag
+    uses: ./.github/workflows/main.yml
 
   release:
     needs:
-      - quality
-      - integration
+      - validation
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -108,18 +60,13 @@ jobs:
         run: yarn install --immutable
 
       - name: Package extension
-        run: yarn vsce package --no-yarn -o svn-scm-${{ github.ref_name }}.vsix
+        run: yarn vsce package --no-yarn -o "svn-scm-$GITHUB_REF_NAME.vsix"
+
+      - name: Check package budgets
+        run: node scripts/check-package-size.cjs "svn-scm-$GITHUB_REF_NAME.vsix"
 
       - name: Prepare release notes
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          awk -v version="$VERSION" '
-            $0 ~ "^#+ \\[" version "\\]" { found = 1; next }
-            found && /^#+ \[[0-9]+\.[0-9]+\.[0-9]+\]/ { exit }
-            found { print }
-            END { if (!found) exit 1 }
-          ' CHANGELOG.md > release-notes.md
-          test -s release-notes.md
+        run: node scripts/release-notes.cjs "${GITHUB_REF_NAME#v}" > release-notes.md
 
       - name: Create GitHub release
         run: |
