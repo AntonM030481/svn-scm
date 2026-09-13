@@ -27,7 +27,8 @@ suite("History avatar settings", () => {
   const icon = (author: string, size?: number) => {
     const result = getCommitIcon(author, size);
     assert.ok(result instanceof Uri);
-    return result.toString();
+    // Compare substituted components, not VS Code's percent-encoded rendering.
+    return result.toString(true);
   };
 
   test("same author uses the requested size, including default and repeated calls", () => {
