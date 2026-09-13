@@ -175,7 +175,6 @@ export class StagingCoordinator implements Disposable {
     for (const [repository, selected] of byRepository) {
       await this.stageInRepository(repository, selected);
     }
-    this.reconcileWorkingCopies(byRepository.keys());
   }
 
   public async stageAll(repository: Repository): Promise<void> {
@@ -214,7 +213,6 @@ export class StagingCoordinator implements Disposable {
         await this.restoreDestination(repository, paths, metadata);
       }
     }
-    this.reconcileWorkingCopies(byRepository.keys());
   }
 
   public async unstageAll(repository: Repository): Promise<void> {
@@ -322,18 +320,6 @@ export class StagingCoordinator implements Disposable {
     }
 
     state.group.resourceStates = uniqueResources(staged);
-  }
-
-  private reconcileWorkingCopies(repositories: Iterable<Repository>): void {
-    const roots = new Set<string>();
-    for (const repository of repositories) {
-      roots.add(normalizeWorkingCopyRoot(repository.root));
-    }
-    for (const repository of this.sourceControlManager.repositories) {
-      if (roots.has(normalizeWorkingCopyRoot(repository.root))) {
-        this.reconcile(repository);
-      }
-    }
   }
 
   private currentChangelist(
