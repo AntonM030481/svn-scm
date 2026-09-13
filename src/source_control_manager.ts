@@ -40,6 +40,12 @@ import { matchAll } from "./util/globMatch";
 
 type State = "uninitialized" | "initialized";
 
+interface DiscoveryOptions {
+  allowNested?: boolean;
+  recursive?: boolean;
+  lifecycleGeneration?: number;
+}
+
 export function getSvnRepositoryPathFromMetadata(
   filePath: string,
   svnDir: string = getSvnDir()
@@ -319,7 +325,10 @@ export class SourceControlManager implements IDisposable {
     }
 
     for (const [path, allowNested] of this.possibleSvnRepositoryPaths) {
-      void this.tryOpenRepository(path, 1, allowNested);
+      void this.tryOpenRepository(path, 1, {
+        allowNested,
+        recursive: !allowNested
+      });
     }
 
     this.possibleSvnRepositoryPaths.clear();
@@ -392,7 +401,7 @@ export class SourceControlManager implements IDisposable {
         return;
       }
       const root = folder.uri.fsPath;
-      await this.tryOpenRepository(root, 0, false, lifecycleGeneration);
+      await this.tryOpenRepository(root, 0, { lifecycleGeneration });
     }
   }
 
@@ -412,8 +421,11 @@ export class SourceControlManager implements IDisposable {
   public async tryOpenRepository(
     path: string,
     level = 0,
-    allowNested = false,
-    lifecycleGeneration = this.lifecycleGeneration
+    {
+      allowNested = false,
+      recursive = true,
+      lifecycleGeneration = this.lifecycleGeneration
+    }: DiscoveryOptions = {}
   ): Promise<void> {
     if (
       !this.isDiscoveryActive(lifecycleGeneration) ||
@@ -479,7 +491,7 @@ export class SourceControlManager implements IDisposable {
     }
 
     const newLevel = level + 1;
-    if (newLevel <= this.maxDepth) {
+    if (recursive && newLevel <= this.maxDepth) {
       let files: string[] | Buffer[] = [];
 
       try {
@@ -510,12 +522,7 @@ export class SourceControlManager implements IDisposable {
           stats.isDirectory() &&
           !matchAll(dir, this.ignoreList, { dot: true })
         ) {
-          await this.tryOpenRepository(
-            dir,
-            newLevel,
-            false,
-            lifecycleGeneration
-          );
+          await this.tryOpenRepository(dir, newLevel, { lifecycleGeneration });
         }
       }
     }

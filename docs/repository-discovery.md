@@ -59,6 +59,9 @@ covers an existing working-copy tree moved into the workspace when the platform
 does not emit descendant `.svn` events. The manager performs one file-type check
 and queues only the created directory for the same shallow, debounced validation;
 ordinary file events still do not start repository discovery or recursive scans.
+Directory-create requests explicitly disable recursion even when configured
+workspace discovery has a larger depth. Nested ownership and permission to
+recurse are separate discovery options, not inferred from the current depth.
 An ancestor repository does not suppress this check: only an already-open exact
 working-copy root does, allowing a newly moved nested working copy to become the
 more-specific owner.
@@ -91,12 +94,13 @@ disable, or a disable/re-enable cycle.
 The same generation is carried through the entire workspace and recursive scan,
 not recaptured for each folder.
 
-Discovery has two separate decisions, both owned by the manager:
+Discovery has three separate decisions, all owned by the manager:
 
 | Decision | Rule | Enforcement |
 | --- | --- | --- |
 | Is the request still valid? | Its enable-generation is active | After asynchronous work and before registration |
 | Is the candidate already owned? | Normal scans respect routed ownership; modern nested scans skip exact owners; legacy nested scans respect parent ownership | The same ownership predicate before validation and before construction |
+| May this request scan descendants? | Directory-create requests cannot recurse; workspace scans retain configured bounds | An explicit recursion option before directory enumeration |
 
 The final ownership check and construction/registration have no intervening
 `await`. A competing lookup may finish, but cannot register between that check

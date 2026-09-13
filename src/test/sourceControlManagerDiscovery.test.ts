@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Uri } from "vscode";
+import { SvnFinder } from "../svnFinder";
+import { cancelDebounces } from "../decorators";
 import {
   getSvnRepositoryPathFromMetadata,
   isSvnMetadataLookalikeDirectory,
@@ -10,6 +12,63 @@ import {
 } from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
+  test("directory-create queue explicitly disables recursive discovery", async () => {
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.possibleSvnRepositoryPaths = new Map();
+    let accept!: (args: unknown[]) => void;
+    const scanned = new Promise<unknown[]>(resolve => {
+      accept = resolve;
+    });
+    manager.tryOpenRepository = async (...args: unknown[]) => {
+      accept(args);
+    };
+    try {
+      manager.eventuallyScanPossibleSvnRepository("created", true);
+      assert.deepStrictEqual(await scanned, [
+        "created",
+        1,
+        { allowNested: true, recursive: false }
+      ]);
+    } finally {
+      cancelDebounces(manager);
+    }
+  });
+
+  for (const recursive of [false, true]) {
+    test(`honors recursive=${recursive} even with configured depth 10`, async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+      fs.mkdirSync(path.join(root, "child", ".svn"), { recursive: true });
+      const manager = Object.create(SourceControlManager.prototype) as any;
+      manager.enabled = true;
+      manager.disposed = false;
+      manager.lifecycleGeneration = 0;
+      manager.openRepositories = [];
+      manager.maxDepth = 10;
+      manager.ignoreList = [];
+      let lookups = 0;
+      manager._svn = {
+        version: "1.14.0",
+        getRepositoryRoot: async () => {
+          lookups += 1;
+          // Stop after proving that a descendant was visited.
+          manager.enabled = false;
+          return root;
+        }
+      };
+      try {
+        await manager.tryOpenRepository(root, 1, {
+          allowNested: true,
+          recursive
+        });
+        assert.strictEqual(lookups, recursive ? 1 : 0);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+
   test("distinguishes modern nested candidates from legacy parent ownership", () => {
     const manager = Object.create(SourceControlManager.prototype) as any;
     manager.getRepository = () => ({});
@@ -20,6 +79,27 @@ suite("Source control repository discovery", () => {
     manager._svn.version = "1.6.23";
     assert.strictEqual(manager.isDiscoveryCandidateOwned("child", true), true);
   });
+
+  for (const [version, owned] of [
+    ["1.6.17-SlikSvn-tag-1.6.17@1130898-X64", true],
+    ["1.6.23 (r12345)", true],
+    ["1.7.0-SlikSvn-tag@12345", false],
+    ["1.14.0 (r12345)", false]
+  ] as const) {
+    test(`uses validated SVN capability for ${version}`, async () => {
+      const manager = Object.create(SourceControlManager.prototype) as any;
+      manager.getRepository = () => ({});
+      manager.hasExactRepository = () => false;
+      manager._svn = await new SvnFinder().checkSvnVersion({
+        path: "svn",
+        version
+      });
+      assert.strictEqual(
+        manager.isDiscoveryCandidateOwned("child", true),
+        owned
+      );
+    });
+  }
 
   for (const legacyParent of [false, true]) {
     test(`does not construct a duplicate when ${legacyParent ? "a legacy parent" : "an exact owner"} opens during SVN lookup`, async () => {
@@ -55,7 +135,7 @@ suite("Source control repository discovery", () => {
         }
       };
       try {
-        await manager.tryOpenRepository(root, 1, true);
+        await manager.tryOpenRepository(root, 1, { allowNested: true });
         assert.strictEqual(opens, 1);
         assert.strictEqual(constructions, 0);
         assert.strictEqual(manager.openRepositories.length, 1);
@@ -98,7 +178,7 @@ suite("Source control repository discovery", () => {
       }
     };
     try {
-      await manager.tryOpenRepository(child, 1, true);
+      await manager.tryOpenRepository(child, 1, { allowNested: true });
       assert.strictEqual(lookups, 0);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -291,7 +371,9 @@ suite("Source control repository discovery", () => {
         };
 
         try {
-          const deferredOpen = manager.tryOpenRepository(directory, 1, true);
+          const deferredOpen = manager.tryOpenRepository(directory, 1, {
+            allowNested: true
+          });
           await lookupStarted;
           (manager as any).enabled = false;
           (manager as any).lifecycleGeneration += 1;
