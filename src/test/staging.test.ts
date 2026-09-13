@@ -88,6 +88,100 @@ suite("Staging Tests", () => {
     );
   });
 
+  test("staged files survive sequential targeted staging operations", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const fileOne = path.join(checkout.fsPath, "one", "a.txt");
+    const fileTwo = path.join(checkout.fsPath, "two", "b.txt");
+    fs.writeFileSync(fileOne, "a1\n");
+    fs.writeFileSync(fileTwo, "b1\n");
+    await repository.status();
+
+    const resourceOne = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === fileOne
+    );
+    const resourceTwo = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === fileTwo
+    );
+    assert.ok(resourceOne);
+    assert.ok(resourceTwo);
+
+    await commands.executeCommand("svn.stage", resourceOne);
+    await commands.executeCommand("svn.stage", resourceTwo);
+
+    assert.equal(repository.staged?.resourceStates.length, 2);
+    assert.ok(repository.getResourceFromFile(Uri.file(fileOne)));
+    assert.ok(repository.getResourceFromFile(Uri.file(fileTwo)));
+
+    repository.inputBox.value = "sequential staged commit";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+  });
+
+  test("unstaging an unversioned folder restores its scheduled additions", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "new-folder");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "new.txt"), "new\n");
+    await repository.status();
+
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === directory
+    );
+    assert.ok(resource);
+
+    await commands.executeCommand("svn.stage", resource);
+    assert.match(svn(["status"], checkout.fsPath), /^A\s+new-folder/m);
+
+    await commands.executeCommand("svn.unstageAll", repository.staged);
+    const status = svn(["status"], checkout.fsPath);
+    assert.doesNotMatch(status, /^A\s+new-folder/m);
+    assert.match(status, /^\?\s+new-folder/m);
+  });
+
+  test("directory-only versioned changes stay unstaged", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "one");
+    svn(["propset", "stage-test", "value", directory], checkout.fsPath);
+    await repository.status();
+
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === directory
+    );
+    assert.ok(resource);
+
+    await commands.executeCommand("svn.stage", resource);
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === directory
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === directory
+      ),
+      true
+    );
+  });
+
   test("one staged commit spans sibling workspace folders in the same WC", async () => {
     const checkout = await createCheckoutWithFiles();
     const one = path.join(checkout.fsPath, "one");

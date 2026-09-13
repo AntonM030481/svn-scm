@@ -294,6 +294,16 @@ function snapshotStatuses(repository: Repository): IFileStatus[] {
   append(repository.changes.resourceStates);
   append(repository.conflicts.resourceStates);
   append(repository.unversioned.resourceStates);
+  if (repository.staged) {
+    for (const resource of repository.staged.resourceStates) {
+      const changelist = repository.stagedChangelists.get(
+        normalizePath(resource.resourceUri.fsPath)
+      );
+      if (changelist) {
+        append([resource], changelist);
+      }
+    }
+  }
   repository.changelists.forEach((group, changelist) => {
     append(group.resourceStates, changelist);
   });

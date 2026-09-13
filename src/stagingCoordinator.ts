@@ -1,5 +1,5 @@
 import * as path from "path";
-import { Disposable, SourceControlResourceGroup } from "vscode";
+import { Disposable, SourceControlResourceGroup, window } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
 import { stat } from "./fs";
 import { configuration } from "./helpers/configuration";
@@ -302,6 +302,7 @@ export class StagingCoordinator implements Disposable {
     if (repository.staged === state.group) {
       repository.staged = undefined;
     }
+    repository.stagedChangelists.clear();
     this.states.delete(repository);
   }
 
@@ -311,15 +312,15 @@ export class StagingCoordinator implements Disposable {
 
     const staged: Resource[] = [];
     state.metadataByPath.clear();
+    repository.stagedChangelists.clear();
 
     for (const [changelist, group] of repository.changelists) {
       if (!isStagingChangelist(changelist)) continue;
       for (const resource of group.resourceStates) {
         staged.push(resource);
-        state.metadataByPath.set(
-          normalizePath(resource.resourceUri.fsPath),
-          changelist
-        );
+        const key = normalizePath(resource.resourceUri.fsPath);
+        state.metadataByPath.set(key, changelist);
+        repository.stagedChangelists.set(key, changelist);
       }
       group.resourceStates = [];
     }
@@ -354,12 +355,27 @@ export class StagingCoordinator implements Disposable {
   ): Promise<void> {
     const regular: Resource[] = [];
     const unversioned: Resource[] = [];
+    let skippedDirectories = 0;
 
     for (const resource of selected) {
       const current = this.currentChangelist(repository, resource);
       if (current && isStagingChangelist(current)) continue;
-      if (resource.type === Status.UNVERSIONED) unversioned.push(resource);
-      else regular.push(resource);
+      if (resource.type === Status.UNVERSIONED) {
+        unversioned.push(resource);
+        continue;
+      }
+
+      if (await this.isDirectoryResource(repository, resource)) {
+        skippedDirectories += 1;
+        continue;
+      }
+      regular.push(resource);
+    }
+
+    if (skippedDirectories) {
+      await window.showWarningMessage(
+        "SVN staging currently supports file changes only. Directory-only changes remain in Changes and can be committed with Commit All."
+      );
     }
 
     if (unversioned.length) {
@@ -406,6 +422,11 @@ export class StagingCoordinator implements Disposable {
             fileDescendants,
             createStagingChangelist(undefined, true)
           );
+        } else {
+          await repository.revert([directory], "infinity");
+          await window.showWarningMessage(
+            "Empty directories cannot be staged because SVN changelists apply only to files."
+          );
         }
       }
     }
@@ -421,6 +442,23 @@ export class StagingCoordinator implements Disposable {
 
     for (const [destination, files] of byDestination) {
       await repository.addChangelist(files, destination);
+    }
+  }
+
+  private async isDirectoryResource(
+    repository: Repository,
+    resource: Resource
+  ): Promise<boolean> {
+    try {
+      return (await stat(resource.resourceUri.fsPath)).isDirectory();
+    } catch {
+      try {
+        return (
+          (await repository.info(resource.resourceUri.fsPath)).kind === "dir"
+        );
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -442,6 +480,44 @@ export class StagingCoordinator implements Disposable {
     );
   }
 
+  private addedAncestorDirectoriesForUnstage(
+    repository: Repository,
+    paths: string[]
+  ): string[] {
+    const selected = new Set(paths.map(normalizePath));
+    const candidates = new Set<string>();
+
+    for (const filePath of paths) {
+      let directory = path.dirname(filePath);
+      while (
+        directory !== path.dirname(directory) &&
+        normalizePath(directory) !== normalizePath(repository.root)
+      ) {
+        if (this.findResource(repository, directory)?.type === Status.ADDED) {
+          candidates.add(normalizePath(directory));
+        }
+        directory = path.dirname(directory);
+      }
+    }
+
+    const added = this.resourcesUnderPath(repository, repository.workspaceRoot)
+      .filter(resource => resource.type === Status.ADDED)
+      .map(resource => normalizePath(resource.resourceUri.fsPath));
+
+    return [...candidates]
+      .filter(
+        directory =>
+          !added.some(
+            resourcePath =>
+              resourcePath !== directory &&
+              isPathInside(directory, resourcePath) &&
+              !selected.has(resourcePath) &&
+              !candidates.has(resourcePath)
+          )
+      )
+      .sort((left, right) => right.length - left.length);
+  }
+
   private async restoreDestination(
     repository: Repository,
     paths: string[],
@@ -452,9 +528,16 @@ export class StagingCoordinator implements Disposable {
       return;
     }
 
+    const addedDirectories = metadata.wasUnversioned
+      ? this.addedAncestorDirectoriesForUnstage(repository, paths)
+      : [];
+
     await repository.removeChangelist(paths);
     if (metadata.wasUnversioned) {
       await repository.revert(paths, "empty");
+      for (const directory of addedDirectories) {
+        await repository.revert([directory], "empty");
+      }
     }
   }
 }
