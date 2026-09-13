@@ -60,6 +60,10 @@ export function getSvnRepositoryPathFromMetadata(
   return undefined;
 }
 
+export function isSvnMetadataLookalikeDirectory(filePath: string): boolean {
+  return /^(\.svn|_svn)[.-]/i.test(path.basename(filePath.replace(/\\/g, "/")));
+}
+
 export class SourceControlManager implements IDisposable {
   private _onDidOpenRepository = new EventEmitter<Repository>();
   public readonly onDidOpenRepository: Event<Repository> =
@@ -80,6 +84,7 @@ export class SourceControlManager implements IDisposable {
   public openRepositories: IOpenRepository[] = [];
   private disposables: Disposable[] = [];
   private enabled = false;
+  private disposed = false;
   private possibleSvnRepositoryPaths = new Set<string>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
@@ -160,6 +165,10 @@ export class SourceControlManager implements IDisposable {
   }
 
   private onDidChangeConfiguration(): void {
+    if (this.disposed) {
+      return;
+    }
+
     const enabled = configuration.get<boolean>("enabled") === true;
 
     this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
@@ -215,6 +224,11 @@ export class SourceControlManager implements IDisposable {
       this,
       this.disposables
     );
+    fsWatcher.onDidCreate(
+      uri => void this.onPossibleSvnRepositoryDirectoryCreate(uri),
+      this,
+      this.disposables
+    );
 
     this.setState("initialized");
 
@@ -230,6 +244,36 @@ export class SourceControlManager implements IDisposable {
     }
 
     this.eventuallyScanPossibleSvnRepository(possibleSvnRepositoryPath);
+  }
+
+  private async onPossibleSvnRepositoryDirectoryCreate(
+    uri: Uri
+  ): Promise<void> {
+    if (
+      this.disposed ||
+      uri.scheme !== "file" ||
+      getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined ||
+      isSvnMetadataLookalikeDirectory(uri.fsPath) ||
+      this.getRepository(uri)
+    ) {
+      return;
+    }
+
+    try {
+      const stats = await stat(uri.fsPath);
+      if (
+        this.disposed ||
+        !stats.isDirectory() ||
+        !this.enabled ||
+        this.getRepository(uri)
+      ) {
+        return;
+      }
+
+      this.eventuallyScanPossibleSvnRepository(uri.fsPath);
+    } catch (_error) {
+      // The path may disappear again before the asynchronous stat completes.
+    }
   }
 
   private eventuallyScanPossibleSvnRepository(path: string) {
@@ -606,6 +650,12 @@ export class SourceControlManager implements IDisposable {
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.enabled = false;
     this.disable();
     this.configurationChangeDisposable.dispose();
   }

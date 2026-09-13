@@ -1,5 +1,13 @@
 import * as assert from "assert";
-import { getSvnRepositoryPathFromMetadata } from "../source_control_manager";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { Uri } from "vscode";
+import {
+  getSvnRepositoryPathFromMetadata,
+  isSvnMetadataLookalikeDirectory,
+  SourceControlManager
+} from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
   test("extracts working-copy roots from SVN metadata paths", () => {
@@ -33,5 +41,75 @@ suite("Source control repository discovery", () => {
 
     assert.strictEqual(ordinaryFile, undefined);
     assert.strictEqual(lookalikeDirectory, undefined);
+    assert.equal(
+      isSvnMetadataLookalikeDirectory("/workspace/project/.svn-backup"),
+      true
+    );
+    assert.equal(
+      isSvnMetadataLookalikeDirectory("C:\\workspace\\project\\_svn.old"),
+      true
+    );
+  });
+
+  test("uses only created directories as bounded discovery candidates", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    const directory = path.join(root, "moved-working-copy");
+    const ordinaryFile = path.join(root, "ordinary.txt");
+    fs.mkdirSync(directory);
+    fs.mkdirSync(path.join(directory, ".svn"));
+    fs.writeFileSync(ordinaryFile, "ordinary");
+
+    const manager = Object.create(
+      SourceControlManager.prototype
+    ) as SourceControlManager;
+    const candidates: string[] = [];
+    (manager as any).enabled = true;
+    (manager as any).getRepository = () => null;
+    (manager as any).eventuallyScanPossibleSvnRepository = (
+      candidate: string
+    ) => candidates.push(candidate);
+
+    try {
+      await (manager as any).onPossibleSvnRepositoryDirectoryCreate(
+        Uri.file(directory)
+      );
+      await (manager as any).onPossibleSvnRepositoryDirectoryCreate(
+        Uri.file(ordinaryFile)
+      );
+
+      assert.deepEqual(candidates, [Uri.file(directory).fsPath]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not schedule discovery after manager disposal", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    const directory = path.join(root, "moved-working-copy");
+    fs.mkdirSync(directory);
+
+    const manager = Object.create(
+      SourceControlManager.prototype
+    ) as SourceControlManager;
+    const candidates: string[] = [];
+    (manager as any).enabled = true;
+    (manager as any).disposed = false;
+    (manager as any).getRepository = () => null;
+    (manager as any).eventuallyScanPossibleSvnRepository = (
+      candidate: string
+    ) => candidates.push(candidate);
+
+    try {
+      const deferredDiscovery = (
+        manager as any
+      ).onPossibleSvnRepositoryDirectoryCreate(Uri.file(directory));
+      (manager as any).disposed = true;
+      (manager as any).enabled = false;
+      await deferredDiscovery;
+
+      assert.deepEqual(candidates, []);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -54,6 +54,12 @@ A workspace file-system watcher looks for creation or changes under SVN metadata
 directories that are not already owned by an open repository. The metadata path
 is converted to its possible working-copy root and queued for a shallow scan.
 
+A directory-level create event is also treated as a bounded candidate. This
+covers an existing working-copy tree moved into the workspace when the platform
+does not emit descendant `.svn` events. The manager performs one file-type check
+and queues only the created directory for the same shallow, debounced validation;
+ordinary file events still do not start repository discovery or recursive scans.
+
 Filtering before the debounced queue is important: a general workspace change
 must not trigger repository discovery or an `svn info` call.
 
@@ -69,7 +75,9 @@ the repository can exist while that first snapshot is still pending.
 Closing removes all manager listeners, disposes the repository, removes it from
 the registry, and publishes `onDidCloseRepository`. Disabling SVN closes every
 repository, clears discovery candidates, cancels debounced discovery, and
-disposes workspace watchers.
+disposes workspace watchers. Manager disposal also marks discovery inactive
+before cleanup, so an asynchronous file-type check that finishes later cannot
+enqueue or open another repository.
 
 ## Synchronous routing
 
@@ -115,6 +123,8 @@ file-system error instead of leaving the document pending indefinitely.
 - Parent repositories do not claim separately detected externals or ignored
   nested working copies.
 - Routine file events do not start discovery work.
+- A created directory may receive one shallow repository check without turning
+  ordinary file events into recursive discovery.
 - Recursive discovery remains explicitly enabled, bounded, and filtered.
 - Normal routing stays in memory; SVN validation is an ambiguity fallback.
 - Initial status pending is a real lifecycle phase and must remain routable.
