@@ -1,3 +1,4 @@
+import { registerResources } from "../lifecycle";
 import * as path from "path";
 import {
   commands,
@@ -85,40 +86,53 @@ export class RepoLogProvider
 
   constructor(private sourceControlManager: SourceControlManager) {
     this.refresh();
-    this._dispose.push(
-      window.registerTreeDataProvider("repolog", this),
-      commands.registerCommand(
-        "svn.repolog.copymsg",
-        async (item: ILogTreeItem) => copyCommitToClipboard("msg", item)
-      ),
-      commands.registerCommand(
-        "svn.repolog.copyrevision",
-        async (item: ILogTreeItem) => copyCommitToClipboard("revision", item)
-      ),
-      commands.registerCommand(
-        "svn.repolog.addrepolike",
-        this.addRepolikeGui,
-        this
-      ),
-      commands.registerCommand("svn.repolog.remove", this.removeRepo, this),
-      commands.registerCommand(
-        "svn.repolog.openFileRemote",
-        this.openFileRemoteCmd,
-        this
-      ),
-      commands.registerCommand("svn.repolog.openDiff", this.openDiffCmd, this),
-      commands.registerCommand(
-        "svn.repolog.openFileLocal",
-        this.openFileLocal,
-        this
-      ),
-      commands.registerCommand("svn.repolog.refresh", this.refresh, this),
-      this.sourceControlManager.onDidChangeRepository(
-        async (_e: RepositoryChangeEvent) => {
-          return this.refresh();
-          // TODO refresh only required repo, need to pass element === getChildren()
-        }
-      )
+    registerResources(
+      this._dispose,
+      () => window.registerTreeDataProvider("repolog", this),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.copymsg",
+          async (item: ILogTreeItem) => copyCommitToClipboard("msg", item)
+        ),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.copyrevision",
+          async (item: ILogTreeItem) => copyCommitToClipboard("revision", item)
+        ),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.addrepolike",
+          this.addRepolikeGui,
+          this
+        ),
+      () =>
+        commands.registerCommand("svn.repolog.remove", this.removeRepo, this),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.openFileRemote",
+          this.openFileRemoteCmd,
+          this
+        ),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.openDiff",
+          this.openDiffCmd,
+          this
+        ),
+      () =>
+        commands.registerCommand(
+          "svn.repolog.openFileLocal",
+          this.openFileLocal,
+          this
+        ),
+      () => commands.registerCommand("svn.repolog.refresh", this.refresh, this),
+      () =>
+        this.sourceControlManager.onDidChangeRepository(
+          async (_e: RepositoryChangeEvent) => {
+            return this.refresh();
+            // TODO refresh only required repo, need to pass element === getChildren()
+          }
+        )
     );
   }
 

@@ -49,9 +49,12 @@ import { Merge } from "./commands/merge";
 
 export function registerCommands(
   sourceControlManager: SourceControlManager,
-  disposables: Disposable[]
+  disposables: Disposable[],
+  ready:
+    | SourceControlManager
+    | PromiseLike<SourceControlManager> = sourceControlManager
 ) {
-  disposables.push(new GetSourceControlManager(sourceControlManager));
+  disposables.push(new GetSourceControlManager(ready));
   disposables.push(new FileOpen());
   disposables.push(new OpenFile());
   disposables.push(new PromptAuth());

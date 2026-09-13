@@ -11,6 +11,7 @@ import { SourceControlManager } from "../../source_control_manager";
 import BaseNode from "../nodes/baseNode";
 import RepositoryNode from "../nodes/repositoryNode";
 import { dispose } from "../../util";
+import { registerResources } from "../../lifecycle";
 
 export default class SvnProvider
   implements TreeDataProvider<BaseNode>, Disposable
@@ -22,11 +23,13 @@ export default class SvnProvider
     this._onDidChangeTreeData.event;
 
   constructor(private sourceControlManager: SourceControlManager) {
-    this._dispose.push(
-      window.registerTreeDataProvider("svn", this),
-      commands.registerCommand("svn.treeview.refreshProvider", () =>
-        this.refresh()
-      )
+    registerResources(
+      this._dispose,
+      () => window.registerTreeDataProvider("svn", this),
+      () =>
+        commands.registerCommand("svn.treeview.refreshProvider", () =>
+          this.refresh()
+        )
     );
   }
 

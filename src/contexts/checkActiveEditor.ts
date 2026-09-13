@@ -3,30 +3,41 @@ import { Status } from "../common/types";
 import { cancelDebounces, debounce } from "../decorators";
 import { SourceControlManager } from "../source_control_manager";
 import { IDisposable, setVscodeContext } from "../util";
+import { registerResources } from "../lifecycle";
 
 export class CheckActiveEditor implements IDisposable {
   private disposables: Disposable[] = [];
+  readonly initialized: Promise<void>;
 
   constructor(private sourceControlManager: SourceControlManager) {
     // When repository update, like update
-    sourceControlManager.onDidChangeStatusRepository(
-      this.checkHasChangesOnActiveEditor,
-      this,
-      this.disposables
+    registerResources(
+      this.disposables,
+      () =>
+        sourceControlManager.onDidChangeStatusRepository(
+          this.checkHasChangesOnActiveEditor,
+          this
+        ),
+      () =>
+        window.onDidChangeActiveTextEditor(
+          () => this.checkHasChangesOnActiveEditor(),
+          this
+        )
     );
-
-    window.onDidChangeActiveTextEditor(
-      () => this.checkHasChangesOnActiveEditor(),
-      this,
-      this.disposables
-    );
+    this.initialized = this.updateContext();
   }
 
   @debounce(100)
   private checkHasChangesOnActiveEditor() {
-    setVscodeContext(
-      "svnActiveEditorHasChanges",
-      this.hasChangesOnActiveEditor()
+    void this.updateContext().catch(console.error);
+  }
+
+  private updateContext(): Promise<void> {
+    return Promise.resolve(
+      setVscodeContext(
+        "svnActiveEditorHasChanges",
+        this.hasChangesOnActiveEditor()
+      )
     );
   }
 
@@ -72,5 +83,8 @@ export class CheckActiveEditor implements IDisposable {
   public dispose(): void {
     cancelDebounces(this);
     this.disposables.forEach(d => d.dispose());
+    void Promise.resolve(
+      setVscodeContext("svnActiveEditorHasChanges", false)
+    ).catch(console.error);
   }
 }

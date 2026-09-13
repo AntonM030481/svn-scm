@@ -8,6 +8,7 @@
 * Serialize root metadata refreshes and defer mutation notifications until metadata is current, including failure recovery and repository disposal (#61).
 * Preserve SVN membership validation and most-specific ownership when routing changelist selections (#62).
 * Run log search through the configured SVN executor with encoding, authentication, cancellation, and single-writer lifecycle handling (#63).
+* Make activation transactional: publish readiness only after complete initialization, roll back partial registrations, own the test command explicitly, and isolate enable/disable sessions (#64).
 
 ### Maintenance
 
