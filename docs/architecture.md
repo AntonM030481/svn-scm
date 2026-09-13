@@ -108,6 +108,9 @@ translate VS Code commands into repository operations.
 ### Views and virtual file systems
 
 - `src/historyView/` implements repository, file, and branch history views.
+  Avatar URIs are derived from the current URL template, author and requested
+  size on each render, without a global URI cache. Changing avatar settings
+  takes effect on the next render; it does not itself force a history reload.
 - `src/svnFileSystemProvider.ts` serves repository content through `svn:` URIs,
   primarily for diffs and restored editors.
 - `src/temp_svn_fs.ts` serves temporary history content through `tempsvnfs:`.
