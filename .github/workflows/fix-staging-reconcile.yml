@@ -1,0 +1,42 @@
+name: Fix staging reconciliation
+
+on:
+  push:
+    branches:
+      - feature/git-like-staging
+    paths:
+      - .github/workflows/fix-staging-reconcile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          persist-credentials: true
+      - name: Remove destructive duplicate reconciliation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/stagingCoordinator.ts')
+          s = p.read_text()
+          s = s.replace('''    for (const [repository, selected] of byRepository) {\n      await this.stageInRepository(repository, selected);\n    }\n    this.reconcileWorkingCopies(byRepository.keys());\n''', '''    for (const [repository, selected] of byRepository) {\n      await this.stageInRepository(repository, selected);\n    }\n''')
+          s = s.replace('''    }\n    this.reconcileWorkingCopies(byRepository.keys());\n  }\n\n  public async unstageAll''', '''    }\n  }\n\n  public async unstageAll''')
+          start = s.index('  private reconcileWorkingCopies(')
+          end = s.index('  private currentChangelist(', start)
+          s = s[:start] + s[end:]
+          p.write_text(s)
+          PY
+      - name: Commit fix and remove helper workflow
+        run: |
+          rm .github/workflows/fix-staging-reconcile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/stagingCoordinator.ts .github/workflows/fix-staging-reconcile.yml
+          git commit -m "fix: keep staged metadata after repository refresh"
+          git push origin HEAD:feature/git-like-staging
