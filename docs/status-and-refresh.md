@@ -105,7 +105,9 @@ Relative root aliases, absolute paths, and Windows case/separator variants use
 the same root comparison as repository-wide status flags. Failed mutations do
 not refresh info or notify. A failed follow-up info refresh is logged and skips
 the notification without turning an already successful mutation into a reported
-failure. Repository-change publication is also suppressed after disposal.
+failure. The owning repository supplies a lifecycle predicate to the info read:
+disposal prevents a new read and rejects an in-flight result before cache
+assignment. Repository-change publication is also suppressed after disposal.
 
 ## Full-refresh fallbacks
 

@@ -577,7 +577,7 @@ function patchRepository(repository: Repository): Disposable {
             !shouldPreserveRepositoryState(repository.workspaceRoot, targets)
           ) {
             try {
-              await svnRepository.updateInfo();
+              await svnRepository.updateInfo(() => !repository.isDisposed);
             } catch (error) {
               // The mutation already succeeded. Do not report it as failed
               // (and invite a retry) because this follow-up read failed.

@@ -65,14 +65,20 @@ export class Repository {
     })() as unknown as Repository;
   }
 
-  public async updateInfo() {
+  public async updateInfo(isCurrent: () => boolean = () => true) {
+    if (!isCurrent()) {
+      return;
+    }
     const result = await this.exec([
       "info",
       "--xml",
       fixPegRevision(this.workspaceRoot ? this.workspaceRoot : this.root)
     ]);
 
-    this._info = await parseInfoXml(result.stdout);
+    const info = await parseInfoXml(result.stdout);
+    if (isCurrent()) {
+      this._info = info;
+    }
   }
 
   public async exec(

@@ -46,12 +46,16 @@ function mutationFixture(
         return { stdout: "<status></status>" };
       },
       removeAbsolutePath: (target: string) => target,
-      updateInfo: async () => {
+      updateInfo: async (isCurrent: () => boolean = () => true) => {
+        if (!isCurrent()) return;
         events.push("info");
         if (failInfo) throw new Error("info failed");
       }
     },
     disposed: false,
+    get isDisposed() {
+      return this.disposed;
+    },
     disposables: [],
     _onDidDispose: new EventEmitter<void>(),
     _onDidChangeRepository: { fire: () => events.push("notify") },
@@ -222,6 +226,22 @@ suite("Incremental Status Tests", () => {
       completeInfo();
       await mutation;
       assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not launch info when disposed before mutation completion", async () => {
+    const fixture = mutationFixture("/repo");
+    const getStatus = fixture.repository.repository.getStatus;
+    fixture.repository.repository.getStatus = async params => {
+      const statuses = await getStatus(params);
+      fixture.repository.dispose();
+      return statuses;
+    };
+    try {
+      await fixture.repository.commitFiles("message", ["."]);
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status"]);
     } finally {
       fixture.dispose();
     }

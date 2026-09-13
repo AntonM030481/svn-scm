@@ -189,6 +189,70 @@ suite("Svn Repository Tests", () => {
     assert.equal(getInfoCalls, 0);
   });
 
+  test("Skips info execution when its owner is already inactive", async () => {
+    const repository = await new Repository(
+      new Svn(options),
+      "/wc",
+      "/wc",
+      ConstructorPolicy.LateInit,
+      info
+    );
+    let calls = 0;
+    repository.exec = async () => {
+      calls++;
+      throw new Error("must not execute");
+    };
+    await repository.updateInfo(() => false);
+    assert.equal(calls, 0);
+    assert.strictEqual(repository.info, info);
+  });
+
+  test("Rejects stale info results without replacing the previous cache", async () => {
+    const repository = await new Repository(
+      new Svn(options),
+      "/wc",
+      "/wc",
+      ConstructorPolicy.LateInit,
+      info
+    );
+    let active = true;
+    let finish!: () => void;
+    repository.exec = async () => {
+      await new Promise<void>(resolve => {
+        finish = resolve;
+      });
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout:
+          '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
+      };
+    };
+    const refresh = repository.updateInfo(() => active);
+    active = false;
+    finish();
+    await refresh;
+    assert.strictEqual(repository.info, info);
+  });
+
+  test("Accepts refreshed info while its owner remains active", async () => {
+    const repository = await new Repository(
+      new Svn(options),
+      "/wc",
+      "/wc",
+      ConstructorPolicy.LateInit,
+      info
+    );
+    repository.exec = async () => ({
+      exitCode: 0,
+      stderr: "",
+      stdout:
+        '<info><entry kind="dir" path="." revision="43"><url>https://example.test/svn/project/trunk</url></entry></info>'
+    });
+    await repository.updateInfo(() => true);
+    assert.equal(repository.info.revision, "43");
+  });
+
   test("Refreshes repository info after switching branch", async () => {
     svn = new Svn(options);
     const repository = await new Repository(

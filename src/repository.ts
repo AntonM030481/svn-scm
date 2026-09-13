@@ -94,6 +94,10 @@ export class Repository implements IRemoteRepository {
   public readonly initialStatusSettled: Promise<void>;
   private disposed = false;
 
+  public get isDisposed(): boolean {
+    return this.disposed;
+  }
+
   private _onDidDispose = new EventEmitter<void>();
   private readonly onDidDispose: Event<void> = this._onDidDispose.event;
 
