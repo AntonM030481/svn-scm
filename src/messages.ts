@@ -1,7 +1,12 @@
 import * as path from "path";
+import { randomBytes } from "crypto";
 import { commands, Uri, ViewColumn, WebviewPanel, window } from "vscode";
 import { SourceControlManager } from "./source_control_manager";
 import { configuration } from "./helpers/configuration";
+import {
+  createCommitMessageInitialState,
+  getCommitMessageWebviewHtml
+} from "./webview/commitMessageHtml";
 
 export function noChangesToCommit() {
   return window.showInformationMessage("There are no changes to commit.");
@@ -24,6 +29,7 @@ export function dispose() {
 }
 
 async function showCommitInput(message?: string, filePaths?: string[]) {
+  const initialState = createCommitMessageInitialState(message, filePaths);
   const promise = new Promise<string | undefined>(resolve => {
     // Close previous commit message input
     if (panel) {
@@ -36,6 +42,7 @@ async function showCommitInput(message?: string, filePaths?: string[]) {
       panel.dispose();
     };
 
+    const cssRoot = Uri.file(path.join(__dirname, "..", "css"));
     panel = window.createWebviewPanel(
       "svnCommitMessage",
       "Commit Message",
@@ -45,7 +52,8 @@ async function showCommitInput(message?: string, filePaths?: string[]) {
       },
       {
         enableScripts: true,
-        retainContextWhenHidden: true
+        retainContextWhenHidden: true,
+        localResourceRoots: [cssRoot]
       }
     );
 
@@ -53,122 +61,11 @@ async function showCommitInput(message?: string, filePaths?: string[]) {
       path.join(__dirname, "..", "css", "commit-message.css")
     );
     const styleUri = panel.webview.asWebviewUri(stylePathOnDisk);
-
-    let beforeForm = "";
-    if (filePaths && filePaths.length) {
-      const selectedFiles = filePaths.sort().map(f => `<li>${f}</li>`);
-
-      if (selectedFiles.length) {
-        beforeForm = `
-<div class="file-list">
-  <h3 class="title">Files to commit</h3>
-  <ul>
-    ${selectedFiles.join("\n")}
-  </ul>
-</div>`;
-      }
-    }
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!--
-  Use a content security policy to only allow loading images from https or from our extension directory,
-  and only allow scripts that have a specific nonce.
-  -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${
-    panel.webview.cspSource
-  } https:; script-src ${panel.webview.cspSource} 'unsafe-inline'; style-src ${
-    panel.webview.cspSource
-  };">
-
-  <title>Commit Message</title>
-  <link rel="stylesheet" href="${styleUri}">
-</head>
-<body>
-  <section class="container">
-    ${beforeForm}
-    <form>
-      <fieldset>
-        <div class="float-right">
-          <a href="#" id="pickCommitMessage">Pick a previous commit message</a>
-        </div>
-        <label for="message">Commit message</label>
-        <textarea id="message" rows="3" placeholder="Message (press Ctrl+Enter to commit)"></textarea>
-        <button id="commit" class="button-primary">Commit</button>
-        <div class="float-right">
-          <button id="cancel" class="button button-outline">Cancel</button>
-        </div>
-      </fieldset>
-    </form>
-  </section>
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    const txtMessage = document.getElementById("message");
-    const btnCommit = document.getElementById("commit");
-    const btnCancel = document.getElementById("cancel");
-    const linkPickCommitMessage = document.getElementById("pickCommitMessage");
-
-    // load current message
-    txtMessage.value = ${JSON.stringify(message)};
-
-    btnCommit.addEventListener("click", function() {
-      vscode.postMessage({
-        command: "commit",
-        message: txtMessage.value
-      });
+    panel.webview.html = getCommitMessageWebviewHtml({
+      cspSource: panel.webview.cspSource,
+      nonce: randomBytes(16).toString("base64"),
+      styleUri: styleUri.toString()
     });
-
-    btnCancel.addEventListener("click", function() {
-      vscode.postMessage({
-        command: "cancel"
-      });
-    });
-
-    // Allow CTRL + Enter
-    txtMessage.addEventListener("keydown", function(e) {
-      if (event.ctrlKey && event.keyCode === 13) {
-        btnCommit.click();
-      }
-    });
-
-    // Auto resize the height of message
-    txtMessage.addEventListener("input", function(e) {
-      txtMessage.style.height = "auto";
-      txtMessage.style.height = (txtMessage.scrollHeight) + "px";
-    });
-
-    window.addEventListener("load", function() {
-      setTimeout(() => {
-        txtMessage.focus();
-      }, 1000);
-    });
-
-    linkPickCommitMessage.addEventListener("click", function() {
-      vscode.postMessage({
-        command: "pickCommitMessage"
-      });
-    });
-
-    // Message from VSCode
-    window.addEventListener("message", function(event) {
-      const message = event.data;
-      switch (message.command) {
-        case "setMessage":
-          txtMessage.value = message.message;
-          txtMessage.dispatchEvent(new Event("input"));
-          break;
-      }
-    });
-  </script>
-</body>
-</html>`;
-
-    panel.webview.html = html;
 
     // On close
     panel.onDidDispose(() => {
@@ -201,18 +98,22 @@ async function showCommitInput(message?: string, filePaths?: string[]) {
     };
 
     // On button click
-    panel.webview.onDidReceiveMessage(message => {
-      switch (message.command) {
+    panel.webview.onDidReceiveMessage(webviewMessage => {
+      switch (webviewMessage.command) {
+        case "ready":
+          panel.webview.postMessage(initialState);
+          break;
         case "commit":
-          resolve(message.message);
+          resolve(webviewMessage.message);
           panel.dispose();
           break;
         case "pickCommitMessage":
           pickCommitMessage();
           break;
-        default:
+        case "cancel":
           resolve(undefined);
           panel.dispose();
+          break;
       }
     });
 
