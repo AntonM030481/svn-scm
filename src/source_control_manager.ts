@@ -85,7 +85,7 @@ export class SourceControlManager implements IDisposable {
   private disposables: Disposable[] = [];
   private enabled = false;
   private disposed = false;
-  private possibleSvnRepositoryPaths = new Set<string>();
+  private possibleSvnRepositoryPaths = new Map<string, boolean>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -254,7 +254,7 @@ export class SourceControlManager implements IDisposable {
       uri.scheme !== "file" ||
       getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined ||
       isSvnMetadataLookalikeDirectory(uri.fsPath) ||
-      this.getRepository(uri)
+      this.hasExactRepository(uri.fsPath)
     ) {
       return;
     }
@@ -265,26 +265,49 @@ export class SourceControlManager implements IDisposable {
         this.disposed ||
         !stats.isDirectory() ||
         !this.enabled ||
-        this.getRepository(uri)
+        this.hasExactRepository(uri.fsPath)
       ) {
         return;
       }
 
-      this.eventuallyScanPossibleSvnRepository(uri.fsPath);
+      this.eventuallyScanPossibleSvnRepository(uri.fsPath, true);
     } catch (_error) {
       // The path may disappear again before the asynchronous stat completes.
     }
   }
 
-  private eventuallyScanPossibleSvnRepository(path: string) {
-    this.possibleSvnRepositoryPaths.add(path);
+  private hasExactRepository(candidatePath: string): boolean {
+    const candidate = normalizePath(candidatePath);
+    return this.openRepositories.some(({ repository }) => {
+      return (
+        normalizePath(repository.root) === candidate ||
+        normalizePath(repository.workspaceRoot) === candidate
+      );
+    });
+  }
+
+  private eventuallyScanPossibleSvnRepository(
+    path: string,
+    allowNested: boolean = false
+  ) {
+    if (this.disposed || !this.enabled) {
+      return;
+    }
+
+    const existing = this.possibleSvnRepositoryPaths.get(path) || false;
+    this.possibleSvnRepositoryPaths.set(path, existing || allowNested);
     this.eventuallyScanPossibleSvnRepositories();
   }
 
   @debounce(500)
   private eventuallyScanPossibleSvnRepositories(): void {
-    for (const path of this.possibleSvnRepositoryPaths) {
-      this.tryOpenRepository(path, 1);
+    if (this.disposed || !this.enabled) {
+      this.possibleSvnRepositoryPaths.clear();
+      return;
+    }
+
+    for (const [path, allowNested] of this.possibleSvnRepositoryPaths) {
+      void this.tryOpenRepository(path, 1, allowNested);
     }
 
     this.possibleSvnRepositoryPaths.clear();
@@ -355,14 +378,26 @@ export class SourceControlManager implements IDisposable {
     }
   }
 
-  public async tryOpenRepository(path: string, level = 0): Promise<void> {
-    if (this.getRepository(path)) {
+  public async tryOpenRepository(
+    path: string,
+    level = 0,
+    allowNested = false
+  ): Promise<void> {
+    if (
+      this.disposed ||
+      (allowNested ? this.hasExactRepository(path) : this.getRepository(path))
+    ) {
       return;
     }
 
     const checkParent = level === 0;
 
-    if (await isSvnFolder(path, checkParent)) {
+    const svnFolder = await isSvnFolder(path, checkParent);
+    if (this.disposed) {
+      return;
+    }
+
+    if (svnFolder) {
       const resourceConfig = workspace.getConfiguration("svn", Uri.file(path));
 
       const ignoredRepos = new Set(
@@ -377,9 +412,17 @@ export class SourceControlManager implements IDisposable {
 
       try {
         const repositoryRoot = await this.svn.getRepositoryRoot(path);
+        if (this.disposed) {
+          return;
+        }
+
+        const baseRepository = await this.svn.open(repositoryRoot, path);
+        if (this.disposed) {
+          return;
+        }
 
         const repository = new Repository(
-          await this.svn.open(repositoryRoot, path),
+          baseRepository,
           this.extensionContact.secrets
         );
 
@@ -406,6 +449,10 @@ export class SourceControlManager implements IDisposable {
         return;
       }
 
+      if (this.disposed) {
+        return;
+      }
+
       for (const file of files) {
         const dir = path + "/" + file;
         let stats: Stats;
@@ -414,6 +461,10 @@ export class SourceControlManager implements IDisposable {
           stats = await stat(dir);
         } catch (_error) {
           continue;
+        }
+
+        if (this.disposed) {
+          return;
         }
 
         if (
@@ -554,6 +605,11 @@ export class SourceControlManager implements IDisposable {
   }
 
   private open(repository: Repository): void {
+    if (this.disposed) {
+      repository.dispose();
+      return;
+    }
+
     this.logRepositoryLifecycle(repository, "opened; initial status pending");
     void repository.initialStatusSettled.then(() => {
       if (repository.state !== RepositoryState.Disposed) {

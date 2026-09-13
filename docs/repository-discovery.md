@@ -59,6 +59,9 @@ covers an existing working-copy tree moved into the workspace when the platform
 does not emit descendant `.svn` events. The manager performs one file-type check
 and queues only the created directory for the same shallow, debounced validation;
 ordinary file events still do not start repository discovery or recursive scans.
+An ancestor repository does not suppress this check: only an already-open exact
+working-copy root does, allowing a newly moved nested working copy to become the
+more-specific owner.
 
 Filtering before the debounced queue is important: a general workspace change
 must not trigger repository discovery or an `svn info` call.
@@ -76,8 +79,9 @@ Closing removes all manager listeners, disposes the repository, removes it from
 the registry, and publishes `onDidCloseRepository`. Disabling SVN closes every
 repository, clears discovery candidates, cancels debounced discovery, and
 disposes workspace watchers. Manager disposal also marks discovery inactive
-before cleanup, so an asynchronous file-type check that finishes later cannot
-enqueue or open another repository.
+before cleanup. Every asynchronous stage of candidate validation and opening
+rechecks that lifecycle state, so neither an in-flight file-type check nor a
+queued SVN lookup can enqueue or open another repository after shutdown.
 
 ## Synchronous routing
 

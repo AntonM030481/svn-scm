@@ -64,6 +64,8 @@ suite("Source control repository discovery", () => {
     ) as SourceControlManager;
     const candidates: string[] = [];
     (manager as any).enabled = true;
+    (manager as any).disposed = false;
+    (manager as any).openRepositories = [];
     (manager as any).getRepository = () => null;
     (manager as any).eventuallyScanPossibleSvnRepository = (
       candidate: string
@@ -94,6 +96,7 @@ suite("Source control repository discovery", () => {
     const candidates: string[] = [];
     (manager as any).enabled = true;
     (manager as any).disposed = false;
+    (manager as any).openRepositories = [];
     (manager as any).getRepository = () => null;
     (manager as any).eventuallyScanPossibleSvnRepository = (
       candidate: string
@@ -108,6 +111,77 @@ suite("Source control repository discovery", () => {
       await deferredDiscovery;
 
       assert.deepEqual(candidates, []);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("checks a created directory owned only by a parent repository", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    const directory = path.join(root, "nested-working-copy");
+    fs.mkdirSync(directory);
+
+    const manager = Object.create(
+      SourceControlManager.prototype
+    ) as SourceControlManager;
+    const candidates: string[] = [];
+    (manager as any).enabled = true;
+    (manager as any).disposed = false;
+    (manager as any).openRepositories = [
+      { repository: { root, workspaceRoot: root } }
+    ];
+    (manager as any).eventuallyScanPossibleSvnRepository = (
+      candidate: string
+    ) => candidates.push(candidate);
+
+    try {
+      await (manager as any).onPossibleSvnRepositoryDirectoryCreate(
+        Uri.file(directory)
+      );
+
+      assert.deepEqual(candidates, [Uri.file(directory).fsPath]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not open a queued repository after manager disposal", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    const directory = path.join(root, "moved-working-copy");
+    fs.mkdirSync(path.join(directory, ".svn"), { recursive: true });
+
+    const manager = Object.create(
+      SourceControlManager.prototype
+    ) as SourceControlManager;
+    let signalLookupStarted!: () => void;
+    const lookupStarted = new Promise<void>(resolve => {
+      signalLookupStarted = resolve;
+    });
+    let resolveRepositoryRoot!: (value: string) => void;
+    const repositoryRoot = new Promise<string>(resolve => {
+      resolveRepositoryRoot = resolve;
+    });
+    let openCalls = 0;
+    (manager as any).disposed = false;
+    (manager as any).openRepositories = [];
+    (manager as any)._svn = {
+      getRepositoryRoot: () => {
+        signalLookupStarted();
+        return repositoryRoot;
+      },
+      open: async () => {
+        openCalls += 1;
+      }
+    };
+
+    try {
+      const deferredOpen = manager.tryOpenRepository(directory, 1, true);
+      await lookupStarted;
+      (manager as any).disposed = true;
+      resolveRepositoryRoot(directory);
+      await deferredOpen;
+
+      assert.equal(openCalls, 0);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
