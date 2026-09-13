@@ -1,13 +1,124 @@
 import * as assert from "assert";
-import { IFileStatus, Status } from "../common/types";
+import { Disposable, EventEmitter } from "vscode";
+import {
+  ConstructorPolicy,
+  IFileStatus,
+  ISvnInfo,
+  Status
+} from "../common/types";
 import {
   fileSnapshotsEqual,
+  enableIncrementalStatusRefresh,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses,
   preserveRepositoryStateInSnapshot,
   shouldPreserveRepositoryState
 } from "../incrementalStatus";
+import { Repository } from "../repository";
+import { SourceControlManager } from "../source_control_manager";
+import { Repository as SvnRepository } from "../svnRepository";
+import { Svn } from "../svn";
+
+async function mutationFixture(
+  workspaceRoot: string,
+  failOperation = false,
+  failInfo = false
+) {
+  const events: string[] = [];
+  const notifiedRevisions: string[] = [];
+  const svnRepository = await new SvnRepository(
+    {} as Svn,
+    workspaceRoot,
+    workspaceRoot,
+    ConstructorPolicy.LateInit,
+    { revision: "42" } as ISvnInfo
+  );
+  svnRepository.getStatus = async () => {
+    events.push("full-status");
+    return [];
+  };
+  svnRepository.exec = async args => {
+    if (args[0] === "info") {
+      events.push("info");
+      if (failInfo) throw new Error("info failed");
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout: '<info><entry kind="dir" path="." revision="43"/></info>'
+      };
+    }
+    events.push("targeted-status");
+    return { exitCode: 0, stderr: "", stdout: "<status></status>" };
+  };
+  const subscribe = () => ({ dispose() {} });
+  const operation = async () => {
+    events.push("mutation");
+    if (failOperation) throw new Error("mutation failed");
+    await repository.repository.getStatus({});
+    return "result";
+  };
+  const repository: any = {
+    root: workspaceRoot,
+    workspaceRoot,
+    statusExternal: [],
+    statusIgnored: [],
+    changes: { resourceStates: [] },
+    conflicts: { resourceStates: [] },
+    unversioned: { resourceStates: [] },
+    changelists: new Map(),
+    repository: svnRepository,
+    disposed: false,
+    disposables: [],
+    _onDidDispose: new EventEmitter<void>(),
+    _onDidChangeRepository: {
+      fire: () => {
+        events.push("notify");
+        notifiedRevisions.push(svnRepository.info.revision);
+      }
+    },
+    dispose: Repository.prototype.dispose,
+    notifyRepositoryChanged: Repository.prototype.notifyRepositoryChanged,
+    onDidAnyFileChanged() {},
+    eventuallyUpdateWhenIdleAndWait() {},
+    updateWhenIdleAndWait() {},
+    status() {},
+    fsWatcher: {
+      onDidWorkspaceChange: subscribe,
+      onDidWorkspaceCreate: subscribe,
+      onDidWorkspaceDelete: subscribe,
+      onDidSvnAny: subscribe
+    },
+    addFiles: operation,
+    addChangelist: operation,
+    removeChangelist: operation,
+    resolve: operation,
+    commitFiles: operation,
+    revert: operation,
+    removeFiles: operation,
+    pullIncomingChange: operation,
+    addToIgnore: operation,
+    rename: operation
+  };
+  const disposables: Disposable[] = [];
+  svnRepository.setInfoOwner(() => !repository.disposed);
+  enableIncrementalStatusRefresh(
+    {
+      repositories: [repository],
+      onDidOpenRepository: subscribe
+    } as unknown as SourceControlManager,
+    disposables
+  );
+  return {
+    repository: repository as Repository,
+    events,
+    notifiedRevisions,
+    dispose: () => {
+      repository.dispose();
+      disposables.forEach(disposable => disposable.dispose());
+    }
+  };
+}
 
 function status(path: string, item: Status): IFileStatus {
   return {
@@ -22,6 +133,227 @@ function status(path: string, item: Status): IFileStatus {
 }
 
 suite("Incremental Status Tests", () => {
+  for (const [root, targets] of [
+    ["/repo", [".", "./", "child/..", "/repo/", "/repo/child/.."]],
+    ["C:\\Repo", [".", "child\\..", "c:/repo/", "C:\\REPO\\"]],
+    ["\\\\server\\share\\repo", [".", "\\\\SERVER\\SHARE\\REPO\\"]]
+  ] as Array<[string, string[]]>) {
+    for (const target of targets) {
+      test(`refreshes info once before notifying for root ${root} target ${target}`, async () => {
+        const fixture = await mutationFixture(root);
+        try {
+          assert.equal(shouldPreserveRepositoryState(root, [target]), false);
+          assert.deepEqual(
+            mergeStatuses(
+              root,
+              [status("old.ts", Status.MODIFIED)],
+              [target],
+              []
+            ),
+            []
+          );
+          await fixture.repository.commitFiles("message", [target, target]);
+          assert.deepEqual(fixture.events, [
+            "mutation",
+            "targeted-status",
+            "info",
+            "notify"
+          ]);
+        } finally {
+          fixture.dispose();
+        }
+      });
+    }
+  }
+
+  test("does not refresh root info for strict descendants", async () => {
+    const fixture = await mutationFixture("/repo");
+    try {
+      await fixture.repository.commitFiles("message", [
+        "src/file.ts",
+        "/repo/child"
+      ]);
+      assert.deepEqual(fixture.events, [
+        "mutation",
+        "targeted-status",
+        "notify"
+      ]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("refreshes info for a property mutation of the workspace subfolder", async () => {
+    const fixture = await mutationFixture("/wc/client");
+    Object.defineProperty(fixture.repository, "root", { value: "/wc" });
+    try {
+      await fixture.repository.addToIgnore(["*.tmp"], "/wc/client");
+      assert.deepEqual(fixture.events, [
+        "mutation",
+        "targeted-status",
+        "info",
+        "notify"
+      ]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not refresh or notify when the mutation fails", async () => {
+    const fixture = await mutationFixture("/repo", true);
+    try {
+      await assert.rejects(
+        fixture.repository.commitFiles("message", ["."]),
+        /mutation failed/
+      );
+      assert.deepEqual(fixture.events, ["mutation"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not publish stale info when its refresh fails", async () => {
+    const fixture = await mutationFixture("/repo", false, true);
+    try {
+      assert.equal(
+        await fixture.repository.commitFiles("message", ["."]),
+        "result"
+      );
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not notify after disposal while info refresh is pending", async () => {
+    const fixture = await mutationFixture("/repo");
+    let completeInfo!: () => void;
+    let infoStarted!: () => void;
+    const started = new Promise<void>(resolve => {
+      infoStarted = resolve;
+    });
+    const exec = fixture.repository.repository.exec;
+    fixture.repository.repository.exec = async args => {
+      const result = await exec(args);
+      if (args[0] === "info") {
+        infoStarted();
+        await new Promise<void>(resolve => {
+          completeInfo = resolve;
+        });
+      }
+      return result;
+    };
+    try {
+      const mutation = fixture.repository.commitFiles("message", ["."]);
+      await started;
+      fixture.repository.dispose();
+      completeInfo();
+      await mutation;
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not launch info when disposed before mutation completion", async () => {
+    const fixture = await mutationFixture("/repo");
+    const getStatus = fixture.repository.repository.getStatus;
+    fixture.repository.repository.getStatus = async params => {
+      const statuses = await getStatus(params);
+      fixture.repository.dispose();
+      return statuses;
+    };
+    try {
+      await fixture.repository.commitFiles("message", ["."]);
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  for (const recover of [false, true]) {
+    test(`retries dirty info before a descendant notification, recover=${recover}`, async () => {
+      const fixture = await mutationFixture("/repo", false, true);
+      try {
+        assert.equal(
+          await fixture.repository.commitFiles("root", ["."]),
+          "result"
+        );
+        assert.equal(fixture.repository.repository.isInfoCurrent, false);
+        assert.deepEqual(fixture.notifiedRevisions, []);
+        if (recover) {
+          const exec = fixture.repository.repository.exec;
+          fixture.repository.repository.exec = async args => {
+            if (args[0] !== "info") return exec(args);
+            fixture.events.push("info");
+            return {
+              exitCode: 0,
+              stderr: "",
+              stdout: '<info><entry revision="43"/></info>'
+            };
+          };
+        }
+        assert.equal(
+          await fixture.repository.commitFiles("descendant", ["file.ts"]),
+          "result"
+        );
+        assert.equal(
+          fixture.events.filter(event => event === "info").length,
+          2
+        );
+        assert.deepEqual(fixture.notifiedRevisions, recover ? ["43"] : []);
+      } finally {
+        fixture.dispose();
+      }
+    });
+  }
+
+  test("orders descendant notification after a pending root info refresh", async () => {
+    const fixture = await mutationFixture("/repo");
+    let finish!: () => void;
+    let markStarted!: () => void;
+    let markQueued!: () => void;
+    const started = new Promise<void>(resolve => {
+      markStarted = resolve;
+    });
+    const queued = new Promise<void>(resolve => {
+      markQueued = resolve;
+    });
+    const exec = fixture.repository.repository.exec;
+    fixture.repository.repository.exec = async args => {
+      const result = await exec(args);
+      if (args[0] === "info") {
+        markStarted();
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+      }
+      return result;
+    };
+    const ensure = fixture.repository.repository.ensureInfoCurrent.bind(
+      fixture.repository.repository
+    );
+    let callers = 0;
+    fixture.repository.repository.ensureInfoCurrent = async () => {
+      if (++callers === 2) markQueued();
+      return ensure();
+    };
+    try {
+      const root = fixture.repository.commitFiles("root", ["."]);
+      await started;
+      const descendant = fixture.repository.commitFiles("descendant", [
+        "file.ts"
+      ]);
+      await queued;
+      assert.deepEqual(fixture.notifiedRevisions, []);
+      finish();
+      await Promise.all([root, descendant]);
+      assert.deepEqual(fixture.notifiedRevisions, ["43", "43"]);
+      assert.equal(fixture.events.filter(event => event === "info").length, 1);
+    } finally {
+      fixture.dispose();
+    }
+  });
   test("replaces only the targeted file", () => {
     const current = [
       status("src/a.ts", Status.MODIFIED),

@@ -96,6 +96,28 @@ recalculated from a partial scan. A targeted refresh therefore preserves them
 from the previous full snapshot unless the working-copy root itself is a
 target.
 
+After a successful targeted mutation, the adapter publishes one repository-change
+notification. If any normalized target is the workspace root, it first refreshes
+cached `svn info`, so history consumers see the updated BASE revision. The info
+cache describes the opened workspace root even when it is a subfolder of the
+canonical working copy. Strict descendant mutations skip this extra command.
+Relative root aliases, absolute paths, and Windows case/separator variants use
+the same root comparison as repository-wide status flags. Failed mutations do
+not refresh info or notify. Root mutations invalidate info before their follow-up
+work. All targeted notifications then pass through `ensureInfoCurrent()`:
+clean descendants need no subprocess, while descendants following a pending or
+failed root refresh wait for or retry that read. A failed read leaves info dirty,
+logs the error and skips notification without reporting the mutation as failed.
+
+`SvnRepository` keeps one info cache and one serialized refresh queue. An
+invalidation during a pending read rejects that result and triggers a fresh read
+before publication. `updateInfo()` (startup, watcher and switch callers) uses the
+same validity boundary. The owning `Repository` binds its lifecycle once, so
+every queued or pending info refresh checks the same owner before execution and
+cache assignment. Repository-change publication checks both liveness and cache
+validity. The last accepted info remains available after failure but is not
+advertised as current in a change notification.
+
 ## Full-refresh fallbacks
 
 A full status is required when:
