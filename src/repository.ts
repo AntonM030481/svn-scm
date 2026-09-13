@@ -104,6 +104,7 @@ export class Repository implements IRemoteRepository {
   private disposed = false;
   private snapshotStore?: StatusSnapshotStore;
   private hasLiveStatus = false;
+  private readonly previewResources = new WeakSet<Resource>();
   private readonly startupAbort = new AbortController();
 
   private _onDidDispose = new EventEmitter<void>();
@@ -703,6 +704,7 @@ export class Repository implements IRemoteRepository {
         renameUri,
         status.props
       );
+      if (preview) this.previewResources.add(resource);
 
       if (
         (status.status === Status.NORMAL || status.status === Status.NONE) &&
@@ -914,6 +916,10 @@ export class Repository implements IRemoteRepository {
     if (!this.hasLiveStatus) await this.fullStatus();
     if (!this.hasLiveStatus || this.disposed)
       throw new Error("SVN status is unavailable");
+  }
+
+  public isPreviewResource(resource: Resource): boolean {
+    return this.previewResources.has(resource);
   }
 
   public getResourceFromFile(uri: string | Uri): Resource | undefined {

@@ -125,6 +125,15 @@ export abstract class Command implements Disposable {
         const current: Resource[] = [];
         for (const uri of uris) {
           const before = selected.get(uri.toString())!;
+          // A saved directory selection does not authorize newly discovered descendants.
+          // Require reselection from the live model, even if its own properties match.
+          if (repository.isPreviewResource(before)) {
+            try {
+              if (!(await stat(uri.fsPath)).isFile()) continue;
+            } catch {
+              continue;
+            }
+          }
           const after = repository.getResourceFromFile(uri);
           // Do not silently reinterpret an old selection as a different operation target.
           if (

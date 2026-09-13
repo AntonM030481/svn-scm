@@ -211,3 +211,10 @@ configured. It explicitly resets incremental targets, seeds the normal adapter
 and discovers changes outside the saved list. Fast-phase errors fall through to
 that scan. Only accepted live snapshots are persisted; previews never overwrite
 stored state. Disposal prevents late preview/full publication and new writes.
+
+Preview resource objects are tracked by their repository in a weak set. A
+mutation selected from the restored list re-resolves that selection after live
+validation and before prompting. Restored directories (or paths whose file kind
+cannot be confirmed) require reselection from the refreshed list: unchanged
+properties on a directory do not prove its recursive target set is unchanged.
+Ordinary live directory selections retain their existing behavior.
