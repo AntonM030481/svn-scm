@@ -373,7 +373,7 @@ export class StagingCoordinator implements Disposable {
     }
 
     if (skippedDirectories) {
-      await window.showWarningMessage(
+      void window.showWarningMessage(
         "SVN staging currently supports file changes only. Directory-only changes remain in Changes and can be committed with Commit All."
       );
     }
@@ -424,7 +424,7 @@ export class StagingCoordinator implements Disposable {
           );
         } else {
           await repository.revert([directory], "infinity");
-          await window.showWarningMessage(
+          void window.showWarningMessage(
             "Empty directories cannot be staged because SVN changelists apply only to files."
           );
         }
@@ -453,9 +453,7 @@ export class StagingCoordinator implements Disposable {
       return (await stat(resource.resourceUri.fsPath)).isDirectory();
     } catch {
       try {
-        return (
-          (await repository.info(resource.resourceUri.fsPath)).kind === "dir"
-        );
+        return (await repository.info(resource.resourceUri.fsPath)).kind === "dir";
       } catch {
         return false;
       }
