@@ -51,6 +51,17 @@ You can checkout a SVN repository with the `SVN: Checkout` command in the **Comm
 * Commit changes/changelists
 * See commit messages
 
+## Log search
+
+Text log search uses the SVN client selected by `svn.path` and the repository's
+credentials. Results appear progressively in `tempsvnfs:/svn.log`. Searching
+history may contact the SVN server; it only runs when requested.
+
+Cancel the progress notification or close the result document to stop a search.
+Starting another search replaces the previous one. Streaming text uses
+`svn.default.encoding`, or UTF-8 when unset; set an encoding explicitly for a
+client that produces another encoding.
+
 ## Blame
 
 Please use a dedicated extension like [blamer-vs](https://marketplace.visualstudio.com/items?itemName=beaugust.blamer-vs)

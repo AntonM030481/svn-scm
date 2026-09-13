@@ -211,6 +211,8 @@ export interface ICpOptions extends SpawnOptions {
   logReason?: string;
   username?: string;
   password?: string;
+  /** Decoded stdout chunks; streaming uses encoding or default.encoding. */
+  onStdout?: (chunk: string) => void;
 }
 
 export interface ISvnErrorData {
