@@ -48,7 +48,8 @@ import {
   StatusSnapshotStore,
   workingCopyIdentity,
   selectStartupTargets,
-  mergeStartupStatus
+  mergeStartupStatus,
+  snapshotPathKey
 } from "./statusSnapshot";
 import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
@@ -590,7 +591,7 @@ export class Repository implements IRemoteRepository {
     if (this.disposed) return;
     this.hasLiveStatus = true;
     this.applyStatus(statuses, checkRemoteChanges);
-    await this.persistStatus(statuses);
+    await this.persistStatus(statuses, checkRemoteChanges);
     if (this.disposed) return;
     const branch = await this.getCurrentBranch();
     if (!this.disposed) this.currentBranch = branch;
@@ -898,11 +899,41 @@ export class Repository implements IRemoteRepository {
     }
   }
 
-  private async persistStatus(statuses: IFileStatus[]): Promise<void> {
+  private async persistStatus(
+    statuses: IFileStatus[],
+    checkRemoteChanges: boolean
+  ): Promise<void> {
     if (!this.snapshotStore || this.disposed) return;
     try {
       const identity = await this.getSnapshotIdentity();
       if (this.disposed) return;
+      if (!checkRemoteChanges) {
+        // Local scans cannot invalidate remote evidence retained by the SCM group.
+        const byPath = new Map(
+          statuses.map(s => [snapshotPathKey(s.path), { ...s }])
+        );
+        for (const resource of this.remoteChanges?.resourceStates ?? []) {
+          const relative = path.relative(
+            this.workspaceRoot,
+            resource.resourceUri.fsPath
+          );
+          const key = snapshotPathKey(relative);
+          const local = byPath.get(key) ?? {
+            path: relative,
+            status: Status.NORMAL,
+            props: Status.NONE,
+            wcStatus: { locked: false, switched: false }
+          };
+          byPath.set(key, {
+            ...local,
+            reposStatus: {
+              item: resource.type,
+              props: resource.props ?? Status.NONE
+            }
+          });
+        }
+        statuses = [...byPath.values()];
+      }
       await this.snapshotStore.write(identity, statuses);
     } catch (error) {
       if (!this.disposed) console.error("Unable to save SVN status", error);

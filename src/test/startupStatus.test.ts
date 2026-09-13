@@ -137,6 +137,85 @@ suite("Persisted startup status integration", () => {
     return { root, base, data, state, open };
   }
 
+  test("retains remote-only and overlapping changes across local refreshes and reopening", async () => {
+    const f = await fixture();
+    const other = await testUtil.createRepoCheckout(
+      testUtil.getSvnUrl(server) + "/trunk"
+    );
+    const remote = await manager.svn.open(other.fsPath, other.fsPath);
+    for (const file of ["new.txt", "clean.txt"]) {
+      await fs.appendFile(path.join(other.fsPath, file), "remote edit\n");
+    }
+    await remote.exec(["commit", "-m", "remote startup evidence"]);
+    const base = await manager.svn.open(f.root, f.root);
+    const repo = f.open(base);
+    await repo.initialStatusSettled;
+    const adapters: Disposable[] = [];
+    enableIncrementalStatusRefresh(
+      {
+        repositories: [repo],
+        onDidOpenRepository: () => ({ dispose() {} })
+      } as unknown as SourceControlManager,
+      adapters
+    );
+    const savedRemote = () => {
+      const snapshot = f.data.get([...f.data.keys()][0]) as any;
+      return snapshot.statuses
+        .filter((s: any) => s.reposStatus)
+        .map((s: any) => s.path)
+        .sort();
+    };
+    const expected = ["clean.txt", "new.txt"];
+    try {
+      await repo.updateModelState(true);
+      assert.deepEqual(savedRemote(), expected);
+      await repo.status();
+      assert.deepEqual(savedRemote(), expected);
+      await repo.addChangelist([path.join(f.root, "clean.txt")], "remote-kept");
+      assert.deepEqual(savedRemote(), expected);
+    } finally {
+      adapters.forEach(d => d.dispose());
+      repo.dispose();
+    }
+    await workspace
+      .getConfiguration("svn")
+      .update("remoteChanges.checkFrequency", 300, ConfigurationTarget.Global);
+    const entered = gate();
+    const release = gate();
+    const reopenedBase = await manager.svn.open(f.root, f.root);
+    const getStatus = reopenedBase.getStatus.bind(reopenedBase);
+    reopenedBase.getStatus = async params => {
+      entered.resolve();
+      await release.promise;
+      return getStatus(params);
+    };
+    const reopened = f.open(reopenedBase);
+    try {
+      await entered.promise;
+      assert.deepEqual(
+        reopened
+          .remoteChanges!.resourceStates.map(r =>
+            path.basename(r.resourceUri.fsPath)
+          )
+          .sort(),
+        expected
+      );
+      release.resolve();
+      await reopened.initialStatusSettled;
+      // A successful remote scan, unlike a local scan, may clear old evidence.
+      await reopenedBase.exec(["revert", "-R", "."]);
+      await reopenedBase.exec(["update"]);
+      await reopened.updateModelState(true);
+      assert.deepEqual(savedRemote(), []);
+    } finally {
+      release.resolve();
+      reopened.dispose();
+      await workspace
+        .getConfiguration("svn")
+        .update("remoteChanges.checkFrequency", 0, ConfigurationTarget.Global);
+    }
+  });
+
   test("restores before scanning, rechecks small files locally and reconciles external edits", async () => {
     const f = await fixture();
     const cached = f.data.get([...f.data.keys()][0]) as any;

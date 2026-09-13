@@ -112,3 +112,6 @@ file selection and persistence ordering. `startupStatus.test.ts` uses real SVN
 working copies and VS Code SCM groups, with gated scans to verify the restored,
 fast and full phases independently, including failures and disposal. Sparse
 large-file fixtures exercise size limits without expensive binary comparisons.
+Remote persistence coverage uses a second checkout to verify overlapping and
+remote-only changes survive incremental local refreshes and reopening, and
+clear after a successful remote scan.

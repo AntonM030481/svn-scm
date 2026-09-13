@@ -210,7 +210,9 @@ The normal initial full scan always follows, including remote status only when
 configured. It explicitly resets incremental targets, seeds the normal adapter
 and discovers changes outside the saved list. Fast-phase errors fall through to
 that scan. Only accepted live snapshots are persisted; previews never overwrite
-stored state. Disposal prevents late preview/full publication and new writes.
+stored state. Local-only refreshes merge the retained remote SCM group into
+the saved snapshot, including remote-only paths. Only an authoritative remote
+scan clears that evidence. Disposal prevents late preview/full publication and new writes.
 
 Preview resource objects are tracked by their repository in a weak set. A
 mutation selected from the restored list re-resolves that selection after live
