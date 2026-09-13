@@ -558,7 +558,16 @@ export class SourceControlManager implements IDisposable {
             normalizePath(repository.workspaceRoot) &&
           isDescendant(repository.workspaceRoot, child.workspaceRoot)
       );
-      children.forEach(child => child.dispose());
+      for (const child of children) {
+        // Closing publishes an event; its listeners may disable the manager
+        // or close another child synchronously.
+        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+          break;
+        }
+        if (this.openRepositories.includes(child)) {
+          child.dispose();
+        }
+      }
     }
 
     this.open(repository, lifecycleGeneration);

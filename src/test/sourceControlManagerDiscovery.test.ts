@@ -57,6 +57,42 @@ suite("Source control repository discovery", () => {
     }
   }
 
+  test("stops reconciliation when a close listener invalidates the lifecycle", () => {
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.lifecycleGeneration = 0;
+    manager._svn = { version: "1.6.23" };
+    const first = { workspaceRoot: "/parent/first" };
+    const second = { workspaceRoot: "/parent/second" };
+    manager.provisionalLegacyRepositories = new WeakSet([first, second]);
+    let parentDisposals = 0;
+    manager.openRepositories = [
+      {
+        repository: first,
+        dispose: () => {
+          manager.lifecycleGeneration += 2;
+          manager.openRepositories = [];
+        }
+      },
+      {
+        repository: second,
+        dispose: () => assert.fail("child was closed twice")
+      }
+    ];
+    manager.registerDiscoveredRepository(
+      {
+        workspaceRoot: "/parent",
+        dispose: () => {
+          parentDisposals += 1;
+        }
+      },
+      0,
+      true
+    );
+    assert.strictEqual(parentDisposals, 1);
+  });
+
   test("stale registration cannot replace a provisional legacy child", () => {
     const manager = Object.create(SourceControlManager.prototype) as any;
     manager.enabled = true;
