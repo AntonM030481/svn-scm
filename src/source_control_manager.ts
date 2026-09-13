@@ -269,7 +269,6 @@ export class SourceControlManager implements IDisposable {
       if (
         !this.isDiscoveryActive(lifecycleGeneration) ||
         !stats.isDirectory() ||
-        !this.enabled ||
         this.hasExactRepository(uri.fsPath)
       ) {
         return;
@@ -397,6 +396,19 @@ export class SourceControlManager implements IDisposable {
     }
   }
 
+  private isDiscoveryCandidateOwned(
+    path: string,
+    allowNested: boolean
+  ): boolean {
+    // Pre-1.7 working copies have administration directories in every child.
+    // Without wcroot-abspath, a nested candidate cannot override a known owner.
+    if (!allowNested || semver.satisfies(this.svn.version, "<1.7.0")) {
+      return !!this.getRepository(path);
+    }
+
+    return this.hasExactRepository(path);
+  }
+
   public async tryOpenRepository(
     path: string,
     level = 0,
@@ -405,17 +417,7 @@ export class SourceControlManager implements IDisposable {
   ): Promise<void> {
     if (
       !this.isDiscoveryActive(lifecycleGeneration) ||
-      (allowNested ? this.hasExactRepository(path) : this.getRepository(path))
-    ) {
-      return;
-    }
-
-    // Pre-1.7 working copies have administration directories in every child.
-    // Without wcroot-abspath, a nested candidate cannot override a known owner.
-    if (
-      allowNested &&
-      this.getRepository(path) &&
-      semver.satisfies(this.svn.version, "<1.7.0")
+      this.isDiscoveryCandidateOwned(path, allowNested)
     ) {
       return;
     }
@@ -449,7 +451,7 @@ export class SourceControlManager implements IDisposable {
         const baseRepository = await this.svn.open(repositoryRoot, path);
         if (
           !this.isDiscoveryActive(lifecycleGeneration) ||
-          this.hasExactRepository(path)
+          this.isDiscoveryCandidateOwned(path, allowNested)
         ) {
           return;
         }

@@ -65,6 +65,8 @@ more-specific owner.
 For SVN clients older than 1.7, known parent ownership is preserved: per-directory
 administration metadata and the absence of `wcroot-abspath` do not prove that a
 child is an independent working copy.
+Ownership is checked both before asynchronous validation and immediately before
+construction, including legacy parent ownership that appeared during the lookup.
 
 Filtering before the debounced queue is important: a general workspace change
 must not trigger repository discovery or an `svn info` call.
@@ -88,6 +90,21 @@ nor a queued SVN lookup can enqueue or open another repository after shutdown,
 disable, or a disable/re-enable cycle.
 The same generation is carried through the entire workspace and recursive scan,
 not recaptured for each folder.
+
+Discovery has two separate decisions, both owned by the manager:
+
+| Decision | Rule | Enforcement |
+| --- | --- | --- |
+| Is the request still valid? | Its enable-generation is active | After asynchronous work and before registration |
+| Is the candidate already owned? | Normal scans respect routed ownership; modern nested scans skip exact owners; legacy nested scans respect parent ownership | The same ownership predicate before validation and before construction |
+
+The final ownership check and construction/registration have no intervening
+`await`. A competing lookup may finish, but cannot register between that check
+and registration. Cancelling a request invalidates its result; it does not claim
+to abort an already running SVN subprocess.
+
+Regression coverage crosses both SVN-await boundaries with disable, disposal,
+and disable/re-enable, and checks ownership acquired while a lookup is pending.
 
 ## Synchronous routing
 

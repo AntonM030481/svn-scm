@@ -10,41 +10,60 @@ import {
 } from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
-  test("does not construct a duplicate when another open wins during SVN lookup", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
-    fs.mkdirSync(path.join(root, ".svn"));
+  test("distinguishes modern nested candidates from legacy parent ownership", () => {
     const manager = Object.create(SourceControlManager.prototype) as any;
-    manager.enabled = true;
-    manager.disposed = false;
-    manager.lifecycleGeneration = 0;
-    manager.openRepositories = [];
-    let opens = 0;
-    let constructions = 0;
-    manager.extensionContact = {
-      get secrets() {
-        constructions += 1;
-        throw new Error("Duplicate construction");
-      }
-    };
-    manager._svn = {
-      getRepositoryRoot: async () => root,
-      open: async () => {
-        opens += 1;
-        manager.openRepositories.push({
-          repository: { root, workspaceRoot: root }
-        });
-        return {};
-      }
-    };
-    try {
-      await manager.tryOpenRepository(root, 1, true);
-      assert.strictEqual(opens, 1);
-      assert.strictEqual(constructions, 0);
-      assert.strictEqual(manager.openRepositories.length, 1);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+    manager.getRepository = () => ({});
+    manager.hasExactRepository = () => false;
+    manager._svn = { version: "1.14.0" };
+    assert.strictEqual(manager.isDiscoveryCandidateOwned("child", true), false);
+    assert.strictEqual(manager.isDiscoveryCandidateOwned("child", false), true);
+    manager._svn.version = "1.6.23";
+    assert.strictEqual(manager.isDiscoveryCandidateOwned("child", true), true);
   });
+
+  for (const legacyParent of [false, true]) {
+    test(`does not construct a duplicate when ${legacyParent ? "a legacy parent" : "an exact owner"} opens during SVN lookup`, async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+      fs.mkdirSync(path.join(root, ".svn"));
+      const manager = Object.create(SourceControlManager.prototype) as any;
+      manager.enabled = true;
+      manager.disposed = false;
+      manager.lifecycleGeneration = 0;
+      manager.openRepositories = [];
+      let opens = 0;
+      let constructions = 0;
+      manager.extensionContact = {
+        get secrets() {
+          constructions += 1;
+          throw new Error("Duplicate construction");
+        }
+      };
+      manager._svn = {
+        version: legacyParent ? "1.6.23" : "1.14.0",
+        getRepositoryRoot: async () => root,
+        open: async () => {
+          opens += 1;
+          manager.openRepositories.push({
+            repository: {
+              root: legacyParent ? path.dirname(root) : root,
+              workspaceRoot: legacyParent ? path.dirname(root) : root,
+              statusExternal: [],
+              statusIgnored: []
+            }
+          });
+          return {};
+        }
+      };
+      try {
+        await manager.tryOpenRepository(root, 1, true);
+        assert.strictEqual(opens, 1);
+        assert.strictEqual(constructions, 0);
+        assert.strictEqual(manager.openRepositories.length, 1);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
 
   test("does not resume a workspace scan in a newer enable generation", async () => {
     const manager = Object.create(SourceControlManager.prototype) as any;
@@ -224,48 +243,73 @@ suite("Source control repository discovery", () => {
     }
   });
 
-  test("does not open a queued repository after manager disable", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
-    const directory = path.join(root, "moved-working-copy");
-    fs.mkdirSync(path.join(directory, ".svn"), { recursive: true });
+  for (const stage of ["root lookup", "SVN open"]) {
+    for (const transition of ["disable", "dispose", "disable/re-enable"]) {
+      test(`cancels discovery during ${stage} after ${transition}`, async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+        const directory = path.join(root, "moved-working-copy");
+        fs.mkdirSync(path.join(directory, ".svn"), { recursive: true });
 
-    const manager = Object.create(
-      SourceControlManager.prototype
-    ) as SourceControlManager;
-    let signalLookupStarted!: () => void;
-    const lookupStarted = new Promise<void>(resolve => {
-      signalLookupStarted = resolve;
-    });
-    let resolveRepositoryRoot!: (value: string) => void;
-    const repositoryRoot = new Promise<string>(resolve => {
-      resolveRepositoryRoot = resolve;
-    });
-    let openCalls = 0;
-    (manager as any).disposed = false;
-    (manager as any).enabled = true;
-    (manager as any).lifecycleGeneration = 0;
-    (manager as any).openRepositories = [];
-    (manager as any)._svn = {
-      getRepositoryRoot: () => {
-        signalLookupStarted();
-        return repositoryRoot;
-      },
-      open: async () => {
-        openCalls += 1;
-      }
-    };
+        const manager = Object.create(
+          SourceControlManager.prototype
+        ) as SourceControlManager;
+        let signalLookupStarted!: () => void;
+        const lookupStarted = new Promise<void>(resolve => {
+          signalLookupStarted = resolve;
+        });
+        let resolveRepositoryRoot!: (value: string) => void;
+        const repositoryRoot = new Promise<string>(resolve => {
+          resolveRepositoryRoot = resolve;
+        });
+        let openCalls = 0;
+        let constructions = 0;
+        (manager as any).disposed = false;
+        (manager as any).enabled = true;
+        (manager as any).lifecycleGeneration = 0;
+        (manager as any).openRepositories = [];
+        (manager as any).extensionContact = {
+          get secrets() {
+            constructions += 1;
+            throw new Error("Stale discovery constructed a Repository");
+          }
+        };
+        (manager as any)._svn = {
+          version: "1.14.0",
+          getRepositoryRoot: () => {
+            if (stage !== "root lookup") {
+              return Promise.resolve(directory);
+            }
+            signalLookupStarted();
+            return repositoryRoot;
+          },
+          open: async () => {
+            openCalls += 1;
+            signalLookupStarted();
+            await repositoryRoot;
+            return {};
+          }
+        };
 
-    try {
-      const deferredOpen = manager.tryOpenRepository(directory, 1, true);
-      await lookupStarted;
-      (manager as any).enabled = false;
-      (manager as any).lifecycleGeneration += 1;
-      resolveRepositoryRoot(directory);
-      await deferredOpen;
+        try {
+          const deferredOpen = manager.tryOpenRepository(directory, 1, true);
+          await lookupStarted;
+          (manager as any).enabled = false;
+          (manager as any).lifecycleGeneration += 1;
+          if (transition === "dispose") {
+            (manager as any).disposed = true;
+          } else if (transition === "disable/re-enable") {
+            (manager as any).enabled = true;
+            (manager as any).lifecycleGeneration += 1;
+          }
+          resolveRepositoryRoot(directory);
+          await deferredOpen;
 
-      assert.equal(openCalls, 0);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+          assert.equal(openCalls, stage === "SVN open" ? 1 : 0);
+          assert.equal(constructions, 0);
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+      });
     }
-  });
+  }
 });
