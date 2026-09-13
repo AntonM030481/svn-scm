@@ -60,10 +60,14 @@ suite("Staging Tests", () => {
     assert.ok(resource);
 
     await repository.addChangelist([file], "personal-work");
-    const userResource = repository.changelists
-      .get("personal-work")
-      ?.resourceStates.find(item => item.resourceUri.fsPath === file);
+    const userGroup = repository.changelists.get("personal-work");
+    const userResource = userGroup?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
     assert.ok(userResource);
+    assert.equal(repository.unversioned.repository, repository);
+    assert.equal(userGroup?.repository, repository);
+    assert.equal(sourceControlManager.getRepository(userGroup), repository);
 
     await commands.executeCommand("svn.stage", userResource);
     assert.ok(
@@ -121,6 +125,60 @@ suite("Staging Tests", () => {
     repository.inputBox.value = "sequential staged commit";
     await commands.executeCommand("svn.commitStaged", repository.sourceControl);
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+
+    fs.writeFileSync(fileOne, "a2\n");
+    await repository.status();
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === fileOne
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === fileOne
+      ),
+      true
+    );
+  });
+
+  test("committed unversioned files leave the staging changelist", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "new.txt");
+    fs.writeFileSync(file, "new\n");
+    await repository.status();
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    await commands.executeCommand("svn.stage", resource);
+    repository.inputBox.value = "commit new staged file";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+
+    assert.equal(fs.existsSync(file), true);
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+
+    fs.writeFileSync(file, "changed after commit\n");
+    await repository.status();
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
   });
 
   test("unstaging an unversioned folder restores its scheduled additions", async () => {

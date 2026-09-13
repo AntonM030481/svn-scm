@@ -254,6 +254,41 @@ export class StagingCoordinator implements Disposable {
     }
   }
 
+  public async finalizeCommitted(
+    entries: Array<{ repository: Repository; resource: Resource }>
+  ): Promise<void> {
+    const grouped = new Map<Repository, Map<string | undefined, string[]>>();
+
+    for (const { repository, resource } of entries) {
+      const key = normalizePath(resource.resourceUri.fsPath);
+      const stagingChangelist =
+        this.states.get(repository)?.metadataByPath.get(key) ??
+        repository.stagedChangelists.get(key);
+      if (!stagingChangelist || !isStagingChangelist(stagingChangelist)) {
+        continue;
+      }
+
+      const metadata = parseStagingChangelist(stagingChangelist);
+      if (!metadata) continue;
+
+      const destinations = grouped.get(repository) ?? new Map();
+      const paths = destinations.get(metadata.originalChangelist) ?? [];
+      paths.push(resource.resourceUri.fsPath);
+      destinations.set(metadata.originalChangelist, paths);
+      grouped.set(repository, destinations);
+    }
+
+    for (const [repository, destinations] of grouped) {
+      for (const [destination, paths] of destinations) {
+        if (destination) {
+          await repository.addChangelist(paths, destination);
+        } else {
+          await repository.removeChangelist(paths);
+        }
+      }
+    }
+  }
+
   private attach(repository: Repository): void {
     if (this.states.has(repository)) return;
 
@@ -309,6 +344,13 @@ export class StagingCoordinator implements Disposable {
   private reconcile(repository: Repository): void {
     const state = this.states.get(repository);
     if (!state) return;
+
+    repository.changes.repository = repository;
+    repository.conflicts.repository = repository;
+    repository.unversioned.repository = repository;
+    for (const group of repository.changelists.values()) {
+      group.repository = repository;
+    }
 
     const staged: Resource[] = [];
     state.metadataByPath.clear();

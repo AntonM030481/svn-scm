@@ -65,6 +65,7 @@ async function commitEntries(
 
   try {
     const result = await anchor.commitFiles(message, commitPaths);
+    await staging.finalizeCommitted(entries);
     window.showInformationMessage(result);
     staging.clearInputBoxes(anchor);
     await staging.refreshWorkingCopy(anchor);
