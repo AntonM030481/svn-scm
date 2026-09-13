@@ -345,6 +345,9 @@ export class Repository implements IRemoteRepository {
   }
 
   public notifyRepositoryChanged(uri: Uri): void {
+    if (this.disposed) {
+      return;
+    }
     this._onDidChangeRepository.fire(uri);
   }
 

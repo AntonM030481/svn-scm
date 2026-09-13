@@ -1,13 +1,100 @@
 import * as assert from "assert";
+import { Disposable, EventEmitter } from "vscode";
 import { IFileStatus, Status } from "../common/types";
 import {
   fileSnapshotsEqual,
+  enableIncrementalStatusRefresh,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses,
   preserveRepositoryStateInSnapshot,
   shouldPreserveRepositoryState
 } from "../incrementalStatus";
+import { Repository } from "../repository";
+import { SourceControlManager } from "../source_control_manager";
+
+function mutationFixture(
+  workspaceRoot: string,
+  failOperation = false,
+  failInfo = false
+) {
+  const events: string[] = [];
+  const subscribe = () => ({ dispose() {} });
+  const operation = async () => {
+    events.push("mutation");
+    if (failOperation) throw new Error("mutation failed");
+    await repository.repository.getStatus({});
+    return "result";
+  };
+  const repository: any = {
+    root: workspaceRoot,
+    workspaceRoot,
+    statusExternal: [],
+    statusIgnored: [],
+    changes: { resourceStates: [] },
+    conflicts: { resourceStates: [] },
+    unversioned: { resourceStates: [] },
+    changelists: new Map(),
+    repository: {
+      workspaceRoot,
+      getStatus: async () => {
+        events.push("full-status");
+        return [];
+      },
+      exec: async () => {
+        events.push("targeted-status");
+        return { stdout: "<status></status>" };
+      },
+      removeAbsolutePath: (target: string) => target,
+      updateInfo: async () => {
+        events.push("info");
+        if (failInfo) throw new Error("info failed");
+      }
+    },
+    disposed: false,
+    disposables: [],
+    _onDidDispose: new EventEmitter<void>(),
+    _onDidChangeRepository: { fire: () => events.push("notify") },
+    dispose: Repository.prototype.dispose,
+    notifyRepositoryChanged: Repository.prototype.notifyRepositoryChanged,
+    onDidAnyFileChanged() {},
+    eventuallyUpdateWhenIdleAndWait() {},
+    updateWhenIdleAndWait() {},
+    status() {},
+    fsWatcher: {
+      onDidWorkspaceChange: subscribe,
+      onDidWorkspaceCreate: subscribe,
+      onDidWorkspaceDelete: subscribe,
+      onDidSvnAny: subscribe
+    },
+    addFiles: operation,
+    addChangelist: operation,
+    removeChangelist: operation,
+    resolve: operation,
+    commitFiles: operation,
+    revert: operation,
+    removeFiles: operation,
+    pullIncomingChange: operation,
+    addToIgnore: operation,
+    rename: operation
+  };
+  const disposables: Disposable[] = [];
+  enableIncrementalStatusRefresh(
+    {
+      repositories: [repository],
+      onDidOpenRepository: subscribe
+    } as unknown as SourceControlManager,
+    disposables
+  );
+  return {
+    repository: repository as Repository,
+    events,
+    dispose: () => {
+      repository.dispose();
+      disposables.forEach(disposable => disposable.dispose());
+    }
+  };
+}
 
 function status(path: string, item: Status): IFileStatus {
   return {
@@ -22,6 +109,128 @@ function status(path: string, item: Status): IFileStatus {
 }
 
 suite("Incremental Status Tests", () => {
+  for (const [root, targets] of [
+    ["/repo", [".", "./", "child/..", "/repo/", "/repo/child/.."]],
+    ["C:\\Repo", [".", "child\\..", "c:/repo/", "C:\\REPO\\"]],
+    ["\\\\server\\share\\repo", [".", "\\\\SERVER\\SHARE\\REPO\\"]]
+  ] as Array<[string, string[]]>) {
+    for (const target of targets) {
+      test(`refreshes info once before notifying for root ${root} target ${target}`, async () => {
+        const fixture = mutationFixture(root);
+        try {
+          assert.equal(shouldPreserveRepositoryState(root, [target]), false);
+          assert.deepEqual(
+            mergeStatuses(
+              root,
+              [status("old.ts", Status.MODIFIED)],
+              [target],
+              []
+            ),
+            []
+          );
+          await fixture.repository.commitFiles("message", [target, target]);
+          assert.deepEqual(fixture.events, [
+            "mutation",
+            "targeted-status",
+            "info",
+            "notify"
+          ]);
+        } finally {
+          fixture.dispose();
+        }
+      });
+    }
+  }
+
+  test("does not refresh root info for strict descendants", async () => {
+    const fixture = mutationFixture("/repo");
+    try {
+      await fixture.repository.commitFiles("message", [
+        "src/file.ts",
+        "/repo/child"
+      ]);
+      assert.deepEqual(fixture.events, [
+        "mutation",
+        "targeted-status",
+        "notify"
+      ]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("refreshes info for a property mutation of the workspace subfolder", async () => {
+    const fixture = mutationFixture("/wc/client");
+    Object.defineProperty(fixture.repository, "root", { value: "/wc" });
+    try {
+      await fixture.repository.addToIgnore(["*.tmp"], "/wc/client");
+      assert.deepEqual(fixture.events, [
+        "mutation",
+        "targeted-status",
+        "info",
+        "notify"
+      ]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not refresh or notify when the mutation fails", async () => {
+    const fixture = mutationFixture("/repo", true);
+    try {
+      await assert.rejects(
+        fixture.repository.commitFiles("message", ["."]),
+        /mutation failed/
+      );
+      assert.deepEqual(fixture.events, ["mutation"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("does not publish stale info when its refresh fails", async () => {
+    const fixture = mutationFixture("/repo", false, true);
+    const originalError = console.error;
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      assert.equal(
+        await fixture.repository.commitFiles("message", ["."]),
+        "result"
+      );
+      assert.equal(errors.length, 1);
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
+    } finally {
+      console.error = originalError;
+      fixture.dispose();
+    }
+  });
+
+  test("does not notify after disposal while info refresh is pending", async () => {
+    const fixture = mutationFixture("/repo");
+    let completeInfo!: () => void;
+    let infoStarted!: () => void;
+    const started = new Promise<void>(resolve => {
+      infoStarted = resolve;
+    });
+    fixture.repository.repository.updateInfo = async () => {
+      fixture.events.push("info");
+      infoStarted();
+      await new Promise<void>(resolve => {
+        completeInfo = resolve;
+      });
+    };
+    try {
+      const mutation = fixture.repository.commitFiles("message", ["."]);
+      await started;
+      fixture.repository.dispose();
+      completeInfo();
+      await mutation;
+      assert.deepEqual(fixture.events, ["mutation", "targeted-status", "info"]);
+    } finally {
+      fixture.dispose();
+    }
+  });
   test("replaces only the targeted file", () => {
     const current = [
       status("src/a.ts", Status.MODIFIED),

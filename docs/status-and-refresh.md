@@ -96,6 +96,17 @@ recalculated from a partial scan. A targeted refresh therefore preserves them
 from the previous full snapshot unless the working-copy root itself is a
 target.
 
+After a successful targeted mutation, the adapter publishes one repository-change
+notification. If any normalized target is the workspace root, it first refreshes
+cached `svn info`, so history consumers see the updated BASE revision. The info
+cache describes the opened workspace root even when it is a subfolder of the
+canonical working copy. Strict descendant mutations skip this extra command.
+Relative root aliases, absolute paths, and Windows case/separator variants use
+the same root comparison as repository-wide status flags. Failed mutations do
+not refresh info or notify. A failed follow-up info refresh is logged and skips
+the notification without turning an already successful mutation into a reported
+failure. Repository-change publication is also suppressed after disposal.
+
 ## Full-refresh fallbacks
 
 A full status is required when:
