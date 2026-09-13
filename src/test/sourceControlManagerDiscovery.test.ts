@@ -13,8 +13,14 @@ import {
 
 suite("Source control repository discovery", () => {
   for (const version of ["1.6.23", "1.14.0"]) {
-    for (const automaticChild of [false, true]) {
-      test(`registers a later parent with SVN ${version}, automatic child=${automaticChild}`, () => {
+    for (const source of [
+      "explicit",
+      "automatic",
+      "promoted",
+      "promoted subfolder"
+    ]) {
+      const automaticChild = source !== "explicit";
+      test(`registers a later parent with SVN ${version}, child source=${source}`, () => {
         const manager = Object.create(SourceControlManager.prototype) as any;
         manager.enabled = true;
         manager.disposed = false;
@@ -41,8 +47,19 @@ suite("Source control repository discovery", () => {
         const sibling = { workspaceRoot: "/other" };
         manager.registerDiscoveredRepository(child, 0, automaticChild);
         manager.registerDiscoveredRepository(sibling, 0, true);
-        manager.registerDiscoveredRepository(parent, 0, true);
-        const replaced = version === "1.6.23" && automaticChild;
+        const folders = source.startsWith("promoted")
+          ? [
+              {
+                uri: Uri.file(
+                  source === "promoted"
+                    ? "/parent/child"
+                    : "/parent/child/subfolder"
+                )
+              }
+            ]
+          : [];
+        manager.registerDiscoveredRepository(parent, 0, true, folders);
+        const replaced = version === "1.6.23" && source === "automatic";
         assert.deepStrictEqual(
           manager.openRepositories.map((entry: any) => entry.repository),
           replaced ? [sibling, parent] : [child, sibling, parent]

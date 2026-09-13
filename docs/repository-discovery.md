@@ -73,6 +73,9 @@ is validated later, its provisional child projections are closed before it is
 registered. This also covers child-first completion and separate event batches.
 Explicit workspace projections and modern nested working copies are not replaced
 by this legacy-only policy.
+Replacement consults the current workspace folders, so an automatic child that
+later becomes an explicit workspace owner is protected without a second cached
+copy of workspace membership.
 Ownership is checked both before asynchronous validation and immediately before
 construction, including legacy parent ownership that appeared during the lookup.
 

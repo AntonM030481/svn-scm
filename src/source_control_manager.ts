@@ -536,7 +536,8 @@ export class SourceControlManager implements IDisposable {
   private registerDiscoveredRepository(
     repository: Repository,
     lifecycleGeneration: number,
-    allowNested: boolean
+    allowNested: boolean,
+    workspaceFolders = workspace.workspaceFolders || []
   ): void {
     if (!this.isDiscoveryActive(lifecycleGeneration)) {
       repository.dispose();
@@ -556,6 +557,9 @@ export class SourceControlManager implements IDisposable {
           this.provisionalLegacyRepositories.has(child) &&
           normalizePath(child.workspaceRoot) !==
             normalizePath(repository.workspaceRoot) &&
+          !workspaceFolders.some(folder =>
+            isDescendant(child.workspaceRoot, folder.uri.fsPath)
+          ) &&
           isDescendant(repository.workspaceRoot, child.workspaceRoot)
       );
       for (const child of children) {
