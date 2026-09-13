@@ -1,10 +1,5 @@
 import * as path from "path";
-import {
-  Disposable,
-  SourceControlResourceGroup,
-  Uri,
-  window
-} from "vscode";
+import { Disposable, SourceControlResourceGroup } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
 import { stat } from "./fs";
 import { configuration } from "./helpers/configuration";
@@ -306,8 +301,6 @@ export class StagingCoordinator implements Disposable {
           changelist
         );
       }
-      // Reserved staging changelists are an implementation detail. Keep the
-      // normal changelist group empty and expose them through Staged Changes.
       group.resourceStates = [];
     }
 
@@ -449,8 +442,6 @@ export class StagingCoordinator implements Disposable {
 
     await repository.removeChangelist(paths);
     if (metadata.wasUnversioned) {
-      // `svn revert` unschedules files added during staging while preserving
-      // their working-copy contents on disk.
       await repository.revert(paths, "empty");
     }
   }
