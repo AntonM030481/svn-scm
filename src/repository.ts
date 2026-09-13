@@ -317,6 +317,14 @@ export class Repository implements IRemoteRepository {
 
           this.updateRemoteChangedFiles();
         }
+
+        if (
+          e.affectsConfiguration(
+            "svn.sourceControl.combineExternalIfSameServer"
+          )
+        ) {
+          this.fullStatus();
+        }
       })
     );
 
@@ -483,8 +491,15 @@ export class Repository implements IRemoteRepository {
   }
 
   @throttle
-  @globalSequentialize("updateModelState")
   public async updateModelState(checkRemoteChanges: boolean = false) {
+    return this.updateModelStateSequential(checkRemoteChanges, false);
+  }
+
+  @globalSequentialize("updateModelState")
+  private async updateModelStateSequential(
+    checkRemoteChanges: boolean,
+    forceFullStatus: boolean
+  ) {
     const changes: any[] = [];
     const unversioned: any[] = [];
     const conflicts: any[] = [];
@@ -507,7 +522,8 @@ export class Repository implements IRemoteRepository {
           includeIgnored: true,
           includeExternals: combineExternal,
           checkRemoteChanges,
-          resolveExternalRepositoryUuid: combineExternal
+          resolveExternalRepositoryUuid: combineExternal,
+          forceFull: forceFullStatus
         });
       })) || [];
 
@@ -804,6 +820,15 @@ export class Repository implements IRemoteRepository {
   @throttle
   public async status() {
     return this.run(Operation.Status);
+  }
+
+  @throttle
+  public async fullStatus() {
+    while (!this.operations.isIdle()) {
+      await eventToPromise(this.onDidRunOperation);
+    }
+
+    return this.run(Operation.Status, undefined, true);
   }
 
   public async show(
@@ -1125,7 +1150,8 @@ export class Repository implements IRemoteRepository {
 
   private async run<T>(
     operation: Operation,
-    runOperation: () => Promise<T> = () => Promise.resolve<any>(null)
+    runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
+    forceFullStatus: boolean = false
   ): Promise<T> {
     if (this.state !== RepositoryState.Idle) {
       throw new Error("Repository not initialized");
@@ -1141,7 +1167,11 @@ export class Repository implements IRemoteRepository {
         const checkRemote = operation === Operation.StatusRemote;
 
         if (!isReadOnly(operation)) {
-          await this.updateModelState(checkRemote);
+          if (forceFullStatus) {
+            await this.updateModelStateSequential(checkRemote, true);
+          } else {
+            await this.updateModelState(checkRemote);
+          }
         }
 
         return result;

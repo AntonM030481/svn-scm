@@ -15,6 +15,7 @@ interface StatusParams {
   includeExternals?: boolean;
   checkRemoteChanges?: boolean;
   resolveExternalRepositoryUuid?: boolean;
+  forceFull?: boolean;
 }
 
 interface FileSnapshot {
@@ -468,9 +469,21 @@ function patchRepository(repository: Repository): Disposable {
   };
 
   svnRepository.getStatus = async (params: StatusParams) => {
+    if (params.forceFull) {
+      state.fsTargets.clear();
+      state.svnRefreshPending = false;
+      state.pendingTargets = undefined;
+      state.repositoryState = undefined;
+    }
+
     const targets = state.pendingTargets;
 
-    if (!targets || !targets.length || params.checkRemoteChanges) {
+    if (
+      params.forceFull ||
+      !targets ||
+      !targets.length ||
+      params.checkRemoteChanges
+    ) {
       const statuses = filterWorkspaceStatuses(
         repository.workspaceRoot,
         await originalGetStatus(params)
