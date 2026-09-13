@@ -62,6 +62,9 @@ ordinary file events still do not start repository discovery or recursive scans.
 An ancestor repository does not suppress this check: only an already-open exact
 working-copy root does, allowing a newly moved nested working copy to become the
 more-specific owner.
+For SVN clients older than 1.7, known parent ownership is preserved: per-directory
+administration metadata and the absence of `wcroot-abspath` do not prove that a
+child is an independent working copy.
 
 Filtering before the debounced queue is important: a general workspace change
 must not trigger repository discovery or an `svn info` call.
@@ -83,6 +86,8 @@ before cleanup. Every asynchronous stage of candidate validation and opening
 rechecks the active enable-generation, so neither an in-flight file-type check
 nor a queued SVN lookup can enqueue or open another repository after shutdown,
 disable, or a disable/re-enable cycle.
+The same generation is carried through the entire workspace and recursive scan,
+not recaptured for each folder.
 
 ## Synchronous routing
 

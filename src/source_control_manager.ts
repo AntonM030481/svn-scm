@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
 import * as path from "path";
+import * as semver from "semver";
 import {
   commands,
   Disposable,
@@ -189,6 +190,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   private async enable() {
+    const lifecycleGeneration = this.lifecycleGeneration;
     const multipleFolders = configuration.get<boolean>(
       "multipleFolders.enabled",
       false
@@ -234,7 +236,7 @@ export class SourceControlManager implements IDisposable {
 
     this.setState("initialized");
 
-    await this.scanWorkspaceFolders();
+    await this.scanWorkspaceFolders(lifecycleGeneration);
   }
 
   private onPossibleSvnRepositoryChange(uri: Uri): void {
@@ -382,22 +384,38 @@ export class SourceControlManager implements IDisposable {
     openRepositoriesToDispose.forEach(r => r.dispose());
   }
 
-  private async scanWorkspaceFolders() {
-    for (const folder of workspace.workspaceFolders || []) {
+  private async scanWorkspaceFolders(
+    lifecycleGeneration: number,
+    folders = workspace.workspaceFolders || []
+  ) {
+    for (const folder of folders) {
+      if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        return;
+      }
       const root = folder.uri.fsPath;
-      await this.tryOpenRepository(root);
+      await this.tryOpenRepository(root, 0, false, lifecycleGeneration);
     }
   }
 
   public async tryOpenRepository(
     path: string,
     level = 0,
-    allowNested = false
+    allowNested = false,
+    lifecycleGeneration = this.lifecycleGeneration
   ): Promise<void> {
-    const lifecycleGeneration = this.lifecycleGeneration;
     if (
       !this.isDiscoveryActive(lifecycleGeneration) ||
       (allowNested ? this.hasExactRepository(path) : this.getRepository(path))
+    ) {
+      return;
+    }
+
+    // Pre-1.7 working copies have administration directories in every child.
+    // Without wcroot-abspath, a nested candidate cannot override a known owner.
+    if (
+      allowNested &&
+      this.getRepository(path) &&
+      semver.satisfies(this.svn.version, "<1.7.0")
     ) {
       return;
     }
@@ -429,7 +447,10 @@ export class SourceControlManager implements IDisposable {
         }
 
         const baseRepository = await this.svn.open(repositoryRoot, path);
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryActive(lifecycleGeneration) ||
+          this.hasExactRepository(path)
+        ) {
           return;
         }
 
@@ -487,7 +508,12 @@ export class SourceControlManager implements IDisposable {
           stats.isDirectory() &&
           !matchAll(dir, this.ignoreList, { dot: true })
         ) {
-          await this.tryOpenRepository(dir, newLevel);
+          await this.tryOpenRepository(
+            dir,
+            newLevel,
+            false,
+            lifecycleGeneration
+          );
         }
       }
     }

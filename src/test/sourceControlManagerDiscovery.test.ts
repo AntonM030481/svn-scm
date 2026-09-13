@@ -10,6 +10,82 @@ import {
 } from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
+  test("does not construct a duplicate when another open wins during SVN lookup", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    fs.mkdirSync(path.join(root, ".svn"));
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.lifecycleGeneration = 0;
+    manager.openRepositories = [];
+    let opens = 0;
+    let constructions = 0;
+    manager.extensionContact = {
+      get secrets() {
+        constructions += 1;
+        throw new Error("Duplicate construction");
+      }
+    };
+    manager._svn = {
+      getRepositoryRoot: async () => root,
+      open: async () => {
+        opens += 1;
+        manager.openRepositories.push({
+          repository: { root, workspaceRoot: root }
+        });
+        return {};
+      }
+    };
+    try {
+      await manager.tryOpenRepository(root, 1, true);
+      assert.strictEqual(opens, 1);
+      assert.strictEqual(constructions, 0);
+      assert.strictEqual(manager.openRepositories.length, 1);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not resume a workspace scan in a newer enable generation", async () => {
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.lifecycleGeneration = 0;
+    const calls: string[] = [];
+    manager.tryOpenRepository = async (candidate: string) => {
+      calls.push(candidate);
+      manager.lifecycleGeneration += 2;
+    };
+    const folders = ["first", "second"].map(name => ({ uri: Uri.file(name) }));
+    await manager.scanWorkspaceFolders(0, folders);
+    assert.deepStrictEqual(calls, [folders[0].uri.fsPath]);
+  });
+
+  test("keeps SVN 1.6 nested administration directories with their owner", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
+    const child = path.join(root, "child");
+    fs.mkdirSync(path.join(child, ".svn"), { recursive: true });
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.lifecycleGeneration = 0;
+    manager.hasExactRepository = () => false;
+    manager.getRepository = () => ({ workspaceRoot: root });
+    let lookups = 0;
+    manager._svn = {
+      version: "1.6.23",
+      getRepositoryRoot: async () => {
+        lookups += 1;
+      }
+    };
+    try {
+      await manager.tryOpenRepository(child, 1, true);
+      assert.strictEqual(lookups, 0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("extracts working-copy roots from SVN metadata paths", () => {
     const dotSvnChild = getSvnRepositoryPathFromMetadata(
       "/workspace/project/.svn/wc.db",
