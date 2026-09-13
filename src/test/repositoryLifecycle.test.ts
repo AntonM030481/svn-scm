@@ -52,12 +52,14 @@ suite("Repository Lifecycle", () => {
     };
     (repository as any)._operations.start(Operation.Status);
     const deferredFullStatus = repository.fullStatus();
+    const deferredWatcherStatus = (repository as any).updateWhenIdleAndWait();
     await Promise.resolve();
 
     repository.dispose();
     (repository as any)._operations.end(Operation.Status);
     (repository as any)._onDidRunOperation.fire(Operation.Status);
     await deferredFullStatus;
+    await deferredWatcherStatus;
 
     (configuration as any)._onDidChange.fire({
       affectsConfiguration: (section: string) =>

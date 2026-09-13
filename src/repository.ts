@@ -51,7 +51,6 @@ import { toSvnUri } from "./uri";
 import {
   anyEvent,
   dispose,
-  eventToPromise,
   filterEvent,
   getSvnDir,
   isDescendant,
@@ -469,15 +468,45 @@ export class Repository implements IRemoteRepository {
 
   @throttle
   private async updateWhenIdleAndWait(): Promise<void> {
-    await this.whenIdleAndFocused();
+    if (!(await this.whenIdleAndFocused())) {
+      return;
+    }
+
     await this.status();
     await timeout(5000);
   }
 
-  public async whenIdleAndFocused(): Promise<void> {
-    while (true) {
+  private waitForEventOrDispose<T>(event: Event<T>): Promise<boolean> {
+    if (this.disposed) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise<boolean>(resolve => {
+      let listeners: Disposable[] = [];
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        listeners = dispose(listeners);
+        resolve(value);
+      };
+
+      listeners = [
+        event(() => finish(true)),
+        this.onDidDispose(() => finish(false))
+      ];
+    });
+  }
+
+  public async whenIdleAndFocused(): Promise<boolean> {
+    while (!this.disposed) {
       if (!this.operations.isIdle()) {
-        await eventToPromise(this.onDidRunOperation);
+        if (!(await this.waitForEventOrDispose(this.onDidRunOperation))) {
+          return false;
+        }
         continue;
       }
 
@@ -486,12 +515,16 @@ export class Repository implements IRemoteRepository {
           window.onDidChangeWindowState,
           e => e.focused
         );
-        await eventToPromise(onDidFocusWindow);
+        if (!(await this.waitForEventOrDispose(onDidFocusWindow))) {
+          return false;
+        }
         continue;
       }
 
-      return;
+      return true;
     }
+
+    return false;
   }
 
   @throttle
@@ -823,29 +856,19 @@ export class Repository implements IRemoteRepository {
 
   @throttle
   public async status() {
+    if (this.disposed) {
+      return;
+    }
+
     return this.run(Operation.Status);
   }
 
   @throttle
   public async fullStatus() {
     while (!this.operations.isIdle() && !this.disposed) {
-      const operationFinished = await new Promise<boolean>(resolve => {
-        let listeners: Disposable[] = [];
-        let settled = false;
-        const finish = (value: boolean) => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          listeners = dispose(listeners);
-          resolve(value);
-        };
-
-        listeners = [
-          this.onDidRunOperation(() => finish(true)),
-          this.onDidDispose(() => finish(false))
-        ];
-      });
+      const operationFinished = await this.waitForEventOrDispose(
+        this.onDidRunOperation
+      );
 
       if (!operationFinished) {
         return;
