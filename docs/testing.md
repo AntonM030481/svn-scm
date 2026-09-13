@@ -75,8 +75,8 @@ that only intended runtime files are shipped.
 Host-independent tests cover glob matching, SVN error classification,
 commit-message HTML, process execution/cancellation/settlement, and lifecycle
 ownership. Decoding regressions are in the host-only
-`svnStreaming.test.ts` suite. These suites do not establish a whole-extension percentage-coverage claim. The integration
-suite is separate and grows with discovery, lifecycle, routing, and status
+`svnStreaming.test.ts` suite. These suites do not establish a whole-extension
+percentage-coverage claim. The integration suite is separate and grows with discovery, lifecycle, routing, and status
 regressions; its authoritative counts are the logs of each CI matrix job.
 
 No whole-extension percentage gate is currently claimed. Unit tests load

@@ -4,8 +4,9 @@
 
 The lockfile is authoritative and installs must use `yarn install --immutable`.
 Dependabot proposes weekly patch and minor updates as a group. Major updates are
-initiated manually (Dependabot ignores major updates) because this extension runs inside VS Code's Electron and
-Node environment rather than an arbitrary system Node.js process.
+initiated manually (Dependabot ignores major updates) because this extension
+runs inside VS Code's Electron and Node environment rather than an arbitrary
+system Node.js process.
 
 Do not document every transitive package here. `package.json` and `yarn.lock`
 are the source of truth for exact versions.
