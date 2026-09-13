@@ -14,7 +14,7 @@ Whole-file staged state is stored in reserved SVN changelist names. This keeps s
 
 The `__svn_scm_staged__` changelist namespace is reserved for extension-owned staging metadata. The reserved name also encodes whether a file came from a user changelist. Unstage can therefore restore the original changelist even after a reload. Files that were unversioned before staging are marked separately so unstage can return them to an uncommitted state.
 
-Reserved staging changelists are implementation details and are presented as one `Staged Changes` SCM group rather than as ordinary user changelists.
+Reserved staging changelists are implementation details and are presented as one `Staged Changes` SCM group rather than as ordinary user changelists. Each completed SVN status refresh is authoritative: the staging coordinator projects the reserved changelist entries into `Staged Changes` once per refreshed model rather than maintaining an independent second copy of SVN state.
 
 ## Shared working copies
 
