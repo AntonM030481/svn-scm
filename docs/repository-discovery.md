@@ -68,6 +68,11 @@ more-specific owner.
 For SVN clients older than 1.7, known parent ownership is preserved: per-directory
 administration metadata and the absence of `wcroot-abspath` do not prove that a
 child is an independent working copy.
+Automatically discovered legacy candidates are provisional: if a broader parent
+is validated later, its provisional child projections are closed before it is
+registered. This also covers child-first completion and separate event batches.
+Explicit workspace projections and modern nested working copies are not replaced
+by this legacy-only policy.
 Ownership is checked both before asynchronous validation and immediately before
 construction, including legacy parent ownership that appeared during the lookup.
 

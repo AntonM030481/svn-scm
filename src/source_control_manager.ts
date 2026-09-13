@@ -94,6 +94,7 @@ export class SourceControlManager implements IDisposable {
   private disposed = false;
   private lifecycleGeneration = 0;
   private possibleSvnRepositoryPaths = new Map<string, boolean>();
+  private provisionalLegacyRepositories = new WeakSet<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -473,7 +474,11 @@ export class SourceControlManager implements IDisposable {
           this.extensionContact.secrets
         );
 
-        this.open(repository, lifecycleGeneration);
+        this.registerDiscoveredRepository(
+          repository,
+          lifecycleGeneration,
+          allowNested
+        );
       } catch (err) {
         if (!this.isDiscoveryActive(lifecycleGeneration)) {
           return;
@@ -526,6 +531,37 @@ export class SourceControlManager implements IDisposable {
         }
       }
     }
+  }
+
+  private registerDiscoveredRepository(
+    repository: Repository,
+    lifecycleGeneration: number,
+    allowNested: boolean
+  ): void {
+    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      repository.dispose();
+      return;
+    }
+
+    if (semver.satisfies(this.svn.version, "<1.7.0")) {
+      if (allowNested) {
+        this.provisionalLegacyRepositories.add(repository);
+      }
+
+      // Legacy directory metadata cannot identify the WC root. An automatic
+      // child projection is provisional until a broader owner is discovered,
+      // even if the two candidates arrived in different debounce batches.
+      const children = this.openRepositories.filter(
+        ({ repository: child }) =>
+          this.provisionalLegacyRepositories.has(child) &&
+          normalizePath(child.workspaceRoot) !==
+            normalizePath(repository.workspaceRoot) &&
+          isDescendant(repository.workspaceRoot, child.workspaceRoot)
+      );
+      children.forEach(child => child.dispose());
+    }
+
+    this.open(repository, lifecycleGeneration);
   }
 
   public async getRemoteRepository(uri: Uri): Promise<RemoteRepository> {

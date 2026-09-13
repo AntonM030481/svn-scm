@@ -12,6 +12,70 @@ import {
 } from "../source_control_manager";
 
 suite("Source control repository discovery", () => {
+  for (const version of ["1.6.23", "1.14.0"]) {
+    for (const automaticChild of [false, true]) {
+      test(`registers a later parent with SVN ${version}, automatic child=${automaticChild}`, () => {
+        const manager = Object.create(SourceControlManager.prototype) as any;
+        manager.enabled = true;
+        manager.disposed = false;
+        manager.lifecycleGeneration = 0;
+        manager._svn = { version };
+        manager.openRepositories = [];
+        manager.provisionalLegacyRepositories = new WeakSet();
+        const events: string[] = [];
+        manager.open = (repository: any) => {
+          const entry = {
+            repository,
+            dispose: () => {
+              events.push(`close:${repository.workspaceRoot}`);
+              manager.openRepositories = manager.openRepositories.filter(
+                (item: any) => item !== entry
+              );
+            }
+          };
+          manager.openRepositories.push(entry);
+          events.push(`open:${repository.workspaceRoot}`);
+        };
+        const parent = { workspaceRoot: "/parent" };
+        const child = { workspaceRoot: "/parent/child" };
+        const sibling = { workspaceRoot: "/other" };
+        manager.registerDiscoveredRepository(child, 0, automaticChild);
+        manager.registerDiscoveredRepository(sibling, 0, true);
+        manager.registerDiscoveredRepository(parent, 0, true);
+        const replaced = version === "1.6.23" && automaticChild;
+        assert.deepStrictEqual(
+          manager.openRepositories.map((entry: any) => entry.repository),
+          replaced ? [sibling, parent] : [child, sibling, parent]
+        );
+        assert.deepStrictEqual(events, [
+          "open:/parent/child",
+          "open:/other",
+          ...(replaced ? ["close:/parent/child"] : []),
+          "open:/parent"
+        ]);
+      });
+    }
+  }
+
+  test("stale registration cannot replace a provisional legacy child", () => {
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.lifecycleGeneration = 2;
+    let disposed = 0;
+    manager.open = () => assert.fail("stale request opened a repository");
+    manager.registerDiscoveredRepository(
+      {
+        dispose: () => {
+          disposed += 1;
+        }
+      },
+      0,
+      true
+    );
+    assert.strictEqual(disposed, 1);
+  });
+
   test("directory-create queue explicitly disables recursive discovery", async () => {
     const manager = Object.create(SourceControlManager.prototype) as any;
     manager.enabled = true;
