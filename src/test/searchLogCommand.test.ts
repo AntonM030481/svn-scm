@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { CancellationTokenSource, commands, Uri, window } from "vscode";
 import { SearchLogByText } from "../commands/search_log_by_text";
+import { PromptAuth } from "../commands/promptAuth";
 import { Repository } from "../repository";
 import { SvnCancellationError } from "../svnProcess";
 import { tempSvnFs } from "../temp_svn_fs";
@@ -148,5 +149,21 @@ suite("Log search command lifecycle", () => {
     accept("query");
     await execution;
     assert.equal(searches, 0);
+  });
+
+  test("authentication cancellation closes the input flow before requesting a password", async () => {
+    const prompt = Object.create(PromptAuth.prototype) as PromptAuth;
+    let inputs = 0;
+    window.showInputBox = async (_options, token) => {
+      inputs++;
+      assert.equal(token, cancellation.token);
+      cancellation.cancel();
+      return "late username";
+    };
+    assert.equal(
+      await prompt.execute(undefined, undefined, cancellation.token),
+      undefined
+    );
+    assert.equal(inputs, 1);
   });
 });

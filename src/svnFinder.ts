@@ -116,7 +116,9 @@ export class SvnFinder {
       } else if (!semver.gte(version, "1.6.0")) {
         e(new Error("Required svn version must be >= 1.6"));
       } else {
-        c(svn);
+        // Publish the validated version so all capability checks use the same
+        // release number instead of reinterpreting vendor-specific suffixes.
+        c({ ...svn, version });
       }
     });
   }

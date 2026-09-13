@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
 import * as path from "path";
+import * as semver from "semver";
 import {
   commands,
   Disposable,
@@ -39,6 +40,12 @@ import { matchAll } from "./util/globMatch";
 
 type State = "uninitialized" | "initialized";
 
+interface DiscoveryOptions {
+  allowNested?: boolean;
+  recursive?: boolean;
+  lifecycleGeneration?: number;
+}
+
 export function getSvnRepositoryPathFromMetadata(
   filePath: string,
   svnDir: string = getSvnDir()
@@ -58,6 +65,10 @@ export function getSvnRepositoryPathFromMetadata(
   }
 
   return undefined;
+}
+
+export function isSvnMetadataLookalikeDirectory(filePath: string): boolean {
+  return /^(\.svn|_svn)[.-]/i.test(path.basename(filePath.replace(/\\/g, "/")));
 }
 
 export class SourceControlManager implements IDisposable {
@@ -80,7 +91,10 @@ export class SourceControlManager implements IDisposable {
   public openRepositories: IOpenRepository[] = [];
   private disposables: Disposable[] = [];
   private enabled = false;
-  private possibleSvnRepositoryPaths = new Set<string>();
+  private disposed = false;
+  private lifecycleGeneration = 0;
+  private possibleSvnRepositoryPaths = new Map<string, boolean>();
+  private provisionalLegacyRepositories = new WeakSet<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
 
@@ -160,6 +174,10 @@ export class SourceControlManager implements IDisposable {
   }
 
   private onDidChangeConfiguration(): void {
+    if (this.disposed) {
+      return;
+    }
+
     const enabled = configuration.get<boolean>("enabled") === true;
 
     this.maxDepth = configuration.get<number>("multipleFolders.depth", 0);
@@ -169,6 +187,7 @@ export class SourceControlManager implements IDisposable {
     }
 
     this.enabled = enabled;
+    this.lifecycleGeneration += 1;
 
     if (enabled) {
       this.enable();
@@ -178,6 +197,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   private async enable() {
+    const lifecycleGeneration = this.lifecycleGeneration;
     const multipleFolders = configuration.get<boolean>(
       "multipleFolders.enabled",
       false
@@ -215,10 +235,15 @@ export class SourceControlManager implements IDisposable {
       this,
       this.disposables
     );
+    fsWatcher.onDidCreate(
+      uri => void this.onPossibleSvnRepositoryDirectoryCreate(uri),
+      this,
+      this.disposables
+    );
 
     this.setState("initialized");
 
-    await this.scanWorkspaceFolders();
+    await this.scanWorkspaceFolders(lifecycleGeneration);
   }
 
   private onPossibleSvnRepositoryChange(uri: Uri): void {
@@ -232,15 +257,79 @@ export class SourceControlManager implements IDisposable {
     this.eventuallyScanPossibleSvnRepository(possibleSvnRepositoryPath);
   }
 
-  private eventuallyScanPossibleSvnRepository(path: string) {
-    this.possibleSvnRepositoryPaths.add(path);
+  private async onPossibleSvnRepositoryDirectoryCreate(
+    uri: Uri
+  ): Promise<void> {
+    const lifecycleGeneration = this.lifecycleGeneration;
+    if (
+      !this.isDiscoveryActive(lifecycleGeneration) ||
+      uri.scheme !== "file" ||
+      getSvnRepositoryPathFromMetadata(uri.fsPath) !== undefined ||
+      isSvnMetadataLookalikeDirectory(uri.fsPath) ||
+      this.hasExactRepository(uri.fsPath)
+    ) {
+      return;
+    }
+
+    try {
+      const stats = await stat(uri.fsPath);
+      if (
+        !this.isDiscoveryActive(lifecycleGeneration) ||
+        !stats.isDirectory() ||
+        this.hasExactRepository(uri.fsPath)
+      ) {
+        return;
+      }
+
+      this.eventuallyScanPossibleSvnRepository(uri.fsPath, true);
+    } catch (_error) {
+      // The path may disappear again before the asynchronous stat completes.
+    }
+  }
+
+  private hasExactRepository(candidatePath: string): boolean {
+    const candidate = normalizePath(candidatePath);
+    return this.openRepositories.some(({ repository }) => {
+      return (
+        normalizePath(repository.root) === candidate ||
+        normalizePath(repository.workspaceRoot) === candidate
+      );
+    });
+  }
+
+  private isDiscoveryActive(lifecycleGeneration: number): boolean {
+    return (
+      !this.disposed &&
+      this.enabled &&
+      this.lifecycleGeneration === lifecycleGeneration
+    );
+  }
+
+  private eventuallyScanPossibleSvnRepository(
+    path: string,
+    allowNested: boolean = false
+  ) {
+    if (this.disposed || !this.enabled) {
+      return;
+    }
+
+    const existing = this.possibleSvnRepositoryPaths.get(path) || false;
+    this.possibleSvnRepositoryPaths.set(path, existing || allowNested);
     this.eventuallyScanPossibleSvnRepositories();
   }
 
   @debounce(500)
   private eventuallyScanPossibleSvnRepositories(): void {
-    for (const path of this.possibleSvnRepositoryPaths) {
-      this.tryOpenRepository(path, 1);
+    if (this.disposed || !this.enabled) {
+      this.possibleSvnRepositoryPaths.clear();
+      return;
+    }
+
+    for (const [path, allowNested] of this.possibleSvnRepositoryPaths) {
+      void this.tryOpenRepository(path, 1, {
+        allowNested,
+        recursive: !allowNested
+      });
     }
 
     this.possibleSvnRepositoryPaths.clear();
@@ -304,21 +393,56 @@ export class SourceControlManager implements IDisposable {
     openRepositoriesToDispose.forEach(r => r.dispose());
   }
 
-  private async scanWorkspaceFolders() {
-    for (const folder of workspace.workspaceFolders || []) {
+  private async scanWorkspaceFolders(
+    lifecycleGeneration: number,
+    folders = workspace.workspaceFolders || []
+  ) {
+    for (const folder of folders) {
+      if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        return;
+      }
       const root = folder.uri.fsPath;
-      await this.tryOpenRepository(root);
+      await this.tryOpenRepository(root, 0, { lifecycleGeneration });
     }
   }
 
-  public async tryOpenRepository(path: string, level = 0): Promise<void> {
-    if (this.getRepository(path)) {
+  private isDiscoveryCandidateOwned(
+    path: string,
+    allowNested: boolean
+  ): boolean {
+    // Pre-1.7 working copies have administration directories in every child.
+    // Without wcroot-abspath, a nested candidate cannot override a known owner.
+    if (!allowNested || semver.satisfies(this.svn.version, "<1.7.0")) {
+      return !!this.getRepository(path);
+    }
+
+    return this.hasExactRepository(path);
+  }
+
+  public async tryOpenRepository(
+    path: string,
+    level = 0,
+    {
+      allowNested = false,
+      recursive = true,
+      lifecycleGeneration = this.lifecycleGeneration
+    }: DiscoveryOptions = {}
+  ): Promise<void> {
+    if (
+      !this.isDiscoveryActive(lifecycleGeneration) ||
+      this.isDiscoveryCandidateOwned(path, allowNested)
+    ) {
       return;
     }
 
     const checkParent = level === 0;
 
-    if (await isSvnFolder(path, checkParent)) {
+    const svnFolder = await isSvnFolder(path, checkParent);
+    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      return;
+    }
+
+    if (svnFolder) {
       const resourceConfig = workspace.getConfiguration("svn", Uri.file(path));
 
       const ignoredRepos = new Set(
@@ -333,14 +457,33 @@ export class SourceControlManager implements IDisposable {
 
       try {
         const repositoryRoot = await this.svn.getRepositoryRoot(path);
+        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+          return;
+        }
+
+        const baseRepository = await this.svn.open(repositoryRoot, path);
+        if (
+          !this.isDiscoveryActive(lifecycleGeneration) ||
+          this.isDiscoveryCandidateOwned(path, allowNested)
+        ) {
+          return;
+        }
 
         const repository = new Repository(
-          await this.svn.open(repositoryRoot, path),
+          baseRepository,
           this.extensionContact.secrets
         );
 
-        this.open(repository);
+        this.registerDiscoveredRepository(
+          repository,
+          lifecycleGeneration,
+          allowNested
+        );
       } catch (err) {
+        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+          return;
+        }
+
         if (err instanceof SvnError) {
           if (err.svnErrorCode === svnErrorCodes.WorkingCopyIsTooOld) {
             await commands.executeCommand("svn.upgrade", path);
@@ -353,12 +496,16 @@ export class SourceControlManager implements IDisposable {
     }
 
     const newLevel = level + 1;
-    if (newLevel <= this.maxDepth) {
+    if (recursive && newLevel <= this.maxDepth) {
       let files: string[] | Buffer[] = [];
 
       try {
         files = await readdir(path);
       } catch (_error) {
+        return;
+      }
+
+      if (!this.isDiscoveryActive(lifecycleGeneration)) {
         return;
       }
 
@@ -372,14 +519,63 @@ export class SourceControlManager implements IDisposable {
           continue;
         }
 
+        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+          return;
+        }
+
         if (
           stats.isDirectory() &&
           !matchAll(dir, this.ignoreList, { dot: true })
         ) {
-          await this.tryOpenRepository(dir, newLevel);
+          await this.tryOpenRepository(dir, newLevel, { lifecycleGeneration });
         }
       }
     }
+  }
+
+  private registerDiscoveredRepository(
+    repository: Repository,
+    lifecycleGeneration: number,
+    allowNested: boolean,
+    workspaceFolders = workspace.workspaceFolders || []
+  ): void {
+    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      repository.dispose();
+      return;
+    }
+
+    if (semver.satisfies(this.svn.version, "<1.7.0")) {
+      if (allowNested) {
+        this.provisionalLegacyRepositories.add(repository);
+      }
+
+      // Legacy directory metadata cannot identify the WC root. An automatic
+      // child projection is provisional until a broader owner is discovered,
+      // even if the two candidates arrived in different debounce batches.
+      const workspaceOwners = new Set(
+        workspaceFolders.map(folder => this.getRepository(folder.uri))
+      );
+      const children = this.openRepositories.filter(
+        ({ repository: child }) =>
+          this.provisionalLegacyRepositories.has(child) &&
+          normalizePath(child.workspaceRoot) !==
+            normalizePath(repository.workspaceRoot) &&
+          !workspaceOwners.has(child) &&
+          isDescendant(repository.workspaceRoot, child.workspaceRoot)
+      );
+      for (const child of children) {
+        // Closing publishes an event; its listeners may disable the manager
+        // or close another child synchronously.
+        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+          break;
+        }
+        if (this.openRepositories.includes(child)) {
+          child.dispose();
+        }
+      }
+    }
+
+    this.open(repository, lifecycleGeneration);
   }
 
   public async getRemoteRepository(uri: Uri): Promise<RemoteRepository> {
@@ -509,7 +705,12 @@ export class SourceControlManager implements IDisposable {
     return null;
   }
 
-  private open(repository: Repository): void {
+  private open(repository: Repository, lifecycleGeneration: number): void {
+    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      repository.dispose();
+      return;
+    }
+
     this.logRepositoryLifecycle(repository, "opened; initial status pending");
     void repository.initialStatusSettled.then(() => {
       if (repository.state !== RepositoryState.Disposed) {
@@ -606,6 +807,13 @@ export class SourceControlManager implements IDisposable {
   }
 
   public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.enabled = false;
+    this.lifecycleGeneration += 1;
     this.disable();
     this.configurationChangeDisposable.dispose();
   }

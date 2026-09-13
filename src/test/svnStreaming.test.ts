@@ -4,13 +4,80 @@ import SvnError from "../svnError";
 import { Repository as SvnRepository } from "../svnRepository";
 import { ConstructorPolicy, ICpOptions } from "../common/types";
 import { Repository } from "../repository";
-import { EventEmitter } from "vscode";
+import { CancellationToken, commands, EventEmitter } from "vscode";
 import { SvnCancellationError } from "../svnProcess";
 import { getEventListeners } from "events";
 
 const environment = { ELECTRON_RUN_AS_NODE: "1" };
 
 suite("Configured SVN streaming executor", () => {
+  test("cancellation releases a pending secret lookup immediately", async () => {
+    const repository = Object.create(Repository.prototype) as any;
+    const controller = new AbortController();
+    let complete!: (value: string) => void;
+    repository.getCredentialServiceName = () => "test";
+    repository.secrets = {
+      get: () =>
+        new Promise<string>(resolve => {
+          complete = resolve;
+        })
+    };
+    const waiting = repository.loadStoredAuths(controller.signal);
+    controller.abort();
+    await assert.rejects(waiting, SvnCancellationError);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+    complete("[]");
+    await Promise.resolve();
+  });
+
+  test("cancelled auth UI cannot apply late credentials or block another caller", async () => {
+    const repository = Object.create(Repository.prototype) as any;
+    repository.repository = {};
+    const first = new AbortController();
+    const second = new AbortController();
+    const original = commands.executeCommand;
+    const completions: Array<
+      (auth: { username: string; password: string }) => void
+    > = [];
+    let cancelledUI = false;
+    commands.executeCommand = ((
+      _command: string,
+      _username: unknown,
+      _password: unknown,
+      token: CancellationToken
+    ) => {
+      token.onCancellationRequested(() => {
+        cancelledUI = true;
+      });
+      return new Promise<{ username: string; password: string }>(resolve => {
+        completions.push(resolve);
+      });
+    }) as unknown as typeof commands.executeCommand;
+    try {
+      const cancelled = repository.promptAuth(first.signal);
+      const replacement = repository.promptAuth(second.signal);
+      first.abort();
+      await assert.rejects(cancelled, SvnCancellationError);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(cancelledUI, true);
+      assert.equal(completions.length, 2);
+      completions[0]({ username: "stale", password: "old" });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(repository.repository.username, undefined);
+      completions[1]({ username: "current", password: "new" });
+      await replacement;
+      assert.equal(repository.repository.username, "current");
+      assert.equal(repository.repository.password, "new");
+      assert.equal(repository.lastPromptAuth, undefined);
+      assert.equal(getEventListeners(first.signal, "abort").length, 0);
+      assert.equal(getEventListeners(second.signal, "abort").length, 0);
+    } finally {
+      first.abort();
+      second.abort();
+      commands.executeCommand = original;
+    }
+  });
+
   test("flushes the decoder tail and leaves caller arguments/options unchanged", async () => {
     const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
     const args = ["-e", "process.stdout.write(Buffer.from([0xe2]))", "--"];

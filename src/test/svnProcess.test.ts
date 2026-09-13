@@ -1,12 +1,26 @@
 import * as assert from "assert";
 import { getEventListeners } from "events";
-import { runSvnProcess, SvnCancellationError } from "../svnProcess";
+import { runSvnProcess, SvnCancellationError, waitForSvn } from "../svnProcess";
 
 const nodeOptions = {
   env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
 };
 
 suite("SVN process lifecycle", () => {
+  test("cancellable waits settle without waiting for an uncooperative producer", async () => {
+    const controller = new AbortController();
+    let rejectLate!: (error: Error) => void;
+    const source = new Promise<string>((_resolve, reject) => {
+      rejectLate = reject;
+    });
+    const waiting = waitForSvn(source, controller.signal);
+    controller.abort();
+    await assert.rejects(waiting, SvnCancellationError);
+    assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+    rejectLate(new Error("late failure"));
+    await new Promise(resolve => setImmediate(resolve));
+  });
+
   test("honors executable, cwd, environment and literal arguments without a shell", async () => {
     const input = 'space "quote" ; $(echo injected) --option';
     const result = await runSvnProcess(

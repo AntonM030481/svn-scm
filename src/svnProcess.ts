@@ -7,6 +7,34 @@ export class SvnCancellationError extends Error {
   }
 }
 
+/** Stop waiting immediately, while still observing late completion/rejection. */
+export function waitForSvn<T>(
+  promise: PromiseLike<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal?.removeEventListener("abort", cancel);
+    const cancel = () => {
+      cleanup();
+      reject(new SvnCancellationError());
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    Promise.resolve(promise).then(
+      value => {
+        cleanup();
+        resolve(value);
+      },
+      error => {
+        cleanup();
+        reject(error);
+      }
+    );
+    if (signal?.aborted) {
+      cancel();
+    }
+  });
+}
+
 /** Owns a subprocess until close, including its pipes and cancellation listener. */
 export function runSvnProcess(
   executable: string,

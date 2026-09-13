@@ -57,6 +57,12 @@ attempt. The command awaits progress and owns the single writer for
 `tempsvnfs:/svn.log`: a new search cancels the previous one, and closing the
 document or disposing the command/repository cancels active work.
 
+Authentication waits also observe the search's cancellation signal. A cancelled
+caller stops waiting for secret storage immediately; late results are ignored.
+The owner of an authentication prompt cancels both input boxes and releases the
+shared prompt slot. Other callers can request a fresh prompt, and a late result
+from the cancelled prompt cannot overwrite credentials.
+
 ### `SourceControlManager`
 
 `src/source_control_manager.ts` discovers SVN working copies in workspace
