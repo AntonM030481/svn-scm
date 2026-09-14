@@ -153,12 +153,14 @@ suite("Persisted startup status integration", () => {
     };
     const repo = f.open(base);
     const events = new EventEmitter<Uri>();
+    const deletions = new EventEmitter<Uri>();
     const adapters: Disposable[] = [];
     let publications = 0;
     const listener = repo.onDidChangeStatus(() => publications++);
     try {
       await entered.promise;
       repo.fsWatcher.onDidWorkspaceChange = events.event;
+      repo.fsWatcher.onDidWorkspaceDelete = deletions.event;
       enableIncrementalStatusRefresh(
         {
           repositories: [repo],
@@ -184,11 +186,27 @@ suite("Persisted startup status integration", () => {
       repo.validateStartupFile(reverted);
       await (repo as any).scanStartupFiles();
       assert.equal(repo.getResourceFromFile(reverted), undefined);
+      // Delete events target their parent in normal status, but must invalidate
+      // the exact file's startup evidence so it cannot be resurrected by overlay.
+      const transient = path.join(f.root, "transient.txt");
+      await fs.writeFile(transient, "temporary");
+      events.fire(Uri.file(transient));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await (repo as any).scanStartupFiles();
+      assert.equal(
+        repo.getResourceFromFile(transient)!.type,
+        Status.UNVERSIONED
+      );
+      await fs.unlink(transient);
+      deletions.fire(Uri.file(transient));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await (repo as any).scanStartupFiles();
       release.resolve();
       await repo.initialStatusSettled;
       assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
       assert.equal(repo.getResourceFromFile(reverted), undefined);
       assert.equal(publications, 1);
+      assert.equal(repo.getResourceFromFile(transient), undefined);
       const snapshot = f.data.get([...f.data.keys()][0]) as any;
       assert.equal(
         snapshot.statuses.find((s: any) => s.path === "new.txt").status,
@@ -199,6 +217,7 @@ suite("Persisted startup status integration", () => {
       listener.dispose();
       adapters.forEach(d => d.dispose());
       events.dispose();
+      deletions.dispose();
       repo.dispose();
       await workspace
         .getConfiguration("svn")

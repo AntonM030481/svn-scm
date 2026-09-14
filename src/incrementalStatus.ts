@@ -640,7 +640,7 @@ function patchRepository(repository: Repository): Disposable {
 
     state.fsTargets.add(target);
     if (repository.isInitialStatusPending)
-      repository.validateStartupFile(target);
+      repository.validateStartupFile(eventTarget);
     (repository as any).eventuallyUpdateWhenIdleAndWait();
   };
 
