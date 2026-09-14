@@ -9,6 +9,11 @@ import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
+import { createStagingChangelist } from "../stagingModel";
+import {
+  isUnversionedChildResource,
+  UnversionedChildResource
+} from "../unversionedDirectoryContents";
 import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
@@ -110,6 +115,57 @@ async function runWithWorkingCopyLocked(
   });
 }
 
+async function stageUnversionedChildren(
+  resources: Resource[]
+): Promise<Resource[]> {
+  const sourceControlManager = await getSourceControlManager();
+  const byRepository = new Map<Repository, UnversionedChildResource[]>();
+  const regular: Resource[] = [];
+
+  for (const resource of resources) {
+    if (!isUnversionedChildResource(resource)) {
+      regular.push(resource);
+      continue;
+    }
+
+    const repository = sourceControlManager.getRepository(resource.resourceUri);
+    if (!repository) continue;
+    const selected = byRepository.get(repository) ?? [];
+    selected.push(resource);
+    byRepository.set(repository, selected);
+  }
+
+  for (const [repository, selected] of byRepository) {
+    const relativeFiles = selected.map(resource =>
+      repository.repository.removeAbsolutePath(resource.resourceUri.fsPath)
+    );
+
+    await repository.repository.exec(["add", "--parents", ...relativeFiles]);
+
+    const byStagingChangelist = new Map<string, string[]>();
+    for (const resource of selected) {
+      const createdDirectoryRelativeRoot = path.relative(
+        repository.root,
+        resource.unversionedRoot
+      );
+      const changelist = createStagingChangelist(
+        undefined,
+        true,
+        createdDirectoryRelativeRoot || undefined
+      );
+      const paths = byStagingChangelist.get(changelist) ?? [];
+      paths.push(resource.resourceUri.fsPath);
+      byStagingChangelist.set(changelist, paths);
+    }
+
+    for (const [changelist, paths] of byStagingChangelist) {
+      await repository.addChangelist(paths, changelist);
+    }
+  }
+
+  return regular;
+}
+
 abstract class BaseStagingCommand extends Command {
   constructor(
     commandName: string,
@@ -165,7 +221,8 @@ export class Stage extends BaseStagingCommand {
       this.staging,
       selected,
       async () => {
-        const resources = await this.staging.validateStageSelection(selected);
+        const regular = await stageUnversionedChildren(selected);
+        const resources = await this.staging.validateStageSelection(regular);
         if (resources.length) {
           await this.staging.stage(resources);
         }
