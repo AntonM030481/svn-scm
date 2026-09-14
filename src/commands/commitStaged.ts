@@ -131,10 +131,12 @@ export class CommitStaged extends Command {
     );
     const entries = this.staging
       .stagedEntriesForWorkingCopy(repository)
-      .filter(({ repository: owner, resource }) =>
-        currentStagedPaths
-          .get(owner)
-          ?.has(normalizePath(resource.resourceUri.fsPath))
+      .filter(
+        ({ repository: owner, resource }) =>
+          resource.type !== Status.CONFLICTED &&
+          currentStagedPaths
+            .get(owner)
+            ?.has(normalizePath(resource.resourceUri.fsPath))
       )
       .map(({ repository: owner, resource, changelist }) => ({
         repository: owner,
