@@ -258,7 +258,9 @@ export class StageAll extends Command {
 
   public async execute(repository: Repository) {
     await runWithWorkingCopyLocked(this.staging, repository, async () => {
-      const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
+      const selected = this.staging
+        .unstagedResourcesForWorkingCopy(repository)
+        .filter(resource => !isUnversionedChildResource(resource));
       const resources = await this.staging.validateStageSelection(selected);
       if (resources.length) {
         await this.staging.stage(resources);
