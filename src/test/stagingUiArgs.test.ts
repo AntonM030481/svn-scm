@@ -80,4 +80,67 @@ suite("Staging UI Argument Tests", () => {
       true
     );
   });
+
+  test("Commit Staged skips conflicted staged files", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const trunkUrl = `${testUtil.getSvnUrl(repoUri)}/trunk`;
+    const checkout = await testUtil.createRepoCheckout(trunkUrl);
+    const peerCheckout = await testUtil.createRepoCheckout(trunkUrl);
+    const conflictedFile = path.join(checkout.fsPath, "conflicted.txt");
+    const cleanFile = path.join(checkout.fsPath, "clean.txt");
+
+    fs.writeFileSync(conflictedFile, "base\n");
+    fs.writeFileSync(cleanFile, "base\n");
+    svn(["add", "conflicted.txt", "clean.txt"], checkout.fsPath);
+    svn(["commit", "-m", "initial"], checkout.fsPath);
+    svn(["update"], peerCheckout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(conflictedFile, "local\n");
+    fs.writeFileSync(cleanFile, "clean local\n");
+    await repository.status();
+
+    const conflictedResource = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === conflictedFile
+    );
+    const cleanResource = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === cleanFile
+    );
+    assert.ok(conflictedResource);
+    assert.ok(cleanResource);
+
+    await commands.executeCommand("svn.stage", conflictedResource);
+    await commands.executeCommand("svn.stage", cleanResource);
+
+    fs.writeFileSync(
+      path.join(peerCheckout.fsPath, "conflicted.txt"),
+      "remote\n"
+    );
+    svn(["commit", "-m", "remote change", "conflicted.txt"], peerCheckout.fsPath);
+    svn(["update"], checkout.fsPath);
+    await repository.fullStatus();
+
+    assert.equal(
+      repository.conflicts.resourceStates.some(
+        resource => resource.resourceUri.fsPath === conflictedFile
+      ),
+      true
+    );
+
+    repository.inputBox.value = "commit clean staged file";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^C\s+conflicted\.txt$/m);
+    assert.doesNotMatch(status, /^M\s+clean\.txt$/m);
+    const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
+    assert.match(log, /clean\.txt/);
+    assert.doesNotMatch(log, /conflicted\.txt/);
+  });
 });
