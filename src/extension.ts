@@ -29,6 +29,7 @@ import { SvnFileSystemProvider } from "./svnFileSystemProvider";
 import { enableIncrementalStatusRefresh } from "./incrementalStatus";
 import { enableTargetedStatusLogReasons } from "./svnLogReasons";
 import { DisposableScope, InitializationTransaction } from "./lifecycle";
+import { UnversionedDirectoryContents } from "./unversionedDirectoryContents";
 
 async function init(
   extensionContext: ExtensionContext,
@@ -77,6 +78,7 @@ async function initializeAttempt(
 
   enableIncrementalStatusRefresh(sourceControlManager, disposables);
   enableTargetedStatusLogReasons(sourceControlManager, disposables);
+  attempt.add(new UnversionedDirectoryContents(sourceControlManager));
   registerCommands(sourceControlManager, disposables, ready);
 
   // Cache-backed consumers seed their state from the initial repository set.

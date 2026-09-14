@@ -1,14 +1,22 @@
 import * as path from "path";
+import { promises as fs } from "node:fs";
 import {
   commands,
   SourceControlResourceGroup,
   SourceControlResourceState,
   Uri
 } from "vscode";
+import { Status } from "../common/types";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
+import { createStagingChangelist } from "../stagingModel";
+import {
+  isUnversionedChildResource,
+  UnversionedChildResource
+} from "../unversionedDirectoryContents";
+import { normalizePath } from "../util";
 import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
@@ -110,6 +118,95 @@ async function runWithWorkingCopyLocked(
   });
 }
 
+async function stageUnversionedChildren(
+  resources: Resource[]
+): Promise<Resource[]> {
+  const sourceControlManager = await getSourceControlManager();
+  const byRepository = new Map<Repository, UnversionedChildResource[]>();
+  const regular: Resource[] = [];
+
+  for (const resource of resources) {
+    if (!isUnversionedChildResource(resource)) {
+      regular.push(resource);
+      continue;
+    }
+
+    const repository = sourceControlManager.getRepository(resource.resourceUri);
+    if (!repository) continue;
+    const selected = byRepository.get(repository) ?? [];
+    selected.push(resource);
+    byRepository.set(repository, selected);
+  }
+
+  for (const [repository, selected] of byRepository) {
+    await repository.fullStatus();
+
+    const liveUnversionedRoots = new Set(
+      repository.unversioned.resourceStates
+        .filter(
+          resource =>
+            resource.type === Status.UNVERSIONED &&
+            !isUnversionedChildResource(resource as Resource)
+        )
+        .map(resource => normalizePath(resource.resourceUri.fsPath))
+    );
+    const validated: UnversionedChildResource[] = [];
+
+    for (const resource of selected) {
+      const filePath = resource.resourceUri.fsPath;
+      const current = repository.getResourceFromFile(resource.resourceUri);
+      if (current && !isUnversionedChildResource(current)) {
+        regular.push(current);
+        continue;
+      }
+
+      if (
+        !liveUnversionedRoots.has(normalizePath(resource.unversionedRoot)) ||
+        !isPathInside(resource.unversionedRoot, filePath)
+      ) {
+        continue;
+      }
+
+      try {
+        const stat = await fs.lstat(filePath);
+        if (stat.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      validated.push(resource);
+    }
+
+    if (!validated.length) continue;
+    const relativeFiles = validated.map(resource =>
+      repository.repository.removeAbsolutePath(resource.resourceUri.fsPath)
+    );
+
+    await repository.repository.exec(["add", "--parents", ...relativeFiles]);
+
+    const byStagingChangelist = new Map<string, string[]>();
+    for (const resource of validated) {
+      const createdDirectoryRelativeRoot = path.relative(
+        repository.root,
+        resource.unversionedRoot
+      );
+      const changelist = createStagingChangelist(
+        undefined,
+        true,
+        createdDirectoryRelativeRoot || undefined
+      );
+      const paths = byStagingChangelist.get(changelist) ?? [];
+      paths.push(resource.resourceUri.fsPath);
+      byStagingChangelist.set(changelist, paths);
+    }
+
+    for (const [changelist, paths] of byStagingChangelist) {
+      await repository.addChangelist(paths, changelist);
+    }
+  }
+
+  return regular;
+}
+
 abstract class BaseStagingCommand extends Command {
   constructor(
     commandName: string,
@@ -165,7 +262,8 @@ export class Stage extends BaseStagingCommand {
       this.staging,
       selected,
       async () => {
-        const resources = await this.staging.validateStageSelection(selected);
+        const regular = await stageUnversionedChildren(selected);
+        const resources = await this.staging.validateStageSelection(regular);
         if (resources.length) {
           await this.staging.stage(resources);
         }
@@ -201,7 +299,9 @@ export class StageAll extends Command {
 
   public async execute(repository: Repository) {
     await runWithWorkingCopyLocked(this.staging, repository, async () => {
-      const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
+      const selected = this.staging
+        .unstagedResourcesForWorkingCopy(repository)
+        .filter(resource => !isUnversionedChildResource(resource));
       const resources = await this.staging.validateStageSelection(selected);
       if (resources.length) {
         await this.staging.stage(resources);
