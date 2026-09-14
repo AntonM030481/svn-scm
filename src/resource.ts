@@ -10,6 +10,7 @@ import {
 import { PropStatus, Status } from "./common/types";
 import { memoize } from "./decorators";
 import { configuration } from "./helpers/configuration";
+import { isUnversionedDirectory } from "./resourceKinds";
 
 // Path needs to be relative from out/
 const iconsRootPath = path.join(__dirname, "..", "icons");
@@ -49,8 +50,7 @@ export class Resource implements SourceControlResourceState {
     private _type: string,
     private _renameResourceUri?: Uri,
     private _props?: string,
-    private _remote: boolean = false,
-    private _isDirectory: boolean = false
+    private _remote: boolean = false
   ) {}
 
   @memoize
@@ -74,7 +74,10 @@ export class Resource implements SourceControlResourceState {
   }
 
   get isDirectory(): boolean {
-    return this.type === Status.UNVERSIONED && this._isDirectory;
+    return (
+      this.type === Status.UNVERSIONED &&
+      isUnversionedDirectory(this.resourceUri.fsPath)
+    );
   }
 
   get decorations(): SourceControlResourceDecorations {
