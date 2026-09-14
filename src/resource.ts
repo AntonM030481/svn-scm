@@ -4,11 +4,13 @@ import {
   SourceControlResourceDecorations,
   SourceControlResourceState,
   ThemeColor,
+  ThemeIcon,
   Uri
 } from "vscode";
 import { PropStatus, Status } from "./common/types";
 import { memoize } from "./decorators";
 import { configuration } from "./helpers/configuration";
+import { isUnversionedDirectory } from "./resourceKinds";
 
 // Path needs to be relative from out/
 const iconsRootPath = path.join(__dirname, "..", "icons");
@@ -71,10 +73,21 @@ export class Resource implements SourceControlResourceState {
     return this._remote;
   }
 
+  get isDirectory(): boolean {
+    return (
+      this.type === Status.UNVERSIONED &&
+      isUnversionedDirectory(this.resourceUri.fsPath)
+    );
+  }
+
   get decorations(): SourceControlResourceDecorations {
     // TODO@joh, still requires restart/redraw in the SCM viewlet
-    const light = { iconPath: this.getIconPath("light") };
-    const dark = { iconPath: this.getIconPath("dark") };
+    const light = {
+      iconPath: this.isDirectory ? ThemeIcon.Folder : this.getIconPath("light")
+    };
+    const dark = {
+      iconPath: this.isDirectory ? ThemeIcon.Folder : this.getIconPath("dark")
+    };
     const tooltip = this.tooltip;
     const strikeThrough = this.strikeThrough;
     const faded = this.faded;

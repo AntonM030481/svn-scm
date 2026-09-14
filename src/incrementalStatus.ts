@@ -6,6 +6,10 @@ import { configuration } from "./helpers/configuration";
 import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
+import {
+  refreshUnversionedDirectoryKinds,
+  updateUnversionedDirectoryKinds
+} from "./resourceKinds";
 import { SourceControlManager } from "./source_control_manager";
 import { Repository as SvnRepository } from "./svnRepository";
 import { dispose, isDescendant, normalizePath, toDisposable } from "./util";
@@ -370,6 +374,7 @@ async function getTargetedStatus(
 
   const result = await repository.exec(args);
   const statuses = await parseStatusXml(result.stdout);
+  await updateUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
 
   for (const status of statuses) {
     if (
@@ -500,6 +505,10 @@ function patchRepository(repository: Repository): Disposable {
         repository.workspaceRoot,
         await originalGetStatus(params)
       );
+      await refreshUnversionedDirectoryKinds(
+        repository.workspaceRoot,
+        statuses
+      );
       state.statuses = statuses;
       return statuses;
     }
@@ -528,6 +537,10 @@ function patchRepository(repository: Repository): Disposable {
       const statuses = filterWorkspaceStatuses(
         repository.workspaceRoot,
         await originalGetStatus(params)
+      );
+      await refreshUnversionedDirectoryKinds(
+        repository.workspaceRoot,
+        statuses
       );
       state.statuses = statuses;
       return statuses;
