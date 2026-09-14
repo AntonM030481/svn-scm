@@ -217,10 +217,14 @@ export class StagingCoordinator implements Disposable {
 
     const validated: Resource[] = [];
     for (const [repository, selected] of byRepository) {
-      await refreshStatusTargets(
-        repository,
-        selected.map(resource => resource.resourceUri.fsPath)
-      );
+      if (await this.needsFullStatus(selected)) {
+        await repository.fullStatus();
+      } else {
+        await refreshStatusTargets(
+          repository,
+          selected.map(resource => resource.resourceUri.fsPath)
+        );
+      }
       const staged = this.states.get(repository)?.group.resourceStates ?? [];
 
       for (const original of selected) {
@@ -252,9 +256,23 @@ export class StagingCoordinator implements Disposable {
     return uniqueResources(validated);
   }
 
+  private async needsFullStatus(resources: Resource[]): Promise<boolean> {
+    for (const resource of resources) {
+      try {
+        if ((await lstat(resource.resourceUri.fsPath)).isSymbolicLink()) {
+          return true;
+        }
+      } catch {
+        // Missing paths are validated by SVN status itself.
+      }
+    }
+    return false;
+  }
+
   private async refreshProjectionsContainingPaths(
     repository: Repository,
-    resources: Resource[]
+    resources: Resource[],
+    forceFullStatus: boolean = false
   ): Promise<void> {
     const filePaths = resources.map(resource => resource.resourceUri.fsPath);
     const peers = this.repositoriesForWorkingCopy(repository).filter(
@@ -264,12 +282,14 @@ export class StagingCoordinator implements Disposable {
     );
     await Promise.all(
       peers.map(peer =>
-        refreshStatusTargets(
-          peer,
-          filePaths.filter(filePath =>
-            isPathInside(peer.workspaceRoot, filePath)
-          )
-        )
+        forceFullStatus
+          ? peer.fullStatus()
+          : refreshStatusTargets(
+              peer,
+              filePaths.filter(filePath =>
+                isPathInside(peer.workspaceRoot, filePath)
+              )
+            )
       )
     );
   }
@@ -287,8 +307,16 @@ export class StagingCoordinator implements Disposable {
     }
 
     for (const [repository, selected] of byRepository) {
+      const forceFullStatus = await this.needsFullStatus(selected);
       await this.stageInRepository(repository, selected);
-      await this.refreshProjectionsContainingPaths(repository, selected);
+      if (forceFullStatus) {
+        await repository.fullStatus();
+      }
+      await this.refreshProjectionsContainingPaths(
+        repository,
+        selected,
+        forceFullStatus
+      );
     }
   }
 
@@ -322,12 +350,20 @@ export class StagingCoordinator implements Disposable {
         grouped.set(stagingChangelist, resources);
       }
 
+      const forceFullStatus = await this.needsFullStatus(selected);
       for (const [stagingChangelist, resources] of grouped) {
         const metadata = parseStagingChangelist(stagingChangelist);
         if (!metadata) continue;
         await this.restoreDestination(repository, resources, metadata);
       }
-      await this.refreshProjectionsContainingPaths(repository, selected);
+      if (forceFullStatus) {
+        await repository.fullStatus();
+      }
+      await this.refreshProjectionsContainingPaths(
+        repository,
+        selected,
+        forceFullStatus
+      );
     }
   }
 
