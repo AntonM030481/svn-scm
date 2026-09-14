@@ -363,41 +363,7 @@ export class Repository {
   }
 
   public async show(file: string | Uri, revision?: string): Promise<string> {
-    const args = ["cat"];
-
-    let uri: Uri;
-    let filePath: string;
-
-    if (file instanceof Uri) {
-      uri = file;
-      filePath = file.toString(true);
-    } else {
-      uri = Uri.file(file);
-      filePath = file;
-    }
-
-    const isChild =
-      uri.scheme === "file" && isDescendant(this.workspaceRoot, uri.fsPath);
-
-    let target: string = filePath;
-
-    if (isChild) {
-      target = this.removeAbsolutePath(target);
-    }
-
-    if (revision) {
-      args.push("-r", revision);
-      if (
-        isChild &&
-        !["BASE", "COMMITTED", "PREV"].includes(revision.toUpperCase())
-      ) {
-        const info = await this.getInfo();
-        target = info.url + "/" + target.replace(/\\/g, "/");
-        // TODO move to SvnRI
-      }
-    }
-
-    args.push(target);
+    const { args, uri, filePath } = await this.buildShowRequest(file, revision);
 
     /**
      * ENCODE DETECTION
@@ -462,27 +428,23 @@ export class Repository {
     file: string | Uri,
     revision?: string
   ): Promise<Buffer> {
-    const args = ["cat"];
+    const { args } = await this.buildShowRequest(file, revision);
 
-    let uri: Uri;
-    let filePath: string;
+    const result = await this.execBuffer(args);
 
-    if (file instanceof Uri) {
-      uri = file;
-      filePath = file.toString(true);
-    } else {
-      uri = Uri.file(file);
-      filePath = file;
-    }
+    return result.stdout;
+  }
 
+  private async buildShowRequest(
+    file: string | Uri,
+    revision?: string
+  ): Promise<{ args: string[]; uri: Uri; filePath: string }> {
+    const uri = file instanceof Uri ? file : Uri.file(file);
+    const filePath = file instanceof Uri ? file.toString(true) : file;
     const isChild =
       uri.scheme === "file" && isDescendant(this.workspaceRoot, uri.fsPath);
-
-    let target: string = filePath;
-
-    if (isChild) {
-      target = this.removeAbsolutePath(target);
-    }
+    let target = isChild ? this.removeAbsolutePath(filePath) : filePath;
+    const args = ["cat"];
 
     if (revision) {
       args.push("-r", revision);
@@ -497,10 +459,7 @@ export class Repository {
     }
 
     args.push(target);
-
-    const result = await this.execBuffer(args);
-
-    return result.stdout;
+    return { args, uri, filePath };
   }
 
   public async commitFiles(message: string, files: string[]) {
