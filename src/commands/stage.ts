@@ -156,9 +156,12 @@ export class UnstageAll extends Command {
     const selected = this.staging
       .stagedEntriesForWorkingCopy(repository)
       .map(entry => entry.resource);
-    const resources = await this.staging.validateUnstageSelection(selected);
-    if (resources.length) {
-      await this.staging.unstage(resources);
-    }
+
+    // Targeted validation refreshes only the already-known staged paths. The
+    // authoritative snapshot is then re-read by unstageAll(), so entries hidden
+    // from the visible Staged Changes group (for example by files.exclude) are
+    // still unstaged correctly.
+    await this.staging.validateUnstageSelection(selected);
+    await this.staging.unstageAll(repository);
   }
 }
