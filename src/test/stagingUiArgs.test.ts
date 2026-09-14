@@ -39,7 +39,9 @@ suite("Staging UI Argument Tests", () => {
     svn(["commit", "-m", "initial"], checkout.fsPath);
 
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     fs.writeFileSync(file, "changed\n");
