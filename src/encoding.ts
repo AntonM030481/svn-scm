@@ -63,7 +63,7 @@ export function detectEncoding(buffer: Buffer): string | null {
   );
   if (experimental) {
     const detected = chardet.analyse(buffer);
-    const encodingPriorities = configuration.get<string[]>(
+    const configuredPriorities = configuration.get<unknown>(
       "experimental.encoding_priority",
       []
     );
@@ -72,6 +72,11 @@ export function detectEncoding(buffer: Buffer): string | null {
       return null;
     }
 
+    const encodingPriorities = Array.isArray(configuredPriorities)
+      ? configuredPriorities.filter(
+          (value): value is string => typeof value === "string"
+        )
+      : [];
     for (const pri of encodingPriorities) {
       for (const det of detected) {
         if (normaliseEncodingName(pri) === normaliseEncodingName(det.name)) {

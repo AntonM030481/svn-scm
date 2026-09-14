@@ -4,6 +4,7 @@ import FolderItem from "../quickPickItems/folderItem";
 import NewFolderItem from "../quickPickItems/newFolderItem";
 import ParentFolderItem from "../quickPickItems/parentFolderItem";
 import { Repository } from "../repository";
+import { matchLayout } from "./settingValues";
 import { configuration } from "./configuration";
 
 export function getBranchName(folder: string): IBranchItem | undefined {
@@ -14,21 +15,12 @@ export function getBranchName(folder: string): IBranchItem | undefined {
   ];
 
   for (const [conf, nameSetting] of confs) {
-    const layout = configuration.get<string>(conf);
-    if (!layout) {
-      continue;
-    }
-    const group = configuration.get<number>(nameSetting, 1) + 2;
-
-    const regex = new RegExp(`(^|/)(${layout})$`);
-
-    const matches = folder.match(regex);
-    if (matches && matches[2] && matches[group]) {
-      return {
-        name: matches[group],
-        path: matches[2]
-      };
-    }
+    const branch = matchLayout(
+      folder,
+      configuration.get(conf),
+      configuration.get(nameSetting, 1)
+    );
+    if (branch) return branch;
   }
 
   return;
@@ -109,14 +101,9 @@ export async function selectBranch(
 }
 
 export function isTrunk(folder: string): boolean {
-  const conf = "layout.trunkRegex";
-  const layout = configuration.get<string>(conf);
-  const regex = new RegExp(`(^|/)(${layout})$`);
-  const matches = folder.match(regex);
-  const group = configuration.get<number>(`${conf}Name`, 1) + 2;
-
-  if (matches && matches[2] && matches[group]) {
-    return true;
-  }
-  return false;
+  return !!matchLayout(
+    folder,
+    configuration.get("layout.trunkRegex"),
+    configuration.get("layout.trunkRegexName", 1)
+  );
 }
