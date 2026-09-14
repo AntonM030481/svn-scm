@@ -278,7 +278,7 @@ suite("Staging Tests", () => {
     await commands.executeCommand("svn.stage", folder);
 
     fs.writeFileSync(second, "second\n");
-    await repository.status();
+    await repository.fullStatus();
     const secondResource = repository.unversioned.resourceStates.find(
       item => item.resourceUri.fsPath === second
     );
