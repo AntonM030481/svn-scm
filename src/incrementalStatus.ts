@@ -6,7 +6,10 @@ import { configuration } from "./helpers/configuration";
 import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
-import { updateUnversionedDirectoryKinds } from "./resourceKinds";
+import {
+  refreshUnversionedDirectoryKinds,
+  updateUnversionedDirectoryKinds
+} from "./resourceKinds";
 import { SourceControlManager } from "./source_control_manager";
 import { Repository as SvnRepository } from "./svnRepository";
 import { dispose, isDescendant, normalizePath, toDisposable } from "./util";
@@ -502,6 +505,7 @@ function patchRepository(repository: Repository): Disposable {
         repository.workspaceRoot,
         await originalGetStatus(params)
       );
+      await refreshUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
       state.statuses = statuses;
       return statuses;
     }
@@ -531,6 +535,7 @@ function patchRepository(repository: Repository): Disposable {
         repository.workspaceRoot,
         await originalGetStatus(params)
       );
+      await refreshUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
       state.statuses = statuses;
       return statuses;
     }
