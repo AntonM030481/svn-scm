@@ -808,7 +808,7 @@ export class SourceControlManager implements IDisposable {
     return RemoteRepository.open(this.svn, uri);
   }
 
-  public getRepository(hint: any): Repository | null {
+  public getRepository(hint: unknown): Repository | null {
     const liveRepository = this.getOpenRepository(hint);
     if (liveRepository && liveRepository.repository) {
       return liveRepository.repository;
@@ -817,7 +817,7 @@ export class SourceControlManager implements IDisposable {
     return null;
   }
 
-  public getOpenRepository(hint: any): IOpenRepository | undefined {
+  public getOpenRepository(hint: unknown): IOpenRepository | undefined {
     return this.repositoryRegistry.resolveHint(hint);
   }
 
