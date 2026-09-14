@@ -30,6 +30,15 @@ When adding an optimization:
   targets when relevant;
 - do not infer SVN state solely from file-system events.
 
+SVN metadata watchers report files such as `wc.db`, not the working path that
+caused the write. During a targeted mutation and its short grace period, the
+extension therefore suppresses metadata echoes for the whole physical working
+copy. A concurrent external SVN process can be hidden during that bounded
+window; the next unsuppressed metadata event, ordinary file event, operation, or
+explicit refresh reconciles state. Avoid restoring unconditional delayed full
+status after every mutation, because that would erase the targeted-refresh
+benefit for the normal case.
+
 ### Local work should remain local
 
 Typing, saving, opening a diff, and reading local status must not accidentally
@@ -104,6 +113,7 @@ observable behavior over silent heuristics that are difficult to debug.
 | Use `svn:` for repository-backed read-only content | Integrates BASE, HEAD, and revision content with native editors and diffs | Keep the provider read-only and avoid remote or expensive metadata calls from `stat()` |
 | Use `tempsvnfs:` for ephemeral history files | Some comparisons need materialized content with a stable document URI | Delete content when documents close and clear buffered events on disposal |
 | Debounce watcher-driven refreshes | File operations generate bursts of duplicate events | Cancel pending callbacks on disable/dispose and never use debounce to hide correctness races |
+| Suppress mutation metadata echoes per physical working copy | `.svn` events do not identify the working path and otherwise duplicate post-operation status | Keep the window bounded, keep unrelated working-file events eligible, and document that concurrent external SVN metadata writes may need a later refresh |
 | Combine initial local and remote status when polling is enabled | Avoids two back-to-back scans because remote status already includes local state | Do not add a second unconditional initial status call |
 | Bundle runtime code with webpack | Produces a small, predictable VSIX without runtime package installation | Keep `vscode` external and inspect VSIX contents after build changes |
 | Test minimum and stable VS Code | Protects the compatibility floor while detecting platform drift | Do not treat “works on current VS Code” as sufficient evidence |

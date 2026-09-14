@@ -25,6 +25,9 @@ truth when a command or version in prose disagrees with configuration.
 - One `Repository` owns one working copy and its VS Code SCM instance.
 - File-system events schedule validation; they do not prove an SVN transition.
 - Targeted and incremental status are optimizations with a full-status fallback.
+- SVN metadata echoes are suppressed for the physical working copy during a
+  targeted mutation and its bounded grace period. Do not describe this as
+  target-specific: metadata watcher events cannot identify the changed path.
 - Local editor workflows must not accidentally introduce network SVN calls.
 - Listeners, timers, watchers, providers, caches, and deferred callbacks require
   explicit lifecycle ownership and disposal.

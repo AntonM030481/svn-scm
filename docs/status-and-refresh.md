@@ -141,14 +141,20 @@ scans.
 
 The incremental adapter suppresses this echo in two ways:
 
-- working-copy mutation state ignores the command's own metadata events during
-  the operation and for a short grace period afterward;
+- physical-working-copy mutation state ignores all `.svn` metadata events for
+  that working copy during the operation and for a short grace period afterward;
 - snapshots of expected target files identify matching workspace events for a
   bounded period after a successful operation.
 
-Suppression is deliberately narrow and time-bounded. An event is discarded only
-when it belongs to the active targets or matches the expected post-operation
-snapshot. Unrelated external changes must still schedule a refresh.
+Working-file suppression is target-specific and time-bounded: unrelated content
+changes remain eligible for refresh. Metadata suppression cannot be
+target-specific because a watcher event for `wc.db` or similar administration
+files does not identify the working path that caused it. A concurrent external
+SVN process can therefore have its metadata event hidden during this bounded
+window. The next unsuppressed metadata or working-file event, later operation,
+or explicit refresh reconciles the projection. Running an unconditional delayed
+full status after every targeted mutation would remove the optimization and is
+not part of the current contract.
 
 ## Concurrency and publication
 
@@ -170,14 +176,17 @@ publish a mixture of old and new groups as a stable result.
 - Repository-wide configuration changes clear pending incremental targets and
   use the explicit full-status path.
 - Failed targeted work falls back to full status.
-- Watcher suppression cannot hide unrelated external changes.
+- Working-file echo suppression cannot hide changes outside the active targets.
+- SVN metadata suppression is physical-working-copy-wide but bounded; do not
+  infer target identity from administration-file watcher paths.
 - Debounced and scheduled work is cancelled when its owner is disposed.
 - Windows drive and UNC path comparison remains case-insensitive; other path
   behavior remains platform-correct.
 
 Tests for this area should cover target containment, merge behavior, deletes,
 rename pairs, repository-wide flags, watcher echoes, metadata fallback, failed
-targeted status, and disposal.
+targeted status, and disposal. Tests of grace periods should control time or the
+suppression state directly instead of waiting for real multi-second timers.
 
 
 ## Reopening a working copy
