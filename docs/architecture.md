@@ -88,6 +88,8 @@ from the cancelled prompt cannot overwrite credentials.
 `src/source_control_manager.ts` discovers SVN working copies in workspace
 folders, opens and closes repositories, routes file events to the appropriate
 repository, and publishes repository lifecycle events.
+`src/repositoryRegistry.ts` is its in-memory collection and synchronous hint
+resolver; discovery and lifecycle ownership remain in `SourceControlManager`.
 
 Detailed rules and invariants are documented in
 [Repository discovery and routing](repository-discovery.md).

@@ -145,6 +145,10 @@ and disable/re-enable, and checks ownership acquired while a lookup is pending.
 without an SVN process. Supported hints include paths, URIs, `Repository`
 instances, SCM instances, and resource groups.
 
+The manager delegates this in-memory collection and hint resolution to its
+repository registry. The public open-repository view remains available to
+existing consumers, while registry mutations invalidate cached routing order.
+
 Path routing sorts open repositories by descending root length. The most
 specific matching root therefore wins for nested working copies. Paths below an
 external or ignored item reported by the parent are excluded from that parent,

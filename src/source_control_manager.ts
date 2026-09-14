@@ -41,6 +41,7 @@ import {
 } from "./util";
 import { matchAll } from "./util/globMatch";
 import { disposeResources } from "./lifecycle";
+import { RepositoryRegistry } from "./repositoryRegistry";
 
 type State = "uninitialized" | "initialized" | "disposed";
 
@@ -93,8 +94,7 @@ export class SourceControlManager implements IDisposable {
   public readonly onDidChangeStatusRepository: Event<Repository> =
     this._onDidChangeStatusRepository.event;
 
-  public openRepositories: IOpenRepository[] = [];
-  private sortedOpenRepositories?: IOpenRepository[];
+  private _repositoryRegistry?: RepositoryRegistry;
   private disposables: Disposable[] = [];
   private enabled = false;
   private disposed = false;
@@ -148,7 +148,19 @@ export class SourceControlManager implements IDisposable {
   }
 
   get repositories(): Repository[] {
-    return this.openRepositories.map(r => r.repository);
+    return this.repositoryRegistry.repositories;
+  }
+
+  public get openRepositories(): IOpenRepository[] {
+    return this.repositoryRegistry.openRepositories;
+  }
+
+  public set openRepositories(entries: IOpenRepository[]) {
+    this.repositoryRegistry.openRepositories = entries;
+  }
+
+  private get repositoryRegistry(): RepositoryRegistry {
+    return (this._repositoryRegistry ??= new RepositoryRegistry());
   }
 
   get svn(): Svn {
@@ -221,16 +233,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   public openRepositoriesSorted(): IOpenRepository[] {
-    if (
-      !this.sortedOpenRepositories ||
-      this.sortedOpenRepositories.length !== this.openRepositories.length
-    ) {
-      this.sortedOpenRepositories = [...this.openRepositories].sort(
-        (a, b) =>
-          b.repository.workspaceRoot.length - a.repository.workspaceRoot.length
-      );
-    }
-    return this.sortedOpenRepositories;
+    return this.repositoryRegistry.deepestFirst();
   }
 
   private onDidChangeConfiguration(event: ConfigurationChangeEvent): void {
@@ -455,7 +458,6 @@ export class SourceControlManager implements IDisposable {
     const repositories = this.openRepositories;
     const disposables = this.disposables;
     this.openRepositories = [];
-    this.sortedOpenRepositories = undefined;
     this.disposables = [];
     this.possibleSvnRepositoryPaths.clear();
     this.pendingWorkspaceFolderDiscoveries.clear();
@@ -816,67 +818,7 @@ export class SourceControlManager implements IDisposable {
   }
 
   public getOpenRepository(hint: any): IOpenRepository | undefined {
-    if (!hint) {
-      return undefined;
-    }
-
-    if (hint instanceof Repository) {
-      return this.openRepositories.find(r => r.repository === hint);
-    }
-
-    if ((hint as any).repository instanceof Repository) {
-      return this.openRepositories.find(
-        r => r.repository === (hint as any).repository
-      );
-    }
-
-    if (typeof hint === "string") {
-      hint = Uri.file(hint);
-    }
-
-    if (hint instanceof Uri) {
-      const owner = this.openRepositoriesSorted().find(liveRepository =>
-        isDescendant(liveRepository.repository.workspaceRoot, hint.fsPath)
-      );
-      if (!owner) {
-        return undefined;
-      }
-
-      for (const external of owner.repository.statusExternal) {
-        const externalPath = path.join(
-          owner.repository.workspaceRoot,
-          external.path
-        );
-        if (isDescendant(externalPath, hint.fsPath)) {
-          return undefined;
-        }
-      }
-      for (const ignored of owner.repository.statusIgnored) {
-        const ignoredPath = path.join(
-          owner.repository.workspaceRoot,
-          ignored.path
-        );
-        if (isDescendant(ignoredPath, hint.fsPath)) {
-          return undefined;
-        }
-      }
-
-      return owner;
-    }
-
-    for (const liveRepository of this.openRepositories) {
-      const repository = liveRepository.repository;
-
-      if (hint === repository.sourceControl) {
-        return liveRepository;
-      }
-
-      if (hint === repository.changes) {
-        return liveRepository;
-      }
-    }
-
-    return undefined;
+    return this.repositoryRegistry.resolveHint(hint);
   }
 
   public async getRepositoryFromUri(uri: Uri): Promise<Repository | null> {
@@ -1013,16 +955,12 @@ export class SourceControlManager implements IDisposable {
       statusListener.dispose();
       repository.dispose();
 
-      this.openRepositories = this.openRepositories.filter(
-        e => e !== openRepository
-      );
-      this.sortedOpenRepositories = undefined;
+      this.repositoryRegistry.remove(openRepository);
       this._onDidCloseRepository.fire(repository);
     };
 
     const openRepository = { repository, dispose };
-    this.openRepositories.push(openRepository);
-    this.sortedOpenRepositories = undefined;
+    this.repositoryRegistry.add(openRepository);
     this._onDidOpenRepository.fire(repository);
   }
 
