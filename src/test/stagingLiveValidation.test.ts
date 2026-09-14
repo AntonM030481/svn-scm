@@ -66,15 +66,7 @@ suite("Staging Live Validation Tests", () => {
     svn(["commit", "-m", "external add", "new.txt"], checkout.fsPath);
     fs.writeFileSync(file, "external edit\n");
 
-    const originalEnsureStatus = repository.ensureStatus.bind(repository);
-    (repository as any).ensureStatus = async () => {
-      await repository.status();
-    };
-    try {
-      await commands.executeCommand("svn.unstage", staleStaged);
-    } finally {
-      (repository as any).ensureStatus = originalEnsureStatus;
-    }
+    await commands.executeCommand("svn.unstage", staleStaged);
 
     assert.equal(fs.readFileSync(file, "utf8"), "external edit\n");
     assert.match(svn(["status"], checkout.fsPath), /^M\s+new\.txt$/m);

@@ -778,26 +778,36 @@ export class StagingCoordinator implements Disposable {
       return;
     }
 
-    const addedPaths = resources
-      .filter(resource => resource.type === Status.ADDED)
-      .map(resource => resource.resourceUri.fsPath);
-    const addedDirectories =
-      metadata.wasUnversioned &&
-      metadata.createdDirectoryRelativeRoot &&
-      addedPaths.length
-        ? await this.addedAncestorDirectoriesForUnstage(
-            repository,
-            addedPaths,
-            metadata.createdDirectoryRelativeRoot
-          )
-        : [];
-
     await repository.removeChangelist(paths);
-    if (metadata.wasUnversioned && addedPaths.length) {
-      await repository.revert(addedPaths, "empty");
-      for (const directory of addedDirectories) {
-        await repository.revert([directory], "empty");
-      }
+    if (!metadata.wasUnversioned) return;
+
+    const selected = new Set(paths.map(normalizePath));
+    const statuses = await repository.repository.getStatus({
+      includeIgnored: true,
+      includeExternals: false,
+      forceFull: true
+    });
+    const addedPaths = statuses
+      .filter(status => status.status === Status.ADDED)
+      .map(status =>
+        path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(repository.workspaceRoot, status.path)
+      )
+      .filter(candidate => selected.has(normalizePath(candidate)));
+    if (!addedPaths.length) return;
+
+    const addedDirectories = metadata.createdDirectoryRelativeRoot
+      ? await this.addedAncestorDirectoriesForUnstage(
+          repository,
+          addedPaths,
+          metadata.createdDirectoryRelativeRoot
+        )
+      : [];
+
+    await repository.revert(addedPaths, "empty");
+    for (const directory of addedDirectories) {
+      await repository.revert([directory], "empty");
     }
   }
 }
