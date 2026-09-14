@@ -293,6 +293,58 @@ suite("Configured SVN streaming executor", () => {
     );
   });
 
+  test("preserves unknown SVN error codes and prefers errors over warnings", async () => {
+    const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
+    await assert.rejects(
+      svn.exec(
+        process.cwd(),
+        [
+          "-e",
+          'process.stderr.write("svn: W123456: /tmp/E654321 was skipped\\nsvn: E200009: operation failed");process.exitCode=1',
+          "--"
+        ],
+        { env: environment, log: false, onStdout: () => {} }
+      ),
+      error => error instanceof SvnError && error.svnErrorCode === "E200009"
+    );
+  });
+
+  test("classifies localized no-more-credentials failures by code", async () => {
+    const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
+    await assert.rejects(
+      svn.exec(
+        process.cwd(),
+        [
+          "-e",
+          'process.stderr.write("svn: E215004: Localized message");process.exitCode=1',
+          "--"
+        ],
+        { env: environment, log: false, onStdout: () => {} }
+      ),
+      error =>
+        error instanceof SvnError &&
+        error.svnErrorCode === svnErrorCodes.AuthorizationFailed
+    );
+  });
+
+  test("does not classify error codes mentioned inside diagnostic text", async () => {
+    const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
+    await assert.rejects(
+      svn.exec(
+        process.cwd(),
+        [
+          "-e",
+          'process.stderr.write("svn: E155007: /workspace/E215004 is not a working copy");process.exitCode=1',
+          "--"
+        ],
+        { env: environment, log: false, onStdout: () => {} }
+      ),
+      error =>
+        error instanceof SvnError &&
+        error.svnErrorCode === svnErrorCodes.NotASvnRepository
+    );
+  });
+
   test("log search keeps query as one argument and applies repository credentials", async () => {
     let capturedArgs: string[] = [];
     let capturedOptions: ICpOptions = {};
