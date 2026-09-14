@@ -63,6 +63,19 @@ async function authoritativeStagedPaths(
   return result;
 }
 
+function isAddedSnapshotPath(
+  repository: Repository,
+  filePath: string
+): boolean {
+  const key = normalizePath(filePath);
+  return (repository.getStatusSnapshot() ?? []).some(status => {
+    const statusPath = path.isAbsolute(status.path)
+      ? status.path
+      : path.resolve(repository.workspaceRoot, status.path);
+    return normalizePath(statusPath) === key && status.status === Status.ADDED;
+  });
+}
+
 async function commitEntries(
   anchor: Repository,
   entries: CommitEntry[],
@@ -87,7 +100,10 @@ async function commitEntries(
       normalizePath(dir) !== normalizePath(repository.root)
     ) {
       const parent = staging.findResource(repository, dir);
-      if (parent?.type === Status.ADDED) {
+      if (
+        parent?.type === Status.ADDED ||
+        isAddedSnapshotPath(repository, dir)
+      ) {
         paths.push(dir);
       }
       dir = path.dirname(dir);
