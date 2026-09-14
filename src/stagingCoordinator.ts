@@ -258,20 +258,20 @@ export class StagingCoordinator implements Disposable {
       const state = this.states.get(repository);
       if (!state) continue;
 
-      const grouped = new Map<string, string[]>();
+      const grouped = new Map<string, Resource[]>();
       for (const resource of selected) {
         const key = normalizePath(resource.resourceUri.fsPath);
         const stagingChangelist = state.metadataByPath.get(key);
         if (!stagingChangelist) continue;
-        const paths = grouped.get(stagingChangelist) ?? [];
-        paths.push(resource.resourceUri.fsPath);
-        grouped.set(stagingChangelist, paths);
+        const resources = grouped.get(stagingChangelist) ?? [];
+        resources.push(resource);
+        grouped.set(stagingChangelist, resources);
       }
 
-      for (const [stagingChangelist, paths] of grouped) {
+      for (const [stagingChangelist, resources] of grouped) {
         const metadata = parseStagingChangelist(stagingChangelist);
         if (!metadata) continue;
-        await this.restoreDestination(repository, paths, metadata);
+        await this.restoreDestination(repository, resources, metadata);
       }
     }
   }
@@ -769,26 +769,32 @@ export class StagingCoordinator implements Disposable {
 
   private async restoreDestination(
     repository: Repository,
-    paths: string[],
+    resources: Resource[],
     metadata: StagingChangelistMetadata
   ): Promise<void> {
+    const paths = resources.map(resource => resource.resourceUri.fsPath);
     if (metadata.originalChangelist) {
       await repository.addChangelist(paths, metadata.originalChangelist);
       return;
     }
 
+    const addedPaths = resources
+      .filter(resource => resource.type === Status.ADDED)
+      .map(resource => resource.resourceUri.fsPath);
     const addedDirectories =
-      metadata.wasUnversioned && metadata.createdDirectoryRelativeRoot
+      metadata.wasUnversioned &&
+      metadata.createdDirectoryRelativeRoot &&
+      addedPaths.length
         ? await this.addedAncestorDirectoriesForUnstage(
             repository,
-            paths,
+            addedPaths,
             metadata.createdDirectoryRelativeRoot
           )
         : [];
 
     await repository.removeChangelist(paths);
-    if (metadata.wasUnversioned) {
-      await repository.revert(paths, "empty");
+    if (metadata.wasUnversioned && addedPaths.length) {
+      await repository.revert(addedPaths, "empty");
       for (const directory of addedDirectories) {
         await repository.revert([directory], "empty");
       }

@@ -63,7 +63,6 @@ suite("Staging Live Validation Tests", () => {
     );
     assert.ok(staleStaged);
 
-    svn(["changelist", "--remove", "new.txt"], checkout.fsPath);
     svn(["commit", "-m", "external add", "new.txt"], checkout.fsPath);
     fs.writeFileSync(file, "external edit\n");
 
