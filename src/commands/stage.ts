@@ -7,6 +7,7 @@ import {
   Uri
 } from "vscode";
 import { Status } from "../common/types";
+import { refreshStatusTargets } from "../incrementalStatus";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
@@ -139,7 +140,9 @@ async function stageUnversionedChildren(
   }
 
   for (const [repository, selected] of byRepository) {
-    await repository.fullStatus();
+    await refreshStatusTargets(repository, [
+      ...new Set(selected.map(resource => resource.unversionedRoot))
+    ]);
 
     const liveUnversionedRoots = new Set(
       repository.unversioned.resourceStates
