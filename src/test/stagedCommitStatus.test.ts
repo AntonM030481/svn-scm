@@ -42,7 +42,9 @@ suite("Staged Commit Status Tests", () => {
   test("committing a known staged file uses only targeted status", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     const file = path.join(checkout.fsPath, "tracked.txt");
