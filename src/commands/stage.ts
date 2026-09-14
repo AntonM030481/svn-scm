@@ -9,6 +9,7 @@ import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
+import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
 function isPathInside(parent: string, child: string): boolean {
@@ -27,9 +28,6 @@ function resourceUriFromScmArgument(value: unknown): Uri | undefined {
   const direct = (value as { resourceUri?: unknown }).resourceUri;
   if (direct instanceof Uri) return direct;
 
-  // In SCM tree view a file leaf is wrapped in an IResourceNode. The actual
-  // SourceControlResourceState is stored in `element`, while list view passes
-  // the resource directly.
   const element = (value as { element?: unknown }).element;
   if (element && typeof element === "object") {
     const nested = (element as { resourceUri?: unknown }).resourceUri;
@@ -55,6 +53,63 @@ function resourceFolderFromScmArgument(
   return { uri, group };
 }
 
+async function getSourceControlManager(): Promise<SourceControlManager> {
+  return (await commands.executeCommand(
+    "svn.getSourceControlManager",
+    ""
+  )) as SourceControlManager;
+}
+
+async function waitForWorkingCopyIdle(
+  staging: StagingCoordinator,
+  repository: Repository
+): Promise<boolean> {
+  const results = await Promise.all(
+    staging.repositoriesForWorkingCopy(repository).map(peer => peer.whenIdle())
+  );
+  return results.every(Boolean);
+}
+
+async function runWithSelectedWorkingCopiesLocked(
+  staging: StagingCoordinator,
+  resources: Resource[],
+  run: () => Promise<void>
+): Promise<void> {
+  const sourceControlManager = await getSourceControlManager();
+  const repositories = new Set<Repository>();
+
+  for (const resource of resources) {
+    const repository = sourceControlManager.getRepository(resource.resourceUri);
+    if (repository) repositories.add(repository);
+  }
+
+  await withWorkingCopyMutationLocks(
+    [...repositories].map(repository => repository.root),
+    async () => {
+      const results = await Promise.all(
+        [...repositories].map(repository =>
+          waitForWorkingCopyIdle(staging, repository)
+        )
+      );
+      if (results.every(Boolean)) {
+        await run();
+      }
+    }
+  );
+}
+
+async function runWithWorkingCopyLocked(
+  staging: StagingCoordinator,
+  repository: Repository,
+  run: () => Promise<void>
+): Promise<void> {
+  await withWorkingCopyMutationLocks([repository.root], async () => {
+    if (await waitForWorkingCopyIdle(staging, repository)) {
+      await run();
+    }
+  });
+}
+
 abstract class BaseStagingCommand extends Command {
   constructor(
     commandName: string,
@@ -70,10 +125,7 @@ abstract class BaseStagingCommand extends Command {
       return this.getResourceStates(resourceStates);
     }
 
-    const sourceControlManager = (await commands.executeCommand(
-      "svn.getSourceControlManager",
-      ""
-    )) as SourceControlManager;
+    const sourceControlManager = await getSourceControlManager();
     const resources: Resource[] = [];
 
     for (const resourceState of resourceStates as unknown[]) {
@@ -85,9 +137,6 @@ abstract class BaseStagingCommand extends Command {
         continue;
       }
 
-      // SCM tree folders are IResourceNode objects. Their `context` is the
-      // owning SCM resource group, so expanding that group's descendants keeps
-      // Stage/Unstage scoped to the group the user actually clicked.
       const folder = resourceFolderFromScmArgument(resourceState);
       if (!folder) continue;
 
@@ -112,10 +161,16 @@ export class Stage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    const resources = await this.staging.validateStageSelection(selected);
-    if (resources.length) {
-      await this.staging.stage(resources);
-    }
+    await runWithSelectedWorkingCopiesLocked(
+      this.staging,
+      selected,
+      async () => {
+        const resources = await this.staging.validateStageSelection(selected);
+        if (resources.length) {
+          await this.staging.stage(resources);
+        }
+      }
+    );
   }
 }
 
@@ -126,10 +181,16 @@ export class Unstage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    const resources = await this.staging.validateUnstageSelection(selected);
-    if (resources.length) {
-      await this.staging.unstage(resources);
-    }
+    await runWithSelectedWorkingCopiesLocked(
+      this.staging,
+      selected,
+      async () => {
+        const resources = await this.staging.validateUnstageSelection(selected);
+        if (resources.length) {
+          await this.staging.unstage(resources);
+        }
+      }
+    );
   }
 }
 
@@ -139,11 +200,13 @@ export class StageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
-    const resources = await this.staging.validateStageSelection(selected);
-    if (resources.length) {
-      await this.staging.stage(resources);
-    }
+    await runWithWorkingCopyLocked(this.staging, repository, async () => {
+      const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
+      const resources = await this.staging.validateStageSelection(selected);
+      if (resources.length) {
+        await this.staging.stage(resources);
+      }
+    });
   }
 }
 
@@ -153,15 +216,13 @@ export class UnstageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    const selected = this.staging
-      .stagedEntriesForWorkingCopy(repository)
-      .map(entry => entry.resource);
+    await runWithWorkingCopyLocked(this.staging, repository, async () => {
+      const selected = this.staging
+        .stagedEntriesForWorkingCopy(repository)
+        .map(entry => entry.resource);
 
-    // Targeted validation refreshes only the already-known staged paths. The
-    // authoritative snapshot is then re-read by unstageAll(), so entries hidden
-    // from the visible Staged Changes group (for example by files.exclude) are
-    // still unstaged correctly.
-    await this.staging.validateUnstageSelection(selected);
-    await this.staging.unstageAll(repository);
+      await this.staging.validateUnstageSelection(selected);
+      await this.staging.unstageAll(repository);
+    });
   }
 }

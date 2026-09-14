@@ -224,8 +224,8 @@ suite("Staging UI Argument Tests", () => {
     assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
     assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
     const status = svn(["status"], checkout.fsPath);
-    assert.match(status, /^M\s+folder[\\/]first\.txt$/m);
-    assert.match(status, /^M\s+folder[\\/]second\.txt$/m);
+    assert.match(status, /^M\s+folder[\\/]first\.txt\r?$/m);
+    assert.match(status, /^M\s+folder[\\/]second\.txt\r?$/m);
     assert.equal(fullStatusCalls, 0);
   });
 
