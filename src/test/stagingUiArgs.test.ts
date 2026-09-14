@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands } from "vscode";
+import { commands, ConfigurationTarget, workspace } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -125,6 +125,70 @@ suite("Staging UI Argument Tests", () => {
       svn(["status", "--xml"], checkout.fsPath),
       /__svn_scm_staged__/
     );
+  });
+
+  test("Commit Staged includes hidden added parent directories", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "hidden-added");
+    const file = path.join(directory, "child.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(file, "child\n");
+    await repository.status();
+
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === directory
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", { element: resource });
+
+    const filesConfiguration = workspace.getConfiguration("files", checkout);
+    const previousExclude =
+      filesConfiguration.inspect<Record<string, boolean>>(
+        "exclude"
+      )?.globalValue;
+
+    try {
+      await filesConfiguration.update(
+        "exclude",
+        { ...(previousExclude ?? {}), "**/hidden-added": true },
+        ConfigurationTarget.Global
+      );
+      await repository.fullStatus();
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        false
+      );
+
+      repository.inputBox.value = "commit hidden added directory";
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
+
+      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+      const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
+      assert.match(log, /hidden-added/);
+      assert.match(log, /child\.txt/);
+    } finally {
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
+      );
+    }
   });
 
   test("Commit Staged skips conflicted staged files", async () => {
