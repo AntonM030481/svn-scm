@@ -1,11 +1,11 @@
 import * as path from "path";
 import { window } from "vscode";
 import { Status } from "../common/types";
+import { refreshStatusTargets } from "../incrementalStatus";
 import { inputCommitMessage, noChangesToCommit } from "../messages";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { StagingCoordinator } from "../stagingCoordinator";
-import { isStagingChangelist } from "../stagingModel";
 import SvnError, { getErrorMessage } from "../svnError";
 import { normalizePath } from "../util";
 import { Command } from "./command";
@@ -24,6 +24,14 @@ function uniquePaths(paths: string[]): string[] {
   return [...result.values()];
 }
 
+function isPathInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
 async function ensureWorkingCopyLiveStatus(
   staging: StagingCoordinator,
   repository: Repository
@@ -35,32 +43,34 @@ async function ensureWorkingCopyLiveStatus(
   );
 }
 
-async function authoritativeStagedPaths(
+async function validatedStagedEntries(
   staging: StagingCoordinator,
   repository: Repository
-): Promise<Map<Repository, Set<string>>> {
-  const result = new Map<Repository, Set<string>>();
-  await Promise.all(
-    staging.repositoriesForWorkingCopy(repository).map(async peer => {
-      const statuses = await peer.repository.getStatus({
-        includeIgnored: true,
-        includeExternals: false,
-        forceFull: true
-      });
-      const paths = new Set<string>();
-      for (const status of statuses) {
-        if (!status.changelist || !isStagingChangelist(status.changelist)) {
-          continue;
-        }
-        const filePath = path.isAbsolute(status.path)
-          ? status.path
-          : path.resolve(peer.workspaceRoot, status.path);
-        paths.add(normalizePath(filePath));
-      }
-      result.set(peer, paths);
-    })
+): Promise<CommitEntry[]> {
+  const candidates = staging.stagedEntriesForWorkingCopy(repository);
+  if (!candidates.length) {
+    return [];
+  }
+
+  const validated = await staging.validateUnstageSelection(
+    candidates.map(({ resource }) => resource)
   );
-  return result;
+  const validatedPaths = new Set(
+    validated.map(resource => normalizePath(resource.resourceUri.fsPath))
+  );
+
+  return staging
+    .stagedEntriesForWorkingCopy(repository)
+    .filter(
+      ({ resource }) =>
+        resource.type !== Status.CONFLICTED &&
+        validatedPaths.has(normalizePath(resource.resourceUri.fsPath))
+    )
+    .map(({ repository: owner, resource, changelist }) => ({
+      repository: owner,
+      resource,
+      changelist
+    }));
 }
 
 function isAddedSnapshotPath(
@@ -74,6 +84,26 @@ function isAddedSnapshotPath(
       : path.resolve(repository.workspaceRoot, status.path);
     return normalizePath(statusPath) === key && status.status === Status.ADDED;
   });
+}
+
+async function refreshPeerProjections(
+  staging: StagingCoordinator,
+  anchor: Repository,
+  paths: string[]
+): Promise<void> {
+  await Promise.all(
+    staging
+      .repositoriesForWorkingCopy(anchor)
+      .filter(peer => peer !== anchor)
+      .map(peer => {
+        const targets = paths.filter(filePath =>
+          isPathInside(peer.workspaceRoot, filePath)
+        );
+        return targets.length
+          ? refreshStatusTargets(peer, targets)
+          : Promise.resolve();
+      })
+  );
 }
 
 async function commitEntries(
@@ -123,9 +153,9 @@ async function commitEntries(
   try {
     const result = await anchor.commitFiles(message, commitPaths);
     await staging.finalizeCommitted(entries);
+    await refreshPeerProjections(staging, anchor, commitPaths);
     window.showInformationMessage(result);
     staging.clearInputBoxes(anchor);
-    await staging.refreshWorkingCopy(anchor);
   } catch (error) {
     console.error(error);
     window.showErrorMessage(
@@ -140,26 +170,11 @@ export class CommitStaged extends Command {
   }
 
   public async execute(repository: Repository) {
-    await ensureWorkingCopyLiveStatus(this.staging, repository);
-    const currentStagedPaths = await authoritativeStagedPaths(
-      this.staging,
-      repository
+    await commitEntries(
+      repository,
+      await validatedStagedEntries(this.staging, repository),
+      this.staging
     );
-    const entries = this.staging
-      .stagedEntriesForWorkingCopy(repository)
-      .filter(
-        ({ repository: owner, resource }) =>
-          resource.type !== Status.CONFLICTED &&
-          currentStagedPaths
-            .get(owner)
-            ?.has(normalizePath(resource.resourceUri.fsPath))
-      )
-      .map(({ repository: owner, resource, changelist }) => ({
-        repository: owner,
-        resource,
-        changelist
-      }));
-    await commitEntries(repository, entries, this.staging);
   }
 }
 
