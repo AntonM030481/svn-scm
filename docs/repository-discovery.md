@@ -10,7 +10,7 @@ how later commands and virtual documents are routed back to the correct one.
 - scans initial and newly added workspace folders;
 - detects new SVN metadata created after activation;
 - optionally searches below workspace roots;
-- opens one `Repository` per working copy;
+- opens one `Repository` per workspace projection of a working copy;
 - discovers configured externals and ignored nested repositories;
 - closes repositories that disappear or leave the workspace;
 - resolves paths and VS Code SCM objects to an open repository.
@@ -91,8 +91,11 @@ construction, including legacy parent ownership that appeared during the lookup.
 Filtering before the debounced queue is important: a general workspace change
 must not trigger repository discovery or an `svn info` call.
 
-Workspace-folder changes are handled incrementally. Added folders are scanned;
-repositories no longer covered by any remaining workspace folder are disposed.
+Workspace-folder changes are handled incrementally. Added folders are scanned.
+When a folder is removed, every repository projection below it is considered,
+including recursively discovered nested working copies; projections still
+covered by another current workspace folder remain open and every uncovered
+projection is disposed exactly once.
 
 ## Opening and lifecycle
 
@@ -194,7 +197,8 @@ file-system error instead of leaving the document pending indefinitely.
 
 ## Invariants for changes
 
-- There is at most one live `Repository` object for a working-copy root.
+- There is at most one live `Repository` object for an opened workspace
+  projection. Sibling projections may share a canonical working-copy root.
 - The most specific valid working-copy root owns a path.
 - Parent repositories do not claim separately detected externals or ignored
   nested working copies.
