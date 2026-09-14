@@ -145,6 +145,10 @@ export class Repository implements IRemoteRepository {
   public readonly onDidChangeStatus: Event<void> =
     this._onDidChangeStatus.event;
 
+  private _onDidRebuildStatusProjection = new EventEmitter<void>();
+  public readonly onDidRebuildStatusProjection: Event<void> =
+    this._onDidRebuildStatusProjection.event;
+
   private _onDidChangeRemoteChangedFiles = new EventEmitter<void>();
   public readonly onDidChangeRemoteChangedFile: Event<void> =
     this._onDidChangeRemoteChangedFiles.event;
@@ -929,6 +933,8 @@ export class Repository implements IRemoteRepository {
         this._onDidChangeRemoteChangedFiles.fire();
       }
     }
+
+    this._onDidRebuildStatusProjection.fire();
 
     if (preview) {
       this.sourceControl.quickDiffProvider = this;

@@ -316,7 +316,7 @@ export class StagingCoordinator implements Disposable {
 
     state.disposables.push(
       group,
-      repository.onDidChangeStatus(() => this.reconcile(repository))
+      repository.onDidRebuildStatusProjection(() => this.reconcile(repository))
     );
     this.reconcile(repository);
   }
@@ -368,6 +368,40 @@ export class StagingCoordinator implements Disposable {
     }
 
     state.group.resourceStates = uniqueResources(staged);
+  }
+
+  private createdDirectoryRelativeRootForPath(
+    repository: Repository,
+    filePath: string
+  ): string | undefined {
+    const changelists = new Set<string>([
+      ...(this.states.get(repository)?.metadataByPath.values() ?? []),
+      ...repository.stagedChangelists.values()
+    ]);
+    let best: { relative: string; absolute: string } | undefined;
+
+    for (const changelist of changelists) {
+      const relative =
+        parseStagingChangelist(changelist)?.createdDirectoryRelativeRoot;
+      if (!relative) continue;
+
+      const absolute = path.resolve(repository.root, relative);
+      if (
+        !isPathInside(repository.root, absolute) ||
+        !isPathInside(absolute, filePath)
+      ) {
+        continue;
+      }
+
+      if (
+        !best ||
+        normalizePath(absolute).length > normalizePath(best.absolute).length
+      ) {
+        best = { relative, absolute };
+      }
+    }
+
+    return best?.relative;
   }
 
   private currentChangelist(
@@ -436,11 +470,22 @@ export class StagingCoordinator implements Disposable {
       }
 
       if (files.length) {
+        const byDestination = new Map<string, string[]>();
+        for (const file of files) {
+          const destination = createStagingChangelist(
+            undefined,
+            true,
+            this.createdDirectoryRelativeRootForPath(repository, file)
+          );
+          const paths = byDestination.get(destination) ?? [];
+          paths.push(file);
+          byDestination.set(destination, paths);
+        }
+
         await repository.addFiles(files);
-        await repository.addChangelist(
-          files,
-          createStagingChangelist(undefined, true)
-        );
+        for (const [destination, paths] of byDestination) {
+          await repository.addChangelist(paths, destination);
+        }
       }
 
       for (const directory of directories) {

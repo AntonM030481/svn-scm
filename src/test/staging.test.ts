@@ -3,6 +3,7 @@ import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
 import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
+import { IFileStatus } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import {
@@ -91,6 +92,48 @@ suite("Staging Tests", () => {
       repository.changelists
         .get("personal-work")
         ?.resourceStates.some(item => item.resourceUri.fsPath === file),
+      true
+    );
+  });
+
+  test("reserved staging groups are reconciled on nonpublishing projection rebuilds", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "a1\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    const statuses = await repository.repository.getStatus({
+      includeIgnored: true,
+      includeExternals: false,
+      forceFull: true
+    });
+    const projection = repository as unknown as {
+      applyStatus(
+        statuses: IFileStatus[],
+        checkRemoteChanges: boolean,
+        preview?: boolean,
+        publishStatus?: boolean
+      ): void;
+    };
+    projection.applyStatus(statuses, false, true, false);
+
+    const reserved = repository.changelists.get(createStagingChangelist());
+    assert.equal(reserved?.resourceStates.length ?? 0, 0);
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
       true
     );
   });
@@ -210,6 +253,59 @@ suite("Staging Tests", () => {
     const status = svn(["status"], checkout.fsPath);
     assert.match(status, /^A\s+pre-added$/m);
     assert.match(status, /^\?\s+pre-added[\\/]child\.txt$/m);
+  });
+
+  test("later files inherit a staging-created directory root", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "inherited-root");
+    const first = path.join(directory, "first.txt");
+    const second = path.join(directory, "second.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(first, "first\n");
+    await repository.status();
+
+    const folder = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === directory
+    );
+    assert.ok(folder);
+    await commands.executeCommand("svn.stage", folder);
+
+    fs.writeFileSync(second, "second\n");
+    await repository.status();
+    const secondResource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === second
+    );
+    assert.ok(secondResource);
+    await commands.executeCommand("svn.stage", secondResource);
+
+    const relativeRoot = path.relative(repository.root, directory);
+    assert.equal(
+      parseStagingChangelist(
+        repository.stagedChangelists.get(path.resolve(second)) ?? ""
+      )?.createdDirectoryRelativeRoot,
+      relativeRoot
+    );
+
+    const firstStaged = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === first
+    );
+    const secondStaged = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === second
+    );
+    assert.ok(firstStaged);
+    assert.ok(secondStaged);
+    await commands.executeCommand("svn.unstage", firstStaged);
+    await commands.executeCommand("svn.unstage", secondStaged);
+
+    const status = svn(["status"], checkout.fsPath);
+    assert.doesNotMatch(status, /^A\s+inherited-root$/m);
+    assert.match(status, /^\?\s+inherited-root$/m);
   });
 
   test("unstaging an unversioned folder restores its scheduled additions", async () => {
