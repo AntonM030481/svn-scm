@@ -43,7 +43,9 @@ suite("Staging Live Validation Tests", () => {
   test("stale unstage selection is re-resolved after live status", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     const file = path.join(checkout.fsPath, "new.txt");
@@ -81,7 +83,9 @@ suite("Staging Live Validation Tests", () => {
   test("commit staged rebuilds selection after live status", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     const file = path.join(checkout.fsPath, "one", "a.txt");
@@ -95,7 +99,10 @@ suite("Staging Live Validation Tests", () => {
     await commands.executeCommand("svn.stage", changed);
     assert.equal(repository.staged?.resourceStates.length, 1);
 
-    svn(["changelist", "--remove", path.join("one", "a.txt")], checkout.fsPath);
+    svn(
+      ["changelist", "--remove", path.join("one", "a.txt")],
+      checkout.fsPath
+    );
     fs.writeFileSync(file, "external edit\n");
 
     const originalEnsureStatus = repository.ensureStatus.bind(repository);
@@ -104,15 +111,15 @@ suite("Staging Live Validation Tests", () => {
     };
     try {
       repository.inputBox.value = "must not commit stale selection";
-      await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
     } finally {
       (repository as any).ensureStatus = originalEnsureStatus;
     }
 
     assert.equal(fs.readFileSync(file, "utf8"), "external edit\n");
-    assert.match(
-      svn(["status"], checkout.fsPath),
-      /^M\s+one[\\/]a\.txt$/m
-    );
+    assert.match(svn(["status"], checkout.fsPath), /^M\s+one[\\/]a\.txt$/m);
   });
 });
