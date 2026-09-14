@@ -33,22 +33,10 @@ export abstract class Command implements Disposable {
   private _disposable?: Disposable;
 
   constructor(commandName: string, options: ICommandOptions = {}) {
-    if (options.repository) {
-      const command = this.createRepositoryCommand(this.execute);
-
-      this._disposable = commands.registerCommand(commandName, command);
-
-      return;
-    }
-
-    if (!options.repository) {
-      this._disposable = commands.registerCommand(
-        commandName,
-        (...args: any[]) => this.execute(...args)
-      );
-
-      return;
-    }
+    const command = options.repository
+      ? this.createRepositoryCommand(this.execute)
+      : (...args: any[]) => this.execute(...args);
+    this._disposable = commands.registerCommand(commandName, command);
   }
 
   public abstract execute(...args: any[]): any;
@@ -60,38 +48,27 @@ export abstract class Command implements Disposable {
   private createRepositoryCommand(
     method: (...args: any[]) => void
   ): (...args: any[]) => any {
-    const result = async (...args: any[]) => {
-      const sourceControlManager = (await commands.executeCommand(
-        "svn.getSourceControlManager",
-        ""
-      )) as SourceControlManager;
-      const repository = sourceControlManager.getRepository(args[0]);
-      let repositoryPromise;
+    return async (...args: any[]) => {
+      try {
+        const sourceControlManager = (await commands.executeCommand(
+          "svn.getSourceControlManager",
+          ""
+        )) as SourceControlManager;
+        const repository =
+          sourceControlManager.getRepository(args[0]) ||
+          (sourceControlManager.repositories.length === 1
+            ? sourceControlManager.repositories[0]
+            : await sourceControlManager.pickRepository());
 
-      if (repository) {
-        repositoryPromise = Promise.resolve(repository);
-      } else if (sourceControlManager.repositories.length === 1) {
-        repositoryPromise = Promise.resolve(
-          sourceControlManager.repositories[0]
-        );
-      } else {
-        repositoryPromise = sourceControlManager.pickRepository();
-      }
-
-      const result = repositoryPromise.then(repository => {
         if (!repository) {
-          return Promise.resolve();
+          return;
         }
 
-        return Promise.resolve(method.apply(this, [repository, ...args]));
-      });
-
-      return result.catch(err => {
+        return await method.apply(this, [repository, ...args]);
+      } catch (err) {
         console.error(err);
-      });
+      }
     };
-
-    return result;
   }
 
   protected async getResourceStates(
@@ -176,7 +153,7 @@ export abstract class Command implements Disposable {
       ""
     )) as SourceControlManager;
 
-    const groups: Array<{ repository: Repository; resources: Uri[] }> = [];
+    const groups = new Map<Repository, Uri[]>();
 
     for (const resource of resources) {
       const repository = sourceControlManager.getRepository(resource);
@@ -186,17 +163,13 @@ export abstract class Command implements Disposable {
         continue;
       }
 
-      const tuple = groups.filter(p => p.repository === repository)[0];
-
-      if (tuple) {
-        tuple.resources.push(resource);
-      } else {
-        groups.push({ repository, resources: [resource] });
-      }
+      const repositoryResources = groups.get(repository);
+      if (repositoryResources) repositoryResources.push(resource);
+      else groups.set(repository, [resource]);
     }
 
-    const promises = groups.map(({ repository, resources }) =>
-      fn(repository as Repository, isSingleResource ? resources[0] : resources)
+    const promises = Array.from(groups, ([repository, resources]) =>
+      fn(repository, isSingleResource ? resources[0] : resources)
     );
 
     return Promise.all(promises);

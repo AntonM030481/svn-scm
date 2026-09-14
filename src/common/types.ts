@@ -273,10 +273,6 @@ export interface ISvnUriParams {
   extra: ISvnUriExtraParams;
 }
 
-export interface IDisposable {
-  dispose(): void;
-}
-
 export interface IOperations {
   isIdle(): boolean;
   isRunning(operation: Operation): boolean;

@@ -22,10 +22,6 @@ export function toDisposable(dispose: () => void): IDisposable {
   return { dispose };
 }
 
-export function combinedDisposable(disposables: IDisposable[]): IDisposable {
-  return toDisposable(() => dispose(disposables));
-}
-
 export function anyEvent<T>(...events: Array<Event<T>>): Event<T> {
   return (listener: any, thisArgs = null, disposables?: any) => {
     const subscriptions: IDisposable[] = [];
