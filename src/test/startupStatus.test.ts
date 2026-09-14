@@ -240,7 +240,7 @@ suite("Persisted startup status integration", () => {
         "deletion must reconcile before live publication"
       );
       assert.equal(repo.getResourceFromFile(transient), undefined);
-      assert.equal(repo.getResourceFromFile(descendant), undefined);
+      assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MISSING);
       const snapshot = f.data.get([...f.data.keys()][0]) as any;
       assert.equal(
         snapshot.statuses.find((s: any) => s.path === "new.txt").status,

@@ -663,6 +663,10 @@ export class Repository implements IRemoteRepository {
       // check. Reconcile locally before accepting a full result read before deletion.
       while (this.startupDeletionPending) {
         this.startupDeletionPending = false;
+        // This scan supersedes earlier local evidence. Only checks started
+        // during this new scan may overlay its result.
+        this.startupFileVersion++;
+        this.startupFileResults.clear();
         const local = await this.retryRun(() =>
           this.repository.getStatus({
             includeIgnored: true,
