@@ -151,13 +151,18 @@ changes remain eligible for refresh. Metadata suppression cannot be
 target-specific because a watcher event for `wc.db` or similar administration
 files does not identify the working path that caused it. A concurrent external
 SVN process can therefore have its metadata event hidden during this bounded
-window. With auto-refresh enabled, the next eligible unsuppressed metadata event
-reconciles local status-derived SCM groups. Any later operation that actually
+window. Recovery is projection-specific even though suppression is shared by
+the physical working copy. With auto-refresh enabled, each affected opened
+projection's next eligible unsuppressed metadata event reconciles its local
+status-derived SCM groups. A later operation on that projection that actually
 takes the full-status path provides the same local-state guarantee even when
 auto-refresh is disabled; examples include automatic remote-status polling and
-a full-status fallback. A local full status deliberately retains existing
-`remoteChanges`; only a successful authoritative remote-status scan reconciles
-that group. These status paths do not refresh cached `svn info` fields. After an
+a full-status fallback. A qualifying scan in one sibling projection does not
+update another sibling; each needs its own qualifying scan or targeted activity
+that covers the externally changed path. A local full status deliberately
+retains existing `remoteChanges`; only a successful authoritative remote-status
+scan on the projection reconciles that group. These status paths do not refresh
+cached `svn info` fields. After an
 external switch, the displayed current branch is guaranteed to match only when
 repository-info refresh happens before a subsequent model update; either step
 alone is insufficient. The user-visible Refresh command is not itself a
