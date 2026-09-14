@@ -505,7 +505,10 @@ function patchRepository(repository: Repository): Disposable {
         repository.workspaceRoot,
         await originalGetStatus(params)
       );
-      await refreshUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
+      await refreshUnversionedDirectoryKinds(
+        repository.workspaceRoot,
+        statuses
+      );
       state.statuses = statuses;
       return statuses;
     }
@@ -535,7 +538,10 @@ function patchRepository(repository: Repository): Disposable {
         repository.workspaceRoot,
         await originalGetStatus(params)
       );
-      await refreshUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
+      await refreshUnversionedDirectoryKinds(
+        repository.workspaceRoot,
+        statuses
+      );
       state.statuses = statuses;
       return statuses;
     }
