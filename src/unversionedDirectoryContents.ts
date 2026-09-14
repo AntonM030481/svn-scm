@@ -160,11 +160,7 @@ export class UnversionedDirectoryContents implements Disposable {
         continue;
       }
       children.push(
-        ...(await collectFiles(
-          repository,
-          resource.resourceUri.fsPath,
-          budget
-        ))
+        ...(await collectFiles(repository, resource.resourceUri.fsPath, budget))
       );
     }
 
