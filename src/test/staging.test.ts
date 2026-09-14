@@ -723,6 +723,12 @@ suite("Staging Tests", () => {
       );
 
       repository.inputBox.value = "commit after external unstage";
+      setTimeout(() => {
+        void commands.executeCommand(
+          "svn.forceCommitMessageTest",
+          "commit after external unstage"
+        );
+      }, 100);
       await commands.executeCommand("svn.commit");
       assert.equal(svn(["status"], checkout.fsPath).trim(), "");
     } finally {
