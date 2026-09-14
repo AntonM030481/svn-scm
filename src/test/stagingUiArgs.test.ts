@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, ConfigurationTarget, workspace } from "vscode";
+import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -88,6 +88,73 @@ suite("Staging UI Argument Tests", () => {
       ),
       true
     );
+    assert.equal(fullStatusCalls, 0);
+  });
+
+  test("SCM tree folders unstage without reverting file contents", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+    const directory = path.join(checkout.fsPath, "folder");
+    const first = path.join(directory, "first.txt");
+    const second = path.join(directory, "second.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(first, "base first\n");
+    fs.writeFileSync(second, "base second\n");
+    svn(["add", "folder"], checkout.fsPath);
+    svn(["commit", "-m", "initial folder"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(first, "changed first\n");
+    fs.writeFileSync(second, "changed second\n");
+    await repository.status();
+
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
+
+    await commands.executeCommand("svn.stage", {
+      uri: Uri.file(directory),
+      context: repository.changes
+    });
+    assert.equal(repository.staged?.resourceStates.length, 2);
+
+    await commands.executeCommand("svn.unstage", {
+      uri: Uri.file(directory),
+      context: repository.staged
+    });
+    assert.equal(repository.staged?.resourceStates.length, 0);
+    assert.equal(
+      repository.changes.resourceStates.filter(resource =>
+        [first, second].includes(resource.resourceUri.fsPath)
+      ).length,
+      2
+    );
+    assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
+    assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
+
+    await commands.executeCommand("svn.stage", {
+      uri: Uri.file(directory),
+      context: repository.changes
+    });
+    assert.equal(repository.staged?.resourceStates.length, 2);
+
+    await commands.executeCommand("svn.unstageAll", repository.staged);
+    assert.equal(repository.staged?.resourceStates.length, 0);
+    assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
+    assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
+    assert.match(svn(["status"], checkout.fsPath), /^M\s+folder\/first\.txt$/m);
+    assert.match(svn(["status"], checkout.fsPath), /^M\s+folder\/second\.txt$/m);
     assert.equal(fullStatusCalls, 0);
   });
 
