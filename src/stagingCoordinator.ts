@@ -160,6 +160,67 @@ export class StagingCoordinator implements Disposable {
     return entries;
   }
 
+  public async validateStageSelection(
+    resources: Resource[]
+  ): Promise<Resource[]> {
+    return this.validateSelection(resources, false);
+  }
+
+  public async validateUnstageSelection(
+    resources: Resource[]
+  ): Promise<Resource[]> {
+    return this.validateSelection(resources, true);
+  }
+
+  private async validateSelection(
+    resources: Resource[],
+    stagedOnly: boolean
+  ): Promise<Resource[]> {
+    const byRepository = new Map<Repository, Resource[]>();
+    for (const resource of uniqueResources(resources)) {
+      const repository = this.sourceControlManager.getRepository(
+        resource.resourceUri
+      );
+      if (!repository) continue;
+      const selected = byRepository.get(repository) ?? [];
+      selected.push(resource);
+      byRepository.set(repository, selected);
+    }
+
+    const validated: Resource[] = [];
+    for (const [repository, selected] of byRepository) {
+      await repository.ensureStatus();
+      const staged = this.states.get(repository)?.group.resourceStates ?? [];
+
+      for (const original of selected) {
+        const filePath = original.resourceUri.fsPath;
+        if (!stagedOnly && repository.isPreviewResource(original)) {
+          try {
+            if ((await lstat(filePath)).isDirectory()) continue;
+          } catch {
+            continue;
+          }
+        }
+
+        const stagedResource = staged.find(resource =>
+          samePath(resource.resourceUri.fsPath, filePath)
+        );
+        if (stagedOnly) {
+          if (stagedResource) validated.push(stagedResource as Resource);
+          continue;
+        }
+        if (stagedResource) continue;
+
+        const current = this.findResource(repository, filePath);
+        if (current && current.type !== Status.CONFLICTED) {
+          validated.push(current);
+        }
+      }
+    }
+
+    return uniqueResources(validated);
+  }
+
   public async stage(resources: Resource[]): Promise<void> {
     const byRepository = new Map<Repository, Resource[]>();
     for (const resource of uniqueResources(resources)) {
