@@ -1,0 +1,98 @@
+name: Apply staging final review fixes 5
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-staging-final-review-5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Apply fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          model = Path('src/stagingModel.ts')
+          text = model.read_text()
+          text = text.replace('createdDirectoryRoot?: string;', 'createdDirectoryRelativeRoot?: string;')
+          text = text.replace('createdDirectoryRoot?: string\n): string {', 'createdDirectoryRelativeRoot?: string\n): string {')
+          text = text.replace('if (createdDirectoryRoot) {', 'if (createdDirectoryRelativeRoot) {')
+          text = text.replace('Buffer.from(createdDirectoryRoot, "utf8")', 'Buffer.from(createdDirectoryRelativeRoot, "utf8")')
+          text = text.replace('createdDirectoryRoot: Buffer.from(encodedRoot, "hex").toString("utf8")', 'createdDirectoryRelativeRoot: Buffer.from(encodedRoot, "hex").toString("utf8")')
+          model.write_text(text)
+
+          coordinator = Path('src/stagingCoordinator.ts')
+          text = coordinator.read_text()
+          text = text.replace(
+              'createStagingChangelist(undefined, true, directory)',
+              'createStagingChangelist(\n              undefined,\n              true,\n              path.relative(repository.root, directory)\n            )'
+          )
+          start = text.index('  private addedAncestorDirectoriesForUnstage(')
+          end = text.index('\n  private async restoreDestination(', start)
+          replacement = '''  private async addedAncestorDirectoriesForUnstage(\n    repository: Repository,\n    paths: string[],\n    createdDirectoryRelativeRoot: string\n  ): Promise<string[]> {\n    const createdDirectoryRoot = path.resolve(\n      repository.root,\n      createdDirectoryRelativeRoot\n    );\n    if (!isPathInside(repository.root, createdDirectoryRoot)) {\n      return [];\n    }\n\n    const selected = new Set(paths.map(normalizePath));\n    const statuses = await repository.repository.getStatus({\n      includeIgnored: true,\n      includeExternals: false,\n      forceFull: true\n    });\n    const added = statuses\n      .filter(status => status.status === Status.ADDED)\n      .map(status =>\n        path.isAbsolute(status.path)\n          ? status.path\n          : path.resolve(repository.workspaceRoot, status.path)\n      )\n      .filter(candidate => isPathInside(createdDirectoryRoot, candidate))\n      .map(normalizePath);\n    const addedSet = new Set(added);\n    const candidates = new Set<string>();\n\n    for (const filePath of paths) {\n      let directory = path.dirname(filePath);\n      while (\n        directory !== path.dirname(directory) &&\n        isPathInside(createdDirectoryRoot, directory)\n      ) {\n        const key = normalizePath(directory);\n        if (addedSet.has(key)) {\n          candidates.add(key);\n        }\n        if (samePath(directory, createdDirectoryRoot)) {\n          break;\n        }\n        directory = path.dirname(directory);\n      }\n    }\n\n    return [...candidates]\n      .filter(\n        directory =>\n          !added.some(\n            resourcePath =>\n              resourcePath !== directory &&\n              isPathInside(directory, resourcePath) &&\n              !selected.has(resourcePath) &&\n              !candidates.has(resourcePath)\n          )\n      )\n      .sort((left, right) => right.length - left.length);\n  }\n'''
+          text = text[:start] + replacement + text[end:]
+          text = text.replace(
+              'metadata.wasUnversioned && metadata.createdDirectoryRoot\n        ? this.addedAncestorDirectoriesForUnstage(\n            repository,\n            paths,\n            metadata.createdDirectoryRoot\n          )',
+              'metadata.wasUnversioned && metadata.createdDirectoryRelativeRoot\n        ? await this.addedAncestorDirectoriesForUnstage(\n            repository,\n            paths,\n            metadata.createdDirectoryRelativeRoot\n          )'
+          )
+          coordinator.write_text(text)
+
+          model_test = Path('src/test/stagingModel.test.ts')
+          text = model_test.read_text()
+          text = text.replace('const root = "/tmp/work tree/каталог";', 'const root = "work tree/каталог";')
+          text = text.replace('createdDirectoryRoot: root', 'createdDirectoryRelativeRoot: root')
+          model_test.write_text(text)
+
+          staging_test = Path('src/test/staging.test.ts')
+          text = staging_test.read_text()
+          text = text.replace(
+              'import { createStagingChangelist } from "../stagingModel";',
+              'import {\n  createStagingChangelist,\n  parseStagingChangelist\n} from "../stagingModel";'
+          )
+          old = '''    await commands.executeCommand("svn.stage", resource);\n    assert.match(svn(["status"], checkout.fsPath), /^A\\s+new-folder/m);\n\n    await commands.executeCommand("svn.unstageAll", repository.staged);'''
+          new = '''    await commands.executeCommand("svn.stage", resource);\n    assert.match(svn(["status"], checkout.fsPath), /^A\\s+new-folder/m);\n    const stagingChangelist = [...repository.stagedChangelists.values()][0];\n    assert.ok(stagingChangelist);\n    assert.equal(\n      parseStagingChangelist(stagingChangelist)?.createdDirectoryRelativeRoot,\n      path.relative(repository.root, directory)\n    );\n\n    await commands.executeCommand("svn.unstageAll", repository.staged);'''
+          if old not in text:
+              raise SystemExit('folder staging assertion anchor not found')
+          text = text.replace(old, new, 1)
+
+          anchor = '  test("symlinks targeting directories remain stageable files", async () => {'
+          test = '''  test("unstage preserves hidden added descendants under a staged folder", async () => {\n    const checkout = await createCheckoutWithFiles();\n    await sourceControlManager.tryOpenRepository(checkout.fsPath);\n    const repository = sourceControlManager.getRepository(\n      checkout\n    ) as Repository;\n    opened.push(repository);\n\n    const directory = path.join(checkout.fsPath, "mixed-folder");\n    const visible = path.join(directory, "visible.txt");\n    const hidden = path.join(directory, "hidden.txt");\n    fs.mkdirSync(directory);\n    fs.writeFileSync(visible, "visible\\n");\n    fs.writeFileSync(hidden, "hidden\\n");\n\n    const filesConfiguration = workspace.getConfiguration("files", checkout);\n    const previousExclude =\n      filesConfiguration.inspect<Record<string, boolean>>(\n        "exclude"\n      )?.globalValue;\n    await filesConfiguration.update(\n      "exclude",\n      { ...(previousExclude ?? {}), "**/hidden.txt": true },\n      ConfigurationTarget.Global\n    );\n\n    try {\n      await repository.status();\n      const resource = repository.unversioned.resourceStates.find(\n        item => item.resourceUri.fsPath === directory\n      );\n      assert.ok(resource);\n\n      await commands.executeCommand("svn.stage", resource);\n      svn(["add", hidden], checkout.fsPath);\n\n      await commands.executeCommand("svn.unstageAll", repository.staged);\n      const status = svn(["status"], checkout.fsPath);\n      assert.match(status, /^A\\s+mixed-folder$/m);\n      assert.match(status, /^A\\s+mixed-folder[\\\\/]hidden\\.txt$/m);\n      assert.match(status, /^\\?\\s+mixed-folder[\\\\/]visible\\.txt$/m);\n    } finally {\n      await filesConfiguration.update(\n        "exclude",\n        previousExclude,\n        ConfigurationTarget.Global\n      );\n    }\n  });\n\n'''
+          if anchor not in text:
+              raise SystemExit('symlink test anchor not found')
+          text = text.replace(anchor, test + anchor, 1)
+          staging_test.write_text(text)
+
+          docs = Path('docs/staging.md')
+          text = docs.read_text()
+          text = text.replace(
+              'the reserved metadata also records that staging-created directory root so unstage can remove only additions introduced by staging and preserve pre-existing user-added directories.',
+              'the reserved metadata also records that staging-created directory root relative to the physical working-copy root so the state survives working-copy moves; unstage can then remove only additions introduced by staging and preserve pre-existing user-added directories.'
+          )
+          docs.write_text(text)
+      - name: Format and validate
+        run: |
+          yarn prettier --write src/stagingModel.ts src/stagingCoordinator.ts src/test/stagingModel.test.ts src/test/staging.test.ts docs/staging.md
+          yarn check
+          yarn test:unit
+      - name: Commit fixes and remove helper
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/stagingModel.ts src/stagingCoordinator.ts src/test/stagingModel.test.ts src/test/staging.test.ts docs/staging.md
+          git rm .github/workflows/apply-staging-final-review-5.yml
+          git commit -m "fix: harden staged directory cleanup metadata"
+          git push origin HEAD:feature/git-like-staging
