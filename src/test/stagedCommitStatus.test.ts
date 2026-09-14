@@ -90,10 +90,19 @@ suite("Staged Commit Status Tests", () => {
   test("path containment accepts dot-prefixed descendants only", () => {
     const parent = path.resolve(path.sep, "wc");
 
-    assert.equal(isPathInside(parent, path.join(parent, "..child", "file")), true);
-    assert.equal(isPathInside(parent, path.join(parent, "child", "file")), true);
+    assert.equal(
+      isPathInside(parent, path.join(parent, "..child", "file")),
+      true
+    );
+    assert.equal(
+      isPathInside(parent, path.join(parent, "child", "file")),
+      true
+    );
     assert.equal(isPathInside(parent, parent), true);
-    assert.equal(isPathInside(parent, path.resolve(parent, "..", "child")), false);
+    assert.equal(
+      isPathInside(parent, path.resolve(parent, "..", "child")),
+      false
+    );
     assert.equal(isPathInside(parent, path.resolve(parent, "..")), false);
   });
 });
