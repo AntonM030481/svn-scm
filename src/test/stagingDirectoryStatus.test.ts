@@ -2,81 +2,72 @@ import * as assert from "assert";
 import * as path from "path";
 import { StagingCoordinator } from "../stagingCoordinator";
 
+type Cleanup = {
+  cleanupHiddenDirectoryAdditions(
+    repository: unknown,
+    directory: string,
+    visibleAdded: unknown[]
+  ): Promise<void>;
+};
+
 suite("Staging Directory Status Tests", () => {
-  test(
-    "hidden descendant cleanup scopes svn status to the staged directory",
-    async () => {
-      const disposables = { dispose() {} };
-      const sourceControlManager = {
-        repositories: [],
-        onDidOpenRepository: () => disposables,
-        onDidCloseRepository: () => disposables
-      };
-      const coordinator = new StagingCoordinator(
-        sourceControlManager as never
-      );
+  test("scopes cleanup status to staged directory", async () => {
+    const disposable = { dispose() {} };
+    const manager = {
+      repositories: [],
+      onDidOpenRepository: () => disposable,
+      onDidCloseRepository: () => disposable
+    };
+    const staging = new StagingCoordinator(manager as never);
 
-      const workspaceRoot = path.resolve("working-copy");
-      const directory = path.join(workspaceRoot, "new-folder");
-      const hidden = path.join(directory, "hidden.txt");
-      const execCalls: string[][] = [];
-      const revertCalls: Array<{ paths: string[]; depth: string }> = [];
-      const relativeDirectory = path.relative(workspaceRoot, directory);
-      const hiddenRelative = path.join(relativeDirectory, "hidden.txt");
+    const root = path.resolve("working-copy");
+    const directory = path.join(root, "new-folder");
+    const hidden = path.join(directory, "hidden.txt");
+    const relative = path.relative(root, directory);
+    const hiddenRelative = path.join(relative, "hidden.txt");
+    const execCalls: string[][] = [];
+    const revertCalls: { paths: string[]; depth: string }[] = [];
 
-      const repository = {
-        workspaceRoot,
-        repository: {
-          removeAbsolutePath(target: string) {
-            assert.equal(target, directory);
-            return relativeDirectory;
-          },
-          async exec(args: string[]) {
-            execCalls.push(args);
-            return {
-              stdout: [
-                '<?xml version="1.0" encoding="UTF-8"?>',
-                "<status>",
-                `  <target path="${relativeDirectory}">`,
-                `    <entry path="${hiddenRelative}">`,
-                '      <wc-status item="added" props="none" revision="0" />',
-                "    </entry>",
-                "  </target>",
-                "</status>"
-              ].join("\n"),
-              stderr: "",
-              exitCode: 0
-            };
-          }
+    const repository = {
+      workspaceRoot: root,
+      repository: {
+        removeAbsolutePath(target: string) {
+          assert.equal(target, directory);
+          return relative;
         },
-        async revert(paths: string[], depth: string) {
-          revertCalls.push({ paths, depth });
+        async exec(args: string[]) {
+          execCalls.push(args);
+          return {
+            stdout: [
+              '<?xml version="1.0" encoding="UTF-8"?>',
+              "<status>",
+              `  <target path="${relative}">`,
+              `    <entry path="${hiddenRelative}">`,
+              '      <wc-status item="added" props="none" revision="0" />',
+              "    </entry>",
+              "  </target>",
+              "</status>"
+            ].join("\n"),
+            stderr: "",
+            exitCode: 0
+          };
         }
-      };
-      const cleanup = coordinator as unknown as {
-        cleanupHiddenDirectoryAdditions(
-          repository: unknown,
-          directory: string,
-          visibleAdded: unknown[]
-        ): Promise<void>;
-      };
-
-      try {
-        await cleanup.cleanupHiddenDirectoryAdditions(repository, directory, []);
-      } finally {
-        coordinator.dispose();
+      },
+      async revert(paths: string[], depth: string) {
+        revertCalls.push({ paths, depth });
       }
+    };
 
-      assert.deepEqual(execCalls, [
-        [
-          "stat",
-          "--xml",
-          "--no-ignore",
-          "--ignore-externals",
-          relativeDirectory
-        ]
-      ]);
-      assert.deepEqual(revertCalls, [{ paths: [hidden], depth: "empty" }]);
+    try {
+      const cleanup = staging as unknown as Cleanup;
+      await cleanup.cleanupHiddenDirectoryAdditions(repository, directory, []);
+    } finally {
+      staging.dispose();
     }
-  );
+
+    assert.deepEqual(execCalls, [
+      ["stat", "--xml", "--no-ignore", "--ignore-externals", relative]
+    ]);
+    assert.deepEqual(revertCalls, [{ paths: [hidden], depth: "empty" }]);
+  });
 });
