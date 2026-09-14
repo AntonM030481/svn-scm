@@ -452,10 +452,19 @@ export class SourceControlManager implements IDisposable {
     added,
     removed
   }: WorkspaceFoldersChangeEvent) {
-    this.disposeRepositoriesUncoveredByWorkspaceRemoval(removed);
+    const survivingFolders =
+      this.disposeRepositoriesUncoveredByWorkspaceRemoval(removed);
+    const seen = new Set<string>();
 
-    const possibleRepositoryFolders = added.filter(
-      folder => !this.getOpenRepository(folder.uri)
+    const possibleRepositoryFolders = [...added, ...survivingFolders].filter(
+      folder => {
+        const root = normalizePath(folder.uri.fsPath);
+        if (seen.has(root) || this.getOpenRepository(folder.uri)) {
+          return false;
+        }
+        seen.add(root);
+        return true;
+      }
     );
 
     possibleRepositoryFolders.forEach(p =>
@@ -466,7 +475,7 @@ export class SourceControlManager implements IDisposable {
   private disposeRepositoriesUncoveredByWorkspaceRemoval(
     removed: readonly WorkspaceFolder[],
     remaining: readonly WorkspaceFolder[] = workspace.workspaceFolders || []
-  ): void {
+  ): WorkspaceFolder[] {
     const removedRoots = removed.map(folder => folder.uri.fsPath);
     const remainingRoots = remaining.map(folder => folder.uri.fsPath);
     const repositories = this.openRepositories.filter(({ repository }) => {
@@ -476,8 +485,21 @@ export class SourceControlManager implements IDisposable {
         !remainingRoots.some(root => isDescendant(root, workspaceRoot))
       );
     });
+    const survivingFolders = remaining.filter(folder =>
+      repositories.some(({ repository }) =>
+        isDescendant(repository.workspaceRoot, folder.uri.fsPath)
+      )
+    );
 
-    repositories.forEach(repository => repository.dispose());
+    for (const repository of repositories) {
+      // Closing publishes an event; its listeners may synchronously close
+      // another entry selected by this same workspace transition.
+      if (this.openRepositories.includes(repository)) {
+        repository.dispose();
+      }
+    }
+
+    return survivingFolders;
   }
 
   private async scanWorkspaceFolders(
