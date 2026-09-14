@@ -1,4 +1,5 @@
 import { SourceControlResourceState } from "vscode";
+import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { StagingCoordinator } from "../stagingCoordinator";
 import { Command } from "./command";
@@ -14,8 +15,19 @@ abstract class BaseStagingCommand extends Command {
   protected async selectedResources(
     resourceStates: SourceControlResourceState[]
   ): Promise<Resource[]> {
-    return this.getResourceStates(resourceStates);
+    return this.getResourceStates(resourceStates, true);
   }
+}
+
+async function ensureWorkingCopyLiveStatus(
+  staging: StagingCoordinator,
+  repository: Repository
+): Promise<void> {
+  await Promise.all(
+    staging
+      .repositoriesForWorkingCopy(repository)
+      .map(peer => peer.ensureStatus())
+  );
 }
 
 export class Stage extends BaseStagingCommand {
@@ -49,7 +61,8 @@ export class StageAll extends Command {
     super("svn.stageAll", { repository: true });
   }
 
-  public async execute(repository: import("../repository").Repository) {
+  public async execute(repository: Repository) {
+    await ensureWorkingCopyLiveStatus(this.staging, repository);
     await this.staging.stageAll(repository);
   }
 }
@@ -59,7 +72,8 @@ export class UnstageAll extends Command {
     super("svn.unstageAll", { repository: true });
   }
 
-  public async execute(repository: import("../repository").Repository) {
+  public async execute(repository: Repository) {
+    await ensureWorkingCopyLiveStatus(this.staging, repository);
     await this.staging.unstageAll(repository);
   }
 }
