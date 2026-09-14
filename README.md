@@ -125,3 +125,8 @@ validation, and settings that require a refresh or reload.
 | `svn.update.ignoreExternals` | Set to ignore externals definitions on update (add --ignore-externals) | `true` |
 <!--end-settings-->
 
+
+With auto-refresh enabled, small files edited while the initial status scan is
+running can appear in Changes after a quick local check, without waiting for
+the full scan. The normal progress indicator remains visible until startup
+reconciliation finishes.

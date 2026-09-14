@@ -4,6 +4,7 @@ import * as path from "path";
 import {
   commands,
   Disposable,
+  EventEmitter,
   TextDocument,
   Memento,
   SecretStorage,
@@ -136,6 +137,286 @@ suite("Persisted startup status integration", () => {
     assert.equal(data.size, 1);
     initial.dispose();
     return { root, base, data, state, open };
+  }
+
+  test("file events publish during initial scan and survive its older result", async () => {
+    const f = await fixture();
+    const directory = await fs.mkdtemp(
+      path.join(f.root, "transient-directory-")
+    );
+    const descendant = path.join(directory, "child.txt");
+    await fs.writeFile(descendant, "base child");
+    await f.base.exec(["add", directory]);
+    await f.base.exec([
+      "commit",
+      directory,
+      "-m",
+      "tracked descendant fixture"
+    ]);
+    // The initial full result already includes this modification before deletion.
+    await fs.appendFile(descendant, "captured before initial scan");
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    let fullScans = 0;
+    base.getStatus = async params => {
+      if (fullScans++ > 0) assert.equal(params.checkRemoteChanges, false);
+      const old = await getStatus(params);
+      entered.resolve();
+      await release.promise;
+      return old;
+    };
+    const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
+    const events = new EventEmitter<Uri>();
+    const deletions = new EventEmitter<Uri>();
+    const adapters: Disposable[] = [];
+    const emitFileEvent = async (emitter: EventEmitter<Uri>, file: string) => {
+      const accepted = gate();
+      const validate = repo.validateStartupFile;
+      repo.validateStartupFile = (target, deleted) => {
+        validate.call(repo, target, deleted);
+        if (target === file) accepted.resolve();
+      };
+      try {
+        emitter.fire(Uri.file(file));
+        // The adapter asynchronously checks echo suppression before enqueueing.
+        await accepted.promise;
+      } finally {
+        repo.validateStartupFile = validate;
+      }
+    };
+    let publications = 0;
+    const listener = repo.onDidChangeStatus(() => publications++);
+    try {
+      await entered.promise;
+      repo.fsWatcher.onDidWorkspaceChange = events.event;
+      repo.fsWatcher.onDidWorkspaceDelete = deletions.event;
+      enableIncrementalStatusRefresh(
+        {
+          repositories: [repo],
+          onDidOpenRepository: () => ({ dispose() {} })
+        } as unknown as SourceControlManager,
+        adapters
+      );
+      await workspace
+        .getConfiguration("svn")
+        .update("autorefresh", true, ConfigurationTarget.Global);
+      const changed = path.join(f.root, "new.txt");
+      await fs.appendFile(changed, "during startup\n");
+      await emitFileEvent(events, changed);
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.isInitialStatusPending, true);
+      assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
+      assert.ok(repo.isPreviewResource(repo.getResourceFromFile(changed)!));
+      assert.equal(publications, 0);
+      // A clean verbose result must also survive the old full scan's modified row.
+      const reverted = path.join(f.root, "clean.txt");
+      await base.exec(["revert", reverted]);
+      repo.validateStartupFile(reverted);
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.getResourceFromFile(reverted), undefined);
+      // Delete events target their parent in normal status, but must invalidate
+      // the exact file's startup evidence so it cannot be resurrected by overlay.
+      const transient = path.join(f.root, "transient.txt");
+      await fs.writeFile(transient, "temporary");
+      await emitFileEvent(events, transient);
+      await (repo as any).scanStartupFiles();
+      assert.equal(
+        repo.getResourceFromFile(transient)!.type,
+        Status.UNVERSIONED
+      );
+      await fs.appendFile(descendant, "modified child");
+      await emitFileEvent(events, descendant);
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MODIFIED);
+      await fs.rm(directory, { recursive: true });
+      // A recursive delete may emit only the directory URI.
+      await emitFileEvent(deletions, directory);
+      await (repo as any).scanStartupFiles();
+      await fs.unlink(transient);
+      await emitFileEvent(deletions, transient);
+      await (repo as any).scanStartupFiles();
+      release.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
+      assert.equal(repo.getResourceFromFile(reverted), undefined);
+      assert.equal(publications, 1);
+      assert.equal(
+        fullScans,
+        2,
+        "deletion must reconcile before live publication"
+      );
+      assert.equal(repo.getResourceFromFile(transient), undefined);
+      assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MISSING);
+      const snapshot = f.data.get([...f.data.keys()][0]) as any;
+      assert.equal(
+        snapshot.statuses.find((s: any) => s.path === "new.txt").status,
+        Status.MODIFIED
+      );
+    } finally {
+      release.resolve();
+      listener.dispose();
+      adapters.forEach(d => d.dispose());
+      events.dispose();
+      deletions.dispose();
+      repo.dispose();
+      await workspace
+        .getConfiguration("svn")
+        .update("autorefresh", false, ConfigurationTarget.Global);
+    }
+  });
+
+  test("first-open file checks exclude nested working copies without a snapshot", async () => {
+    const f = await fixture();
+    f.data.clear();
+    const nested = path.join(f.root, "nested-checkout");
+    await f.base.exec([
+      "checkout",
+      testUtil.getSvnUrl(server) + "/trunk",
+      nested
+    ]);
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      const result = await getStatus(params);
+      entered.resolve();
+      await release.promise;
+      return result;
+    };
+    const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
+    try {
+      await entered.promise;
+      const parentFile = path.join(f.root, "new.txt");
+      const nestedFile = path.join(nested, "new.txt");
+      await fs.appendFile(parentFile, "parent edit");
+      await fs.appendFile(nestedFile, "nested edit");
+      const checked: string[] = [];
+      const local = base.getStartupStatus.bind(base);
+      base.getStartupStatus = async (targets, signal) => {
+        checked.push(...targets);
+        return local(targets, signal);
+      };
+      repo.validateStartupFile(nestedFile);
+      repo.validateStartupFile(parentFile);
+      await (repo as any).scanStartupFiles();
+      assert.deepEqual(checked, ["new.txt"]);
+      assert.equal(repo.getResourceFromFile(nestedFile), undefined);
+      assert.equal(repo.getResourceFromFile(parentFile)!.type, Status.MODIFIED);
+      release.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(nestedFile), undefined);
+    } finally {
+      release.resolve();
+    }
+  });
+
+  test("a repeated edit invalidates in-flight startup validation", async () => {
+    const f = await fixture();
+    const base = await manager.svn.open(f.root, f.root);
+    const fullEntered = gate();
+    const fullRelease = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      const old = await getStatus(params);
+      fullEntered.resolve();
+      await fullRelease.promise;
+      return old;
+    };
+    const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
+    const localEntered = gate();
+    const localRelease = gate();
+    let pending: Promise<void> | undefined;
+    try {
+      await fullEntered.promise;
+      const file = path.join(f.root, "new.txt");
+      const local = base.getStartupStatus.bind(base);
+      base.getStartupStatus = async (targets, signal) => {
+        const old = await local(targets, signal);
+        localEntered.resolve();
+        await localRelease.promise;
+        return old;
+      };
+      await fs.appendFile(file, "transient edit\n");
+      repo.validateStartupFile(file);
+      pending = (repo as any).scanStartupFiles();
+      await localEntered.promise;
+      await base.exec(["revert", file]);
+      repo.validateStartupFile(file);
+      localRelease.resolve();
+      await pending;
+      assert.equal(
+        repo.getResourceFromFile(file),
+        undefined,
+        "obsolete modified result must not publish"
+      );
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.getResourceFromFile(file), undefined);
+      fullRelease.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(file), undefined);
+    } finally {
+      localRelease.resolve();
+      fullRelease.resolve();
+      await pending;
+    }
+  });
+
+  for (const disposeDuringCheck of [false, true]) {
+    test(`startup file validation handles failure/disposal (dispose=${disposeDuringCheck})`, async () => {
+      const f = await fixture();
+      const before = JSON.stringify([...f.data]);
+      const base = await manager.svn.open(f.root, f.root);
+      const fullEntered = gate();
+      const fullRelease = gate();
+      const getStatus = base.getStatus.bind(base);
+      base.getStatus = async params => {
+        fullEntered.resolve();
+        await fullRelease.promise;
+        return getStatus(params);
+      };
+      const repo = f.open(base);
+      // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+      (repo as any).scheduleStartupFileScan = () => {};
+      const localEntered = gate();
+      const localRelease = gate();
+      let pending: Promise<void> | undefined;
+      try {
+        await fullEntered.promise;
+        base.getStartupStatus = async (_targets, signal) => {
+          localEntered.resolve();
+          await localRelease.promise;
+          if (disposeDuringCheck) assert.equal(signal!.aborted, true);
+          throw new Error("injected local failure");
+        };
+        const file = path.join(f.root, "new.txt");
+        await fs.appendFile(file, "new work\n");
+        repo.validateStartupFile(file);
+        pending = (repo as any).scanStartupFiles();
+        await localEntered.promise;
+        if (disposeDuringCheck) repo.dispose();
+        localRelease.resolve();
+        await pending;
+        assert.equal(JSON.stringify([...f.data]), before);
+        fullRelease.resolve();
+        await repo.initialStatusSettled;
+        if (!disposeDuringCheck)
+          assert.equal(repo.getResourceFromFile(file)!.type, Status.MODIFIED);
+        else assert.equal(JSON.stringify([...f.data]), before);
+      } finally {
+        localRelease.resolve();
+        fullRelease.resolve();
+        await pending;
+      }
+    });
   }
 
   test("retains remote-only and overlapping changes across local refreshes and reopening", async () => {

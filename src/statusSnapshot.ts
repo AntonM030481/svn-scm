@@ -159,7 +159,8 @@ export async function workingCopyIdentity(
 
 export async function selectStartupTargets(
   workspaceRoot: string,
-  statuses: IFileStatus[]
+  statuses: IFileStatus[],
+  usesPerDirectoryMetadata = false
 ): Promise<string[]> {
   const candidates = statuses.filter(
     s =>
@@ -174,6 +175,7 @@ export async function selectStartupTargets(
   const targets: string[] = [];
   let bytes = 0;
   const realRoot = await fs.realpath(workspaceRoot);
+  const adminDirectories = new Map<string, boolean>();
   for (const status of [...candidates].sort((a, b) =>
     a.path < b.path ? -1 : 1
   )) {
@@ -200,8 +202,43 @@ export async function selectStartupTargets(
         bytes + stat.size > STARTUP_MAX_TOTAL_BYTES
       )
         continue;
-      const relative = path.relative(realRoot, await fs.realpath(absolute));
+      const realFile = await fs.realpath(absolute);
+      const relative = path.relative(realRoot, realFile);
       if (!isSnapshotPath(relative)) continue;
+      // A first-open snapshot cannot identify externals. Check real ancestors
+      // independently: nested working copies own their own administration dir.
+      let directory = path.dirname(realFile);
+      let nested = false;
+      while (
+        !usesPerDirectoryMetadata &&
+        snapshotPathKey(directory) !== snapshotPathKey(realRoot)
+      ) {
+        let hasAdmin = adminDirectories.get(directory);
+        if (hasAdmin === undefined) {
+          hasAdmin = false;
+          for (const name of [".svn", "_svn"]) {
+            try {
+              await fs.lstat(path.join(directory, name));
+              hasAdmin = true;
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                throw error;
+            }
+          }
+          adminDirectories.set(directory, hasAdmin);
+        }
+        if (hasAdmin) {
+          nested = true;
+          break;
+        }
+        const parent = path.dirname(directory);
+        if (parent === directory) {
+          nested = true;
+          break;
+        }
+        directory = parent;
+      }
+      if (nested) continue;
       targets.push(status.path);
       bytes += stat.size;
     } catch {
@@ -224,6 +261,31 @@ export function mergeStartupStatus(
     if (!selected.has(key) || !isStatus(status)) continue;
     const previous = byPath.get(key);
     byPath.set(key, { ...status, reposStatus: previous?.reposStatus });
+  }
+  return [...byPath.values()];
+}
+
+/** Replace local evidence while retaining only the independently acquired remote fields. */
+export function retainRemoteStatus(
+  localStatuses: IFileStatus[],
+  remoteStatuses: IFileStatus[]
+): IFileStatus[] {
+  const byPath = new Map(
+    localStatuses.map(status => [
+      snapshotPathKey(status.path),
+      { ...status, reposStatus: undefined } as IFileStatus
+    ])
+  );
+  for (const previous of remoteStatuses) {
+    if (!previous.reposStatus) continue;
+    const key = snapshotPathKey(previous.path);
+    const local = byPath.get(key) ?? {
+      path: previous.path,
+      status: Status.NORMAL,
+      props: Status.NONE,
+      wcStatus: { locked: false, switched: false }
+    };
+    byPath.set(key, { ...local, reposStatus: previous.reposStatus });
   }
   return [...byPath.values()];
 }
