@@ -153,8 +153,14 @@ suite("Staging UI Argument Tests", () => {
     assert.equal(repository.staged?.resourceStates.length, 0);
     assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
     assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
-    assert.match(svn(["status"], checkout.fsPath), /^M\s+folder\/first\.txt$/m);
-    assert.match(svn(["status"], checkout.fsPath), /^M\s+folder\/second\.txt$/m);
+    assert.match(
+      svn(["status"], checkout.fsPath),
+      /^M\s+folder\/first\.txt$/m
+    );
+    assert.match(
+      svn(["status"], checkout.fsPath),
+      /^M\s+folder\/second\.txt$/m
+    );
     assert.equal(fullStatusCalls, 0);
   });
 
