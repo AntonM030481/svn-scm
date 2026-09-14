@@ -35,12 +35,12 @@ suite("Staging Model", () => {
   });
 
   test("persists staging-created directory roots", () => {
-    const root = "/tmp/work tree/каталог";
+    const root = "work tree/каталог";
     const name = createStagingChangelist(undefined, true, root);
     assert.equal(isStagingChangelist(name), true);
     assert.deepEqual(parseStagingChangelist(name), {
       wasUnversioned: true,
-      createdDirectoryRoot: root
+      createdDirectoryRelativeRoot: root
     });
   });
 

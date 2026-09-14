@@ -5,7 +5,10 @@ import * as path from "path";
 import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
-import { createStagingChangelist } from "../stagingModel";
+import {
+  createStagingChangelist,
+  parseStagingChangelist
+} from "../stagingModel";
 import * as testUtil from "./testUtil";
 
 function svn(args: string[], cwd: string): string {
@@ -229,6 +232,12 @@ suite("Staging Tests", () => {
 
     await commands.executeCommand("svn.stage", resource);
     assert.match(svn(["status"], checkout.fsPath), /^A\s+new-folder/m);
+    const stagingChangelist = [...repository.stagedChangelists.values()][0];
+    assert.ok(stagingChangelist);
+    assert.equal(
+      parseStagingChangelist(stagingChangelist)?.createdDirectoryRelativeRoot,
+      path.relative(repository.root, directory)
+    );
 
     await commands.executeCommand("svn.unstageAll", repository.staged);
     const status = svn(["status"], checkout.fsPath);
@@ -280,6 +289,56 @@ suite("Staging Tests", () => {
         ),
         true
       );
+    } finally {
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
+      );
+    }
+  });
+
+  test("unstage preserves hidden added descendants under a staged folder", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "mixed-folder");
+    const visible = path.join(directory, "visible.txt");
+    const hidden = path.join(directory, "hidden.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(visible, "visible\n");
+    fs.writeFileSync(hidden, "hidden\n");
+
+    const filesConfiguration = workspace.getConfiguration("files", checkout);
+    const previousExclude =
+      filesConfiguration.inspect<Record<string, boolean>>(
+        "exclude"
+      )?.globalValue;
+    await filesConfiguration.update(
+      "exclude",
+      { ...(previousExclude ?? {}), "**/hidden.txt": true },
+      ConfigurationTarget.Global
+    );
+
+    try {
+      await repository.status();
+      const resource = repository.unversioned.resourceStates.find(
+        item => item.resourceUri.fsPath === directory
+      );
+      assert.ok(resource);
+
+      await commands.executeCommand("svn.stage", resource);
+      svn(["add", hidden], checkout.fsPath);
+
+      await commands.executeCommand("svn.unstageAll", repository.staged);
+      const status = svn(["status"], checkout.fsPath);
+      assert.match(status, /^A\s+mixed-folder$/m);
+      assert.match(status, /^A\s+mixed-folder[\\/]hidden\.txt$/m);
+      assert.match(status, /^\?\s+mixed-folder[\\/]visible\.txt$/m);
     } finally {
       await filesConfiguration.update(
         "exclude",

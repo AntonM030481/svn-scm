@@ -8,7 +8,7 @@ const DIRECTORY_ROOT_MARKER = ":d:";
 export interface StagingChangelistMetadata {
   originalChangelist?: string;
   wasUnversioned: boolean;
-  createdDirectoryRoot?: string;
+  createdDirectoryRelativeRoot?: string;
 }
 
 export function normalizeWorkingCopyRoot(root: string): string {
@@ -22,13 +22,14 @@ export function normalizeWorkingCopyRoot(root: string): string {
 export function createStagingChangelist(
   originalChangelist?: string,
   wasUnversioned: boolean = false,
-  createdDirectoryRoot?: string
+  createdDirectoryRelativeRoot?: string
 ): string {
   if (wasUnversioned) {
-    if (createdDirectoryRoot) {
-      const encodedRoot = Buffer.from(createdDirectoryRoot, "utf8").toString(
-        "hex"
-      );
+    if (createdDirectoryRelativeRoot) {
+      const encodedRoot = Buffer.from(
+        createdDirectoryRelativeRoot,
+        "utf8"
+      ).toString("hex");
       return `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}${DIRECTORY_ROOT_MARKER}${encodedRoot}`;
     }
     return `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}`;
@@ -72,7 +73,9 @@ export function parseStagingChangelist(
     }
     return {
       wasUnversioned: true,
-      createdDirectoryRoot: Buffer.from(encodedRoot, "hex").toString("utf8")
+      createdDirectoryRelativeRoot: Buffer.from(encodedRoot, "hex").toString(
+        "utf8"
+      )
     };
   }
 

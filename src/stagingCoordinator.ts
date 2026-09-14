@@ -469,7 +469,11 @@ export class StagingCoordinator implements Disposable {
         if (fileDescendants.length) {
           await repository.addChangelist(
             fileDescendants,
-            createStagingChangelist(undefined, true, directory)
+            createStagingChangelist(
+              undefined,
+              true,
+              path.relative(repository.root, directory)
+            )
           );
         } else {
           await repository.revert([directory], "infinity");
@@ -590,16 +594,35 @@ export class StagingCoordinator implements Disposable {
     }
   }
 
-  private addedAncestorDirectoriesForUnstage(
+  private async addedAncestorDirectoriesForUnstage(
     repository: Repository,
     paths: string[],
-    createdDirectoryRoot: string
-  ): string[] {
+    createdDirectoryRelativeRoot: string
+  ): Promise<string[]> {
+    const createdDirectoryRoot = path.resolve(
+      repository.root,
+      createdDirectoryRelativeRoot
+    );
     if (!isPathInside(repository.root, createdDirectoryRoot)) {
       return [];
     }
 
     const selected = new Set(paths.map(normalizePath));
+    const statuses = await repository.repository.getStatus({
+      includeIgnored: true,
+      includeExternals: false,
+      forceFull: true
+    });
+    const added = statuses
+      .filter(status => status.status === Status.ADDED)
+      .map(status =>
+        path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(repository.workspaceRoot, status.path)
+      )
+      .filter(candidate => isPathInside(createdDirectoryRoot, candidate))
+      .map(normalizePath);
+    const addedSet = new Set(added);
     const candidates = new Set<string>();
 
     for (const filePath of paths) {
@@ -608,8 +631,9 @@ export class StagingCoordinator implements Disposable {
         directory !== path.dirname(directory) &&
         isPathInside(createdDirectoryRoot, directory)
       ) {
-        if (this.findResource(repository, directory)?.type === Status.ADDED) {
-          candidates.add(normalizePath(directory));
+        const key = normalizePath(directory);
+        if (addedSet.has(key)) {
+          candidates.add(key);
         }
         if (samePath(directory, createdDirectoryRoot)) {
           break;
@@ -617,10 +641,6 @@ export class StagingCoordinator implements Disposable {
         directory = path.dirname(directory);
       }
     }
-
-    const added = this.resourcesUnderPath(repository, createdDirectoryRoot)
-      .filter(resource => resource.type === Status.ADDED)
-      .map(resource => normalizePath(resource.resourceUri.fsPath));
 
     return [...candidates]
       .filter(
@@ -647,11 +667,11 @@ export class StagingCoordinator implements Disposable {
     }
 
     const addedDirectories =
-      metadata.wasUnversioned && metadata.createdDirectoryRoot
-        ? this.addedAncestorDirectoriesForUnstage(
+      metadata.wasUnversioned && metadata.createdDirectoryRelativeRoot
+        ? await this.addedAncestorDirectoriesForUnstage(
             repository,
             paths,
-            metadata.createdDirectoryRoot
+            metadata.createdDirectoryRelativeRoot
           )
         : [];
 
