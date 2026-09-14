@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - feature/git-like-staging
-  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -22,75 +21,86 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           p = Path('src/stagingCoordinator.ts')
           s = p.read_text()
-          pattern = re.compile(
-              r'    const addedPaths = resources\n'
-              r'.*?'
-              r'    await repository\.removeChangelist\(paths\);\n'
-              r'    if \(metadata\.wasUnversioned && addedPaths\.length\) \{\n'
-              r'      await repository\.revert\(addedPaths, "empty"\);\n'
-              r'      for \(const directory of addedDirectories\) \{\n'
-              r'        await repository\.revert\(\[directory\], "empty"\);\n'
-              r'      \}\n'
-              r'    \}\n',
-              re.S,
+          old = (
+              '    const addedPaths = resources\n'
+              '      .filter(resource => resource.type === Status.ADDED)\n'
+              '      .map(resource => resource.resourceUri.fsPath);\n'
+              '    const addedDirectories =\n'
+              '      metadata.wasUnversioned &&\n'
+              '      metadata.createdDirectoryRelativeRoot &&\n'
+              '      addedPaths.length\n'
+              '        ? await this.addedAncestorDirectoriesForUnstage(\n'
+              '            repository,\n'
+              '            addedPaths,\n'
+              '            metadata.createdDirectoryRelativeRoot\n'
+              '          )\n'
+              '        : [];\n'
+              '\n'
+              '    await repository.removeChangelist(paths);\n'
+              '    if (metadata.wasUnversioned && addedPaths.length) {\n'
+              '      await repository.revert(addedPaths, "empty");\n'
+              '      for (const directory of addedDirectories) {\n'
+              '        await repository.revert([directory], "empty");\n'
+              '      }\n'
+              '    }\n'
           )
-          replacement = '''    await repository.removeChangelist(paths);
-          if (!metadata.wasUnversioned) return;
-
-          const selected = new Set(paths.map(normalizePath));
-          const statuses = await repository.repository.getStatus({
-            includeIgnored: true,
-            includeExternals: false,
-            forceFull: true
-          });
-          const addedPaths = statuses
-            .filter(status => status.status === Status.ADDED)
-            .map(status =>
-              path.isAbsolute(status.path)
-                ? status.path
-                : path.resolve(repository.workspaceRoot, status.path)
-            )
-            .filter(candidate => selected.has(normalizePath(candidate)));
-          if (!addedPaths.length) return;
-
-          const addedDirectories = metadata.createdDirectoryRelativeRoot
-            ? await this.addedAncestorDirectoriesForUnstage(
-                repository,
-                addedPaths,
-                metadata.createdDirectoryRelativeRoot
-              )
-            : [];
-
-          await repository.revert(addedPaths, "empty");
-          for (const directory of addedDirectories) {
-            await repository.revert([directory], "empty");
-          }
-'''
-          s, count = pattern.subn(replacement, s, count=1)
-          if count != 1:
-              raise SystemExit(f'stagingCoordinator replacement count={count}')
-          p.write_text(s)
+          new = (
+              '    await repository.removeChangelist(paths);\n'
+              '    if (!metadata.wasUnversioned) return;\n'
+              '\n'
+              '    const selected = new Set(paths.map(normalizePath));\n'
+              '    const statuses = await repository.repository.getStatus({\n'
+              '      includeIgnored: true,\n'
+              '      includeExternals: false,\n'
+              '      forceFull: true\n'
+              '    });\n'
+              '    const addedPaths = statuses\n'
+              '      .filter(status => status.status === Status.ADDED)\n'
+              '      .map(status =>\n'
+              '        path.isAbsolute(status.path)\n'
+              '          ? status.path\n'
+              '          : path.resolve(repository.workspaceRoot, status.path)\n'
+              '      )\n'
+              '      .filter(candidate => selected.has(normalizePath(candidate)));\n'
+              '    if (!addedPaths.length) return;\n'
+              '\n'
+              '    const addedDirectories = metadata.createdDirectoryRelativeRoot\n'
+              '      ? await this.addedAncestorDirectoriesForUnstage(\n'
+              '          repository,\n'
+              '          addedPaths,\n'
+              '          metadata.createdDirectoryRelativeRoot\n'
+              '        )\n'
+              '      : [];\n'
+              '\n'
+              '    await repository.revert(addedPaths, "empty");\n'
+              '    for (const directory of addedDirectories) {\n'
+              '      await repository.revert([directory], "empty");\n'
+              '    }\n'
+          )
+          if old not in s:
+              raise SystemExit('stagingCoordinator target block not found')
+          p.write_text(s.replace(old, new, 1))
 
           p = Path('src/test/stagingLiveValidation.test.ts')
           s = p.read_text()
-          pattern = re.compile(
-              r'    const originalEnsureStatus = repository\.ensureStatus\.bind\(repository\);\n'
-              r'.*?'
-              r'    \}\n\n'
-              r'    assert\.equal',
-              re.S,
+          old = (
+              '    const originalEnsureStatus = repository.ensureStatus.bind(repository);\n'
+              '    (repository as any).ensureStatus = async () => {\n'
+              '      await repository.status();\n'
+              '    };\n'
+              '    try {\n'
+              '      await commands.executeCommand("svn.unstage", staleStaged);\n'
+              '    } finally {\n'
+              '      (repository as any).ensureStatus = originalEnsureStatus;\n'
+              '    }\n'
           )
-          replacement = '''    await commands.executeCommand("svn.unstage", staleStaged);
-
-          assert.equal'''
-          s, count = pattern.subn(replacement, s, count=1)
-          if count != 1:
-              raise SystemExit(f'live validation replacement count={count}')
-          p.write_text(s)
+          new = '    await commands.executeCommand("svn.unstage", staleStaged);\n'
+          if old not in s:
+              raise SystemExit('live validation target block not found')
+          p.write_text(s.replace(old, new, 1))
           PY
           yarn prettier --write src/stagingCoordinator.ts src/test/stagingLiveValidation.test.ts
           yarn check
