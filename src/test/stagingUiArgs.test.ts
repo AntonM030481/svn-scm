@@ -2,7 +2,13 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
+import {
+  commands,
+  ConfigurationTarget,
+  extensions,
+  Uri,
+  workspace
+} from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -25,6 +31,71 @@ suite("Staging UI Argument Tests", () => {
 
   suiteTeardown(() => {
     opened.forEach(repository => sourceControlManager.close(repository));
+  });
+
+  test("manifest exposes Git-like folder and group staging actions", () => {
+    const extension = extensions.getExtension("antonm030481.svn-scm");
+    assert.ok(extension);
+
+    const menus = extension.packageJSON.contributes.menus as Record<
+      string,
+      Array<{ command: string; when?: string; group?: string }>
+    >;
+    const folderMenu = menus["scm/resourceFolder/context"] ?? [];
+    const groupMenu = menus["scm/resourceGroup/context"] ?? [];
+
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.stage" &&
+          item.when?.includes("scmResourceGroup != staged")
+      )
+    );
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.unstage" &&
+          item.when?.includes("scmResourceGroup == staged")
+      )
+    );
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.revert" &&
+          item.when?.includes("scmResourceGroup == changes")
+      )
+    );
+    assert.equal(
+      folderMenu.some(
+        item =>
+          item.command === "svn.revert" &&
+          item.when?.includes("scmResourceGroup == staged")
+      ),
+      false
+    );
+
+    assert.ok(
+      groupMenu.some(
+        item =>
+          item.command === "svn.stageAll" &&
+          item.when?.includes("scmResourceGroup != staged")
+      )
+    );
+    assert.ok(
+      groupMenu.some(
+        item =>
+          item.command === "svn.unstageAll" &&
+          item.when?.includes("scmResourceGroup == staged")
+      )
+    );
+    assert.equal(
+      groupMenu.some(
+        item =>
+          item.command === "svn.revertAll" &&
+          item.when?.includes("scmResourceGroup == staged")
+      ),
+      false
+    );
   });
 
   test("Stage and Unstage accept SCM tree resource-node arguments", async () => {
@@ -134,12 +205,11 @@ suite("Staging UI Argument Tests", () => {
       context: repository.staged
     });
     assert.equal(repository.staged?.resourceStates.length, 0);
-    assert.equal(
-      repository.changes.resourceStates.filter(resource =>
-        [first, second].includes(resource.resourceUri.fsPath)
-      ).length,
-      2
+    const changedPaths = repository.changes.resourceStates.map(
+      resource => resource.resourceUri.fsPath
     );
+    assert.equal(changedPaths.includes(first), true);
+    assert.equal(changedPaths.includes(second), true);
     assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
     assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
 
@@ -153,14 +223,9 @@ suite("Staging UI Argument Tests", () => {
     assert.equal(repository.staged?.resourceStates.length, 0);
     assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
     assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
-    assert.match(
-      svn(["status"], checkout.fsPath),
-      /^M\s+folder\/first\.txt$/m
-    );
-    assert.match(
-      svn(["status"], checkout.fsPath),
-      /^M\s+folder\/second\.txt$/m
-    );
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^M\s+folder\/first\.txt$/m);
+    assert.match(status, /^M\s+folder\/second\.txt$/m);
     assert.equal(fullStatusCalls, 0);
   });
 
