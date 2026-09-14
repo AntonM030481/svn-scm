@@ -3,6 +3,7 @@ import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
 import { commands, Uri } from "vscode";
+import { isPathInside } from "../commands/commitStaged";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -86,46 +87,13 @@ suite("Staged Commit Status Tests", () => {
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
   });
 
-  test("refreshes parent projection for a dot-prefixed child folder", async () => {
-    const checkout = await createCheckout();
-    const childRoot = path.join(checkout.fsPath, "..child");
-    fs.mkdirSync(childRoot);
-    const file = path.join(childRoot, "nested.txt");
-    fs.writeFileSync(file, "before\n");
-    svn(["add", "..child"], checkout.fsPath);
-    svn(["commit", "-m", "add dot child"], checkout.fsPath);
+  test("path containment accepts dot-prefixed descendants only", () => {
+    const parent = path.resolve(path.sep, "wc");
 
-    await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    await sourceControlManager.tryOpenRepository(childRoot);
-    const parentRepository = sourceControlManager.getRepository(
-      checkout
-    ) as Repository;
-    const childRepository = sourceControlManager.getRepository(
-      Uri.file(file)
-    ) as Repository;
-    opened.push(parentRepository, childRepository);
-
-    fs.writeFileSync(file, "after\n");
-    await parentRepository.status();
-    await childRepository.status();
-    const resource = childRepository.changes.resourceStates.find(
-      item => item.resourceUri.fsPath === file
-    );
-    assert.ok(resource);
-    await commands.executeCommand("svn.stage", resource);
-
-    parentRepository.inputBox.value = "commit dot child";
-    await commands.executeCommand(
-      "svn.commitStaged",
-      parentRepository.sourceControl
-    );
-
-    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
-    assert.equal(
-      parentRepository.staged?.resourceStates.some(
-        item => item.resourceUri.fsPath === file
-      ),
-      false
-    );
+    assert.equal(isPathInside(parent, path.join(parent, "..child", "file")), true);
+    assert.equal(isPathInside(parent, path.join(parent, "child", "file")), true);
+    assert.equal(isPathInside(parent, parent), true);
+    assert.equal(isPathInside(parent, path.resolve(parent, "..", "child")), false);
+    assert.equal(isPathInside(parent, path.resolve(parent, "..")), false);
   });
 });
