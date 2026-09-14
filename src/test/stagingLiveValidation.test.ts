@@ -86,6 +86,43 @@ suite("Staging Live Validation Tests", () => {
     );
   });
 
+  test("legacy commit refuses staged resources", async () => {
+    const checkout = await createCheckout();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "staged change\n");
+    await repository.status();
+    const changed = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === file
+    );
+    assert.ok(changed);
+
+    await commands.executeCommand("svn.stage", changed);
+    const staged = repository.staged?.resourceStates.find(
+      resource => resource.resourceUri.fsPath === file
+    );
+    assert.ok(staged);
+
+    await commands.executeCommand("svn.commit", staged);
+
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        resource => resource.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.match(
+      svn(["status", "--xml"], checkout.fsPath),
+      /__svn_scm_staged__/
+    );
+    assert.match(svn(["status"], checkout.fsPath), /^M\s+one[\\/]a\.txt$/m);
+  });
+
   test("commit staged rebuilds selection after live status", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
