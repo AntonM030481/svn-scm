@@ -5,6 +5,7 @@ import { inputCommitMessage, noChangesToCommit } from "../messages";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { StagingCoordinator } from "../stagingCoordinator";
+import { isStagingChangelist } from "../stagingModel";
 import SvnError, { getErrorMessage } from "../svnError";
 import { normalizePath } from "../util";
 import { Command } from "./command";
@@ -31,6 +32,34 @@ async function ensureWorkingCopyLiveStatus(
       .repositoriesForWorkingCopy(repository)
       .map(peer => peer.fullStatus())
   );
+}
+
+async function authoritativeStagedPaths(
+  staging: StagingCoordinator,
+  repository: Repository
+): Promise<Map<Repository, Set<string>>> {
+  const result = new Map<Repository, Set<string>>();
+  await Promise.all(
+    staging.repositoriesForWorkingCopy(repository).map(async peer => {
+      const statuses = await peer.repository.getStatus({
+        includeIgnored: true,
+        includeExternals: false,
+        forceFull: true
+      });
+      const paths = new Set<string>();
+      for (const status of statuses) {
+        if (!status.changelist || !isStagingChangelist(status.changelist)) {
+          continue;
+        }
+        const filePath = path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(peer.workspaceRoot, status.path);
+        paths.add(normalizePath(filePath));
+      }
+      result.set(peer, paths);
+    })
+  );
+  return result;
 }
 
 async function commitEntries(
@@ -95,8 +124,17 @@ export class CommitStaged extends Command {
 
   public async execute(repository: Repository) {
     await ensureWorkingCopyLiveStatus(this.staging, repository);
+    const currentStagedPaths = await authoritativeStagedPaths(
+      this.staging,
+      repository
+    );
     const entries = this.staging
       .stagedEntriesForWorkingCopy(repository)
+      .filter(({ repository: owner, resource }) =>
+        currentStagedPaths
+          .get(owner)
+          ?.has(normalizePath(resource.resourceUri.fsPath))
+      )
       .map(({ repository: owner, resource }) => ({
         repository: owner,
         resource
