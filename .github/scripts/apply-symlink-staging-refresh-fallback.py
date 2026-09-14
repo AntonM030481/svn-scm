@@ -65,7 +65,9 @@ old = '''    await Promise.all(
       peers.map(peer =>
         refreshStatusTargets(
           peer,
-          filePaths.filter(filePath => isPathInside(peer.workspaceRoot, filePath))
+          filePaths.filter(filePath =>
+            isPathInside(peer.workspaceRoot, filePath)
+          )
         )
       )
     );
