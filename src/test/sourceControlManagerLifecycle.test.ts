@@ -306,6 +306,7 @@ suite("Source control manager lifecycle", () => {
       uri: Uri.file("/workspace/wc/sub")
     } as WorkspaceFolder;
     const scanned: string[] = [];
+    (manager as any).currentWorkspaceFolders = () => [surviving];
     (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () => [
       surviving
     ];
@@ -320,13 +321,15 @@ suite("Source control manager lifecycle", () => {
     assert.deepStrictEqual(scanned, [surviving.uri.fsPath]);
   });
 
-  test("a later workspace event invalidates unfinished rediscovery", async () => {
+  test("later workspace events restart or cancel pending rediscovery by folder", async () => {
     const surviving = {
       uri: Uri.file("/workspace/wc/sub")
     } as WorkspaceFolder;
     const requests: any[] = [];
+    let currentFolders: WorkspaceFolder[] = [surviving];
     let events = 0;
     (manager as any).enabled = true;
+    (manager as any).currentWorkspaceFolders = () => currentFolders;
     (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () =>
       events++ === 0 ? [surviving] : [];
     (manager as any).getOpenRepository = () => undefined;
@@ -334,7 +337,10 @@ suite("Source control manager lifecycle", () => {
       _root: string,
       _level: number,
       options: unknown
-    ) => requests.push(options);
+    ) => {
+      requests.push(options);
+      return new Promise<void>(() => {});
+    };
 
     await (manager as any).onDidChangeWorkspaceFolders({
       added: [],
@@ -342,10 +348,15 @@ suite("Source control manager lifecycle", () => {
     });
     await (manager as any).onDidChangeWorkspaceFolders({
       added: [],
-      removed: [surviving]
+      removed: [{ uri: Uri.file("/unrelated") } as WorkspaceFolder]
     });
 
-    assert.equal(requests.length, 1);
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[0].workspaceFolderGeneration <
+        requests[1].workspaceFolderGeneration,
+      true
+    );
     assert.equal(
       (manager as any).isDiscoveryRequestActive(
         (manager as any).lifecycleGeneration,
@@ -353,6 +364,20 @@ suite("Source control manager lifecycle", () => {
       ),
       false
     );
+    assert.equal(
+      (manager as any).isDiscoveryRequestActive(
+        (manager as any).lifecycleGeneration,
+        requests[1].workspaceFolderGeneration
+      ),
+      true
+    );
+
+    currentFolders = [];
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: [surviving]
+    });
+    assert.equal(requests.length, 2);
 
     let disposed = 0;
     const staleRepository = { dispose: () => disposed++ } as any;
@@ -361,7 +386,7 @@ suite("Source control manager lifecycle", () => {
       (manager as any).lifecycleGeneration,
       false,
       [],
-      requests[0].workspaceFolderGeneration
+      requests[1].workspaceFolderGeneration
     );
     assert.equal(disposed, 1);
     assert.equal(manager.openRepositories.length, 0);

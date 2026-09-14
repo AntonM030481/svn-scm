@@ -98,6 +98,10 @@ export class SourceControlManager implements IDisposable {
   private disposed = false;
   private lifecycleGeneration = 0;
   private workspaceFolderGeneration = 0;
+  private pendingWorkspaceFolderDiscoveries = new Map<
+    string,
+    { folder: WorkspaceFolder; generation: number }
+  >();
   private enableTask: Promise<void> = Promise.resolve();
   private initialization?: Promise<void>;
   private routingValidations = new WeakMap<
@@ -445,6 +449,7 @@ export class SourceControlManager implements IDisposable {
     this.openRepositories = [];
     this.disposables = [];
     this.possibleSvnRepositoryPaths.clear();
+    this.pendingWorkspaceFolderDiscoveries.clear();
     // Detach the old session before close listeners can enable a new one.
     disposeResources(disposables);
     disposeResources(repositories);
@@ -455,24 +460,53 @@ export class SourceControlManager implements IDisposable {
     removed
   }: WorkspaceFoldersChangeEvent) {
     const workspaceFolderGeneration = ++this.workspaceFolderGeneration;
+    const currentFolders = this.currentWorkspaceFolders();
     const survivingFolders =
-      this.disposeRepositoriesUncoveredByWorkspaceRemoval(removed);
-    const seen = new Set<string>();
+      this.disposeRepositoriesUncoveredByWorkspaceRemoval(
+        removed,
+        currentFolders
+      );
+    const currentRoots = new Set(
+      currentFolders.map(folder => normalizePath(folder.uri.fsPath))
+    );
 
-    const possibleRepositoryFolders = [...added, ...survivingFolders].filter(
-      folder => {
-        const root = normalizePath(folder.uri.fsPath);
-        if (seen.has(root) || this.getOpenRepository(folder.uri)) {
-          return false;
-        }
-        seen.add(root);
-        return true;
+    for (const root of this.pendingWorkspaceFolderDiscoveries.keys()) {
+      if (!currentRoots.has(root)) {
+        this.pendingWorkspaceFolderDiscoveries.delete(root);
       }
-    );
+    }
+    for (const folder of [...added, ...survivingFolders]) {
+      const root = normalizePath(folder.uri.fsPath);
+      this.pendingWorkspaceFolderDiscoveries.set(root, {
+        folder,
+        generation: workspaceFolderGeneration
+      });
+    }
 
-    possibleRepositoryFolders.forEach(p =>
-      this.tryOpenRepository(p.uri.fsPath, 0, { workspaceFolderGeneration })
-    );
+    for (const [root, pending] of this.pendingWorkspaceFolderDiscoveries) {
+      if (this.getOpenRepository(pending.folder.uri)) {
+        this.pendingWorkspaceFolderDiscoveries.delete(root);
+        continue;
+      }
+      const request = {
+        folder: pending.folder,
+        generation: workspaceFolderGeneration
+      };
+      this.pendingWorkspaceFolderDiscoveries.set(root, request);
+      void Promise.resolve(
+        this.tryOpenRepository(request.folder.uri.fsPath, 0, {
+          workspaceFolderGeneration
+        })
+      ).finally(() => {
+        if (this.pendingWorkspaceFolderDiscoveries.get(root) === request) {
+          this.pendingWorkspaceFolderDiscoveries.delete(root);
+        }
+      });
+    }
+  }
+
+  private currentWorkspaceFolders(): readonly WorkspaceFolder[] {
+    return workspace.workspaceFolders || [];
   }
 
   private disposeRepositoriesUncoveredByWorkspaceRemoval(
