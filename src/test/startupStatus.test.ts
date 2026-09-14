@@ -197,6 +197,22 @@ suite("Persisted startup status integration", () => {
         repo.getResourceFromFile(transient)!.type,
         Status.UNVERSIONED
       );
+      const directory = path.join(f.root, "transient-directory");
+      await fs.mkdir(directory);
+      const descendant = path.join(directory, "child.txt");
+      await fs.writeFile(descendant, "temporary child");
+      events.fire(Uri.file(descendant));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await (repo as any).scanStartupFiles();
+      assert.equal(
+        repo.getResourceFromFile(descendant)!.type,
+        Status.UNVERSIONED
+      );
+      await fs.rm(directory, { recursive: true });
+      // A recursive delete may emit only the directory URI.
+      deletions.fire(Uri.file(directory));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await (repo as any).scanStartupFiles();
       await fs.unlink(transient);
       deletions.fire(Uri.file(transient));
       await new Promise<void>(resolve => setImmediate(resolve));
@@ -207,6 +223,7 @@ suite("Persisted startup status integration", () => {
       assert.equal(repo.getResourceFromFile(reverted), undefined);
       assert.equal(publications, 1);
       assert.equal(repo.getResourceFromFile(transient), undefined);
+      assert.equal(repo.getResourceFromFile(descendant), undefined);
       const snapshot = f.data.get([...f.data.keys()][0]) as any;
       assert.equal(
         snapshot.statuses.find((s: any) => s.path === "new.txt").status,

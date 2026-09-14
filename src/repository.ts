@@ -964,7 +964,11 @@ export class Repository implements IRemoteRepository {
     const key = snapshotPathKey(relative);
     this.startupFileVersion++;
     // New evidence is needed after every event, even if an earlier check succeeded.
-    this.startupFileResults.delete(key);
+    for (const cached of this.startupFileResults.keys()) {
+      if (cached === key || cached.startsWith(key + path.sep)) {
+        this.startupFileResults.delete(cached);
+      }
+    }
     if (
       !this.startupFilesSeen.has(key) &&
       this.startupFilesSeen.size >= STARTUP_MAX_FILES

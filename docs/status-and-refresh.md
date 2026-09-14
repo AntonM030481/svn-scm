@@ -272,7 +272,9 @@ descendants and rename pairs stay in the normal reconciliation queue.
 
 Accepted results use the existing preview projection and do not enable mutation
 readiness or automatic actions. A new event invalidates an in-flight batch;
-those targets are rechecked instead of publishing the obsolete result. The
+those targets are rechecked instead of publishing the obsolete result. Directory
+events invalidate accepted evidence for all descendants as well as the exact
+path, so recursive deletes cannot resurrect previously checked files. The
 initial full result incorporates accepted newer local records by exact path,
 including explicit clean records, while keeping its remote evidence. All file
 events also remain in the ordinary incremental queue, which reconciles skipped,
