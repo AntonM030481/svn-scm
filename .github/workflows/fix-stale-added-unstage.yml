@@ -22,84 +22,75 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path('src/stagingCoordinator.ts')
           s = p.read_text()
-          old = '''    const addedPaths = resources
-              .filter(resource => resource.type === Status.ADDED)
-              .map(resource => resource.resourceUri.fsPath);
-            const addedDirectories =
-              metadata.wasUnversioned &&
-              metadata.createdDirectoryRelativeRoot &&
-              addedPaths.length
-                ? await this.addedAncestorDirectoriesForUnstage(
-                    repository,
-                    addedPaths,
-                    metadata.createdDirectoryRelativeRoot
-                  )
-                : [];
+          pattern = re.compile(
+              r'    const addedPaths = resources\n'
+              r'.*?'
+              r'    await repository\.removeChangelist\(paths\);\n'
+              r'    if \(metadata\.wasUnversioned && addedPaths\.length\) \{\n'
+              r'      await repository\.revert\(addedPaths, "empty"\);\n'
+              r'      for \(const directory of addedDirectories\) \{\n'
+              r'        await repository\.revert\(\[directory\], "empty"\);\n'
+              r'      \}\n'
+              r'    \}\n',
+              re.S,
+          )
+          replacement = '''    await repository.removeChangelist(paths);
+          if (!metadata.wasUnversioned) return;
 
-            await repository.removeChangelist(paths);
-            if (metadata.wasUnversioned && addedPaths.length) {
-              await repository.revert(addedPaths, "empty");
-              for (const directory of addedDirectories) {
-                await repository.revert([directory], "empty");
-              }
-            }
-          '''
-          new = '''    await repository.removeChangelist(paths);
-            if (!metadata.wasUnversioned) return;
+          const selected = new Set(paths.map(normalizePath));
+          const statuses = await repository.repository.getStatus({
+            includeIgnored: true,
+            includeExternals: false,
+            forceFull: true
+          });
+          const addedPaths = statuses
+            .filter(status => status.status === Status.ADDED)
+            .map(status =>
+              path.isAbsolute(status.path)
+                ? status.path
+                : path.resolve(repository.workspaceRoot, status.path)
+            )
+            .filter(candidate => selected.has(normalizePath(candidate)));
+          if (!addedPaths.length) return;
 
-            const selected = new Set(paths.map(normalizePath));
-            const statuses = await repository.repository.getStatus({
-              includeIgnored: true,
-              includeExternals: false,
-              forceFull: true
-            });
-            const addedPaths = statuses
-              .filter(status => status.status === Status.ADDED)
-              .map(status =>
-                path.isAbsolute(status.path)
-                  ? status.path
-                  : path.resolve(repository.workspaceRoot, status.path)
+          const addedDirectories = metadata.createdDirectoryRelativeRoot
+            ? await this.addedAncestorDirectoriesForUnstage(
+                repository,
+                addedPaths,
+                metadata.createdDirectoryRelativeRoot
               )
-              .filter(candidate => selected.has(normalizePath(candidate)));
-            if (!addedPaths.length) return;
+            : [];
 
-            const addedDirectories = metadata.createdDirectoryRelativeRoot
-              ? await this.addedAncestorDirectoriesForUnstage(
-                  repository,
-                  addedPaths,
-                  metadata.createdDirectoryRelativeRoot
-                )
-              : [];
-
-            await repository.revert(addedPaths, "empty");
-            for (const directory of addedDirectories) {
-              await repository.revert([directory], "empty");
-            }
-          '''
-          if old not in s:
-              raise SystemExit('stagingCoordinator target block not found')
-          p.write_text(s.replace(old, new, 1))
+          await repository.revert(addedPaths, "empty");
+          for (const directory of addedDirectories) {
+            await repository.revert([directory], "empty");
+          }
+'''
+          s, count = pattern.subn(replacement, s, count=1)
+          if count != 1:
+              raise SystemExit(f'stagingCoordinator replacement count={count}')
+          p.write_text(s)
 
           p = Path('src/test/stagingLiveValidation.test.ts')
           s = p.read_text()
-          old = '''    const originalEnsureStatus = repository.ensureStatus.bind(repository);
-            (repository as any).ensureStatus = async () => {
-              await repository.status();
-            };
-            try {
-              await commands.executeCommand("svn.unstage", staleStaged);
-            } finally {
-              (repository as any).ensureStatus = originalEnsureStatus;
-            }
-          '''
-          new = '''    await commands.executeCommand("svn.unstage", staleStaged);
-          '''
-          if old not in s:
-              raise SystemExit('live validation target block not found')
-          p.write_text(s.replace(old, new, 1))
+          pattern = re.compile(
+              r'    const originalEnsureStatus = repository\.ensureStatus\.bind\(repository\);\n'
+              r'.*?'
+              r'    \}\n\n'
+              r'    assert\.equal',
+              re.S,
+          )
+          replacement = '''    await commands.executeCommand("svn.unstage", staleStaged);
+
+          assert.equal'''
+          s, count = pattern.subn(replacement, s, count=1)
+          if count != 1:
+              raise SystemExit(f'live validation replacement count={count}')
+          p.write_text(s)
           PY
           yarn prettier --write src/stagingCoordinator.ts src/test/stagingLiveValidation.test.ts
           yarn check
