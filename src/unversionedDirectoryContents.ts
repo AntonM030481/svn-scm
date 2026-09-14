@@ -100,10 +100,16 @@ export class UnversionedDirectoryContents implements Disposable {
   private readonly disposables: Disposable[] = [];
 
   constructor(private readonly sourceControlManager: SourceControlManager) {
-    sourceControlManager.repositories.forEach(repository => this.attach(repository));
+    sourceControlManager.repositories.forEach(repository =>
+      this.attach(repository)
+    );
     this.disposables.push(
-      sourceControlManager.onDidOpenRepository(repository => this.attach(repository)),
-      sourceControlManager.onDidCloseRepository(repository => this.detach(repository))
+      sourceControlManager.onDidOpenRepository(repository =>
+        this.attach(repository)
+      ),
+      sourceControlManager.onDidCloseRepository(repository =>
+        this.detach(repository)
+      )
     );
   }
 
@@ -144,7 +150,12 @@ export class UnversionedDirectoryContents implements Disposable {
     const children: UnversionedChildResource[] = [];
 
     for (const resource of baseResources) {
-      if (resource.type !== Status.UNVERSIONED || budget.remaining <= 0) continue;
+      if (
+        resource.type !== Status.UNVERSIONED ||
+        budget.remaining <= 0
+      ) {
+        continue;
+      }
       try {
         const stat = await fs.lstat(resource.resourceUri.fsPath);
         if (!stat.isDirectory()) continue;
@@ -160,7 +171,10 @@ export class UnversionedDirectoryContents implements Disposable {
       );
     }
 
-    if (this.states.get(repository) !== state || generation !== state.generation) {
+    if (
+      this.states.get(repository) !== state ||
+      generation !== state.generation
+    ) {
       return;
     }
 
