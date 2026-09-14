@@ -1,6 +1,7 @@
-import { SourceControlResourceState } from "vscode";
+import { commands, SourceControlResourceState, Uri } from "vscode";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
+import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
 import { Command } from "./command";
 
@@ -15,7 +16,30 @@ abstract class BaseStagingCommand extends Command {
   protected async selectedResources(
     resourceStates: SourceControlResourceState[]
   ): Promise<Resource[]> {
-    return this.getResourceStates(resourceStates);
+    if (!resourceStates.length) {
+      return this.getResourceStates(resourceStates);
+    }
+
+    // SCM menu actions are contributed by package.json and VS Code is free to
+    // forward resource-state-shaped objects rather than our concrete Resource
+    // instances. Resolve those arguments structurally by URI instead of
+    // silently dropping them via `instanceof Resource`.
+    const sourceControlManager = (await commands.executeCommand(
+      "svn.getSourceControlManager",
+      ""
+    )) as SourceControlManager;
+    const resources: Resource[] = [];
+
+    for (const resourceState of resourceStates) {
+      const uri = resourceState?.resourceUri;
+      if (!(uri instanceof Uri)) continue;
+
+      const repository = sourceControlManager.getRepository(uri);
+      const resource = repository?.getResourceFromFile(uri);
+      if (resource) resources.push(resource);
+    }
+
+    return resources;
   }
 }
 
