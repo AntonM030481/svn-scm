@@ -151,8 +151,9 @@ changes remain eligible for refresh. Metadata suppression cannot be
 target-specific because a watcher event for `wc.db` or similar administration
 files does not identify the working path that caused it. A concurrent external
 SVN process can therefore have its metadata event hidden during this bounded
-window. The next unsuppressed metadata event or an explicit full refresh
-reconciles the whole projection. A working-file event or later targeted
+window. With auto-refresh enabled, the next eligible unsuppressed metadata event
+reconciles the whole projection; with auto-refresh disabled, only an explicit
+full refresh provides that guarantee. A working-file event or later targeted
 operation reconciles only the paths it covers, so unrelated activity does not
 guarantee recovery of the hidden change. Running an unconditional delayed full
 status after every targeted mutation would remove the optimization and is not
