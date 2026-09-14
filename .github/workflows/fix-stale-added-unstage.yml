@@ -1,5 +1,8 @@
 name: Fix stale added unstage
 on:
+  push:
+    branches:
+      - feature/git-like-staging
   workflow_dispatch:
 permissions:
   contents: write
