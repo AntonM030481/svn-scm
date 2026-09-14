@@ -12,7 +12,9 @@ suite("Staging Directory Status Tests", () => {
         onDidOpenRepository: () => disposables,
         onDidCloseRepository: () => disposables
       };
-      const coordinator = new StagingCoordinator(sourceControlManager as never);
+      const coordinator = new StagingCoordinator(
+        sourceControlManager as never
+      );
 
       const workspaceRoot = path.resolve("working-copy");
       const directory = path.join(workspaceRoot, "new-folder");
@@ -60,11 +62,7 @@ suite("Staging Directory Status Tests", () => {
       };
 
       try {
-        await cleanup.cleanupHiddenDirectoryAdditions(
-          repository,
-          directory,
-          []
-        );
+        await cleanup.cleanupHiddenDirectoryAdditions(repository, directory, []);
       } finally {
         coordinator.dispose();
       }
