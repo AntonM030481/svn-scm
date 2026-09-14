@@ -30,7 +30,6 @@ jobs:
           raw = package.read_bytes()
           old = b'"when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges"'
           new = b'"when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges"'
-          # Apply only to staging-unsafe mutation menu entries, preserving package.json CRLF bytes.
           for command in (b'svn.changelist', b'svn.commit', b'svn.revert', b'svn.remove'):
               pos = 0
               while True:
@@ -53,7 +52,7 @@ jobs:
           text = svn_repo.read_text()
           text = text.replace(
               'import { exists, writeFile, stat, readdir } from "./fs";',
-              'import { exists, writeFile, stat, lstat, readdir } from "./fs";'
+              'import { exists, writeFile, lstat, readdir } from "./fs";'
           )
           fn = text.index('  public async addFilesByIgnore(')
           end = text.index('\n  public addFiles(', fn)
