@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, SourceControlResourceState, Uri } from "vscode";
+import { commands, Uri } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -27,7 +27,7 @@ suite("Staging UI Argument Tests", () => {
     opened.forEach(repository => sourceControlManager.close(repository));
   });
 
-  test("Stage and Unstage accept SCM resource-state-shaped arguments", async () => {
+  test("Stage and Unstage accept SCM tree resource-node arguments", async () => {
     const repoUri = await testUtil.createRepoServer();
     await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
     const checkout = await testUtil.createRepoCheckout(
@@ -46,38 +46,77 @@ suite("Staging UI Argument Tests", () => {
 
     fs.writeFileSync(file, "changed\n");
     await repository.status();
-    assert.ok(
-      repository.changes.resourceStates.some(
-        resource => resource.resourceUri.fsPath === file
-      )
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
     );
+    assert.ok(resource);
 
-    // Match the structural contract VS Code SCM menu actions may forward. This
-    // deliberately is not an instance of our Resource class.
-    const uiResource = {
-      resourceUri: Uri.file(file)
-    } as SourceControlResourceState;
+    // SCM tree view uses an IResourceNode wrapper as the inline action context.
+    // The actual SourceControlResourceState is stored in `element`.
+    const treeResourceNode = { element: resource };
 
-    await commands.executeCommand("svn.stage", uiResource);
+    await commands.executeCommand("svn.stage", treeResourceNode);
     assert.equal(
       repository.staged?.resourceStates.some(
-        resource => resource.resourceUri.fsPath === file
+        item => item.resourceUri.fsPath === file
       ),
       true
     );
 
-    await commands.executeCommand("svn.unstage", uiResource);
+    const stagedResource = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(stagedResource);
+    await commands.executeCommand("svn.unstage", {
+      element: stagedResource
+    });
     assert.equal(
       repository.staged?.resourceStates.some(
-        resource => resource.resourceUri.fsPath === file
+        item => item.resourceUri.fsPath === file
       ),
       false
     );
     assert.equal(
       repository.changes.resourceStates.some(
-        resource => resource.resourceUri.fsPath === file
+        item => item.resourceUri.fsPath === file
       ),
       true
+    );
+  });
+
+  test("Stage accepts an unversioned SCM tree resource-node argument", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "new.txt");
+    fs.writeFileSync(file, "new\n");
+    await repository.status();
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    await commands.executeCommand("svn.stage", { element: resource });
+
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.match(svn(["status"], checkout.fsPath), /^A\s+new\.txt$/m);
+    assert.match(
+      svn(["status", "--xml"], checkout.fsPath),
+      /__svn_scm_staged__/
     );
   });
 
