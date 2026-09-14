@@ -106,6 +106,23 @@ function getSvnErrorCode(stderr: string): string | undefined {
   );
 }
 
+function createSvnError(
+  command: string,
+  exitCode: number,
+  stdout: string | Buffer,
+  stderr: string
+): SvnError {
+  return new SvnError({
+    message: "Failed to execute svn",
+    stdout: Buffer.isBuffer(stdout) ? stdout.toString() : stdout,
+    stderr,
+    stderrFormated: stderr.replace(/^svn: E\d+: +/gm, ""),
+    exitCode,
+    svnErrorCode: getSvnErrorCode(stderr),
+    svnCommand: command
+  });
+}
+
 export function cpErrorHandler(
   cb: (reason?: any) => void
 ): (reason?: any) => void {
@@ -287,15 +304,7 @@ export class Svn {
 
     if (exitCode) {
       return Promise.reject<IExecutionResult>(
-        new SvnError({
-          message: "Failed to execute svn",
-          stdout: decodedStdout,
-          stderr,
-          stderrFormated: stderr.replace(/^svn: E\d+: +/gm, ""),
-          exitCode,
-          svnErrorCode: getSvnErrorCode(stderr),
-          svnCommand: args[0]
-        })
+        createSvnError(args[0], exitCode, decodedStdout, stderr)
       );
     }
 
@@ -389,6 +398,12 @@ export class Svn {
       if (err) {
         this.logOutput(err + "\n");
       }
+    }
+
+    if (exitCode) {
+      return Promise.reject<BufferResult>(
+        createSvnError(command, exitCode, stdout, stderr)
+      );
     }
 
     return { exitCode, stdout, stderr };

@@ -293,6 +293,28 @@ suite("Configured SVN streaming executor", () => {
     );
   });
 
+  test("buffered execution rejects SVN failures with complete context", async () => {
+    const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
+    await assert.rejects(
+      svn.execBuffer(
+        process.cwd(),
+        [
+          "-e",
+          'process.stdout.write("partial");process.stderr.write("svn: E200009: Failure");process.exitCode=7',
+          "--"
+        ],
+        { env: environment, log: false }
+      ),
+      error =>
+        error instanceof SvnError &&
+        error.exitCode === 7 &&
+        error.stdout === "partial" &&
+        error.stderr === "svn: E200009: Failure" &&
+        error.svnErrorCode === "E200009" &&
+        error.svnCommand === "-e"
+    );
+  });
+
   test("preserves unknown SVN error codes and prefers errors over warnings", async () => {
     const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
     await assert.rejects(
