@@ -800,7 +800,7 @@ export class Repository {
     rfrom: string,
     rto: string,
     limit: number,
-    target?: string | Uri
+    target?: string
   ): Promise<ISvnLogEntry[]> {
     const args = [
       "log",
@@ -811,9 +811,7 @@ export class Repository {
       "-v"
     ];
     if (target !== undefined) {
-      args.push(
-        fixPegRevision(target instanceof Uri ? target.toString(true) : target)
-      );
+      args.push(fixPegRevision(target));
     }
     const result = await this.exec(args);
 

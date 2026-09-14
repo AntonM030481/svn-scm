@@ -1438,12 +1438,7 @@ export class Repository implements IRemoteRepository {
     );
   }
 
-  public async log(
-    rfrom: string,
-    rto: string,
-    limit: number,
-    target?: string | Uri
-  ) {
+  public async log(rfrom: string, rto: string, limit: number, target?: string) {
     return this.run(Operation.Log, () =>
       this.repository.log(rfrom, rto, limit, target)
     );
