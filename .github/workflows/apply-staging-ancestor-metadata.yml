@@ -1,0 +1,115 @@
+name: Apply staging ancestor metadata fix
+
+on:
+  push:
+    paths:
+      - .github/workflows/apply-staging-ancestor-metadata.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 20
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Apply fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          model = Path('src/stagingModel.ts')
+          text = model.read_text()
+          text = text.replace(
+              'const UNVERSIONED_MARKER = ":u";\n',
+              'const UNVERSIONED_MARKER = ":u";\nconst DIRECTORY_ROOT_MARKER = ":d:";\n'
+          )
+          text = text.replace(
+              'export interface StagingChangelistMetadata {\n  originalChangelist?: string;\n  wasUnversioned: boolean;\n}',
+              'export interface StagingChangelistMetadata {\n  originalChangelist?: string;\n  wasUnversioned: boolean;\n  createdDirectoryRoot?: string;\n}'
+          )
+          text = text.replace(
+              'export function createStagingChangelist(\n  originalChangelist?: string,\n  wasUnversioned: boolean = false\n): string {\n  if (wasUnversioned) {\n    return `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}`;\n  }',
+              'export function createStagingChangelist(\n  originalChangelist?: string,\n  wasUnversioned: boolean = false,\n  createdDirectoryRoot?: string\n): string {\n  if (wasUnversioned) {\n    if (createdDirectoryRoot) {\n      const encodedRoot = Buffer.from(createdDirectoryRoot, "utf8").toString("hex");\n      return `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}${DIRECTORY_ROOT_MARKER}${encodedRoot}`;\n    }\n    return `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}`;\n  }'
+          )
+          text = text.replace(
+              '    name === `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}` ||\n    name.startsWith(`${STAGING_CHANGELIST_PREFIX}${ORIGINAL_CHANGELIST_MARKER}`)',
+              '    name === `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}` ||\n    name.startsWith(\n      `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}${DIRECTORY_ROOT_MARKER}`\n    ) ||\n    name.startsWith(`${STAGING_CHANGELIST_PREFIX}${ORIGINAL_CHANGELIST_MARKER}`)'
+          )
+          marker = '''  if (name === `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}`) {\n    return { wasUnversioned: true };\n  }\n\n  const prefix = `${STAGING_CHANGELIST_PREFIX}${ORIGINAL_CHANGELIST_MARKER}`;'''
+          replacement = '''  if (name === `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}`) {\n    return { wasUnversioned: true };\n  }\n\n  const directoryPrefix = `${STAGING_CHANGELIST_PREFIX}${UNVERSIONED_MARKER}${DIRECTORY_ROOT_MARKER}`;\n  if (name.startsWith(directoryPrefix)) {\n    const encodedRoot = name.slice(directoryPrefix.length);\n    if (!encodedRoot || !/^(?:[0-9a-f]{2})+$/i.test(encodedRoot)) {\n      return undefined;\n    }\n    return {\n      wasUnversioned: true,\n      createdDirectoryRoot: Buffer.from(encodedRoot, "hex").toString("utf8")\n    };\n  }\n\n  const prefix = `${STAGING_CHANGELIST_PREFIX}${ORIGINAL_CHANGELIST_MARKER}`;'''
+          if marker not in text:
+              raise SystemExit('stagingModel parse marker not found')
+          text = text.replace(marker, replacement, 1)
+          model.write_text(text)
+
+          coordinator = Path('src/stagingCoordinator.ts')
+          text = coordinator.read_text()
+          needle = '''          await repository.addChangelist(\n            fileDescendants,\n            createStagingChangelist(undefined, true)\n          );'''
+          repl = '''          await repository.addChangelist(\n            fileDescendants,\n            createStagingChangelist(undefined, true, directory)\n          );'''
+          if needle not in text:
+              raise SystemExit('directory changelist assignment not found')
+          text = text.replace(needle, repl, 1)
+          old_fn = '''  private addedAncestorDirectoriesForUnstage(\n    repository: Repository,\n    paths: string[]\n  ): string[] {\n    const selected = new Set(paths.map(normalizePath));\n    const candidates = new Set<string>();\n\n    for (const filePath of paths) {\n      let directory = path.dirname(filePath);\n      while (\n        directory !== path.dirname(directory) &&\n        normalizePath(directory) !== normalizePath(repository.root)\n      ) {\n        if (this.findResource(repository, directory)?.type === Status.ADDED) {\n          candidates.add(normalizePath(directory));\n        }\n        directory = path.dirname(directory);\n      }\n    }\n\n    const added = this.resourcesUnderPath(repository, repository.workspaceRoot)\n      .filter(resource => resource.type === Status.ADDED)\n      .map(resource => normalizePath(resource.resourceUri.fsPath));'''
+          new_fn = '''  private addedAncestorDirectoriesForUnstage(\n    repository: Repository,\n    paths: string[],\n    createdDirectoryRoot: string\n  ): string[] {\n    if (!isPathInside(repository.root, createdDirectoryRoot)) {\n      return [];\n    }\n\n    const selected = new Set(paths.map(normalizePath));\n    const candidates = new Set<string>();\n\n    for (const filePath of paths) {\n      let directory = path.dirname(filePath);\n      while (\n        directory !== path.dirname(directory) &&\n        isPathInside(createdDirectoryRoot, directory)\n      ) {\n        if (this.findResource(repository, directory)?.type === Status.ADDED) {\n          candidates.add(normalizePath(directory));\n        }\n        if (samePath(directory, createdDirectoryRoot)) {\n          break;\n        }\n        directory = path.dirname(directory);\n      }\n    }\n\n    const added = this.resourcesUnderPath(repository, createdDirectoryRoot)\n      .filter(resource => resource.type === Status.ADDED)\n      .map(resource => normalizePath(resource.resourceUri.fsPath));'''
+          if old_fn not in text:
+              raise SystemExit('ancestor function marker not found')
+          text = text.replace(old_fn, new_fn, 1)
+          old_restore = '''    const addedDirectories = metadata.wasUnversioned\n      ? this.addedAncestorDirectoriesForUnstage(repository, paths)\n      : [];'''
+          new_restore = '''    const addedDirectories =\n      metadata.wasUnversioned && metadata.createdDirectoryRoot\n        ? this.addedAncestorDirectoriesForUnstage(\n            repository,\n            paths,\n            metadata.createdDirectoryRoot\n          )\n        : [];'''
+          if old_restore not in text:
+              raise SystemExit('restore ancestor call not found')
+          text = text.replace(old_restore, new_restore, 1)
+          coordinator.write_text(text)
+
+          model_test = Path('src/test/stagingModel.test.ts')
+          text = model_test.read_text()
+          anchor = '''  test("does not claim malformed or user changelists", () => {'''
+          test = '''  test("persists staging-created directory roots", () => {\n    const root = "/tmp/work tree/каталог";\n    const name = createStagingChangelist(undefined, true, root);\n    assert.equal(isStagingChangelist(name), true);\n    assert.deepEqual(parseStagingChangelist(name), {\n      wasUnversioned: true,\n      createdDirectoryRoot: root\n    });\n  });\n\n'''
+          if anchor not in text:
+              raise SystemExit('staging model test anchor not found')
+          text = text.replace(anchor, test + anchor, 1)
+          malformed = '''    assert.equal(\n      parseStagingChangelist(`${STAGING_CHANGELIST_PREFIX}:c:not-hex`),\n      undefined\n    );'''
+          malformed_new = malformed + '''\n    assert.equal(\n      parseStagingChangelist(`${STAGING_CHANGELIST_PREFIX}:u:d:not-hex`),\n      undefined\n    );'''
+          if malformed not in text:
+              raise SystemExit('malformed assertion marker not found')
+          text = text.replace(malformed, malformed_new, 1)
+          model_test.write_text(text)
+
+          staging_test = Path('src/test/staging.test.ts')
+          text = staging_test.read_text()
+          anchor = '''  test("unstaging an unversioned folder restores its scheduled additions", async () => {'''
+          test = '''  test("unstage preserves pre-existing added ancestor directories", async () => {\n    const checkout = await createCheckoutWithFiles();\n    await sourceControlManager.tryOpenRepository(checkout.fsPath);\n    const repository = sourceControlManager.getRepository(\n      checkout\n    ) as Repository;\n    opened.push(repository);\n\n    const directory = path.join(checkout.fsPath, "pre-added");\n    fs.mkdirSync(directory);\n    svn(["add", "--depth", "empty", "pre-added"], checkout.fsPath);\n    const file = path.join(directory, "child.txt");\n    fs.writeFileSync(file, "child\\n");\n    await repository.status();\n\n    const resource = repository.unversioned.resourceStates.find(\n      item => item.resourceUri.fsPath === file\n    );\n    assert.ok(resource);\n\n    await commands.executeCommand("svn.stage", resource);\n    await commands.executeCommand("svn.unstage", resource);\n\n    const status = svn(["status"], checkout.fsPath);\n    assert.match(status, /^A\\s+pre-added$/m);\n    assert.match(status, /^\\?\\s+pre-added[\\\\/]child\\.txt$/m);\n  });\n\n'''
+          if anchor not in text:
+              raise SystemExit('staging integration test anchor not found')
+          text = text.replace(anchor, test + anchor, 1)
+          staging_test.write_text(text)
+
+          docs = Path('docs/staging.md')
+          text = docs.read_text()
+          old = 'The `__svn_scm_staged__` changelist namespace is reserved for extension-owned staging metadata. The reserved name also encodes whether a file came from a user changelist. Unstage can therefore restore the original changelist even after a reload. Files that were unversioned before staging are marked separately so unstage can return them to an uncommitted state.'
+          new = old + ' When staging creates ancestor directories for an unversioned folder, the reserved metadata also records that staging-created directory root so unstage can remove only additions introduced by staging and preserve pre-existing user-added directories.'
+          if old not in text:
+              raise SystemExit('docs staging metadata paragraph not found')
+          docs.write_text(text.replace(old, new, 1))
+      - name: Format and validate
+        run: |
+          yarn prettier --write src/stagingModel.ts src/stagingCoordinator.ts src/test/stagingModel.test.ts src/test/staging.test.ts docs/staging.md
+          yarn check
+          yarn test:unit
+      - name: Commit fix and remove helper
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/stagingModel.ts src/stagingCoordinator.ts src/test/stagingModel.test.ts src/test/staging.test.ts docs/staging.md
+          git rm .github/workflows/apply-staging-ancestor-metadata.yml
+          git commit -m "fix: preserve pre-existing added ancestors on unstage"
+          git push origin HEAD:feature/git-like-staging
