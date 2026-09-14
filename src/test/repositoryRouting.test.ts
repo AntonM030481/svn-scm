@@ -14,8 +14,7 @@ suite("Validated repository routing", () => {
     manager.openRepositories = [];
     manager.routingValidations = new WeakMap();
     manager.logRepositoryLifecycle = () => undefined;
-    manager.scanExternals = () => undefined;
-    manager.scanIgnored = () => undefined;
+    manager.scanNestedRepositories = () => undefined;
     const emitters: EventEmitter<any>[] = [];
     for (const name of [
       "OpenRepository",

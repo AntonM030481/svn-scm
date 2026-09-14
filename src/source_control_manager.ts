@@ -428,29 +428,21 @@ export class SourceControlManager implements IDisposable {
     this.possibleSvnRepositoryPaths.clear();
   }
 
-  private scanExternals(repository: Repository): void {
-    const shouldScanExternals =
-      configuration.get<boolean>("detectExternals") === true;
+  private scanNestedRepositories(repository: Repository): void {
+    const schedule = (entries: readonly { path: string }[]) => {
+      for (const entry of entries) {
+        this.eventuallyScanPossibleSvnRepository(
+          path.join(repository.workspaceRoot, entry.path)
+        );
+      }
+    };
 
-    if (!shouldScanExternals) {
-      return;
+    if (configuration.get<boolean>("detectExternals") === true) {
+      schedule(repository.statusExternal);
     }
-
-    repository.statusExternal
-      .map(r => path.join(repository.workspaceRoot, r.path))
-      .forEach(p => this.eventuallyScanPossibleSvnRepository(p));
-  }
-
-  private scanIgnored(repository: Repository): void {
-    const shouldScan = configuration.get<boolean>("detectIgnored") === true;
-
-    if (!shouldScan) {
-      return;
+    if (configuration.get<boolean>("detectIgnored") === true) {
+      schedule(repository.statusIgnored);
     }
-
-    repository.statusIgnored
-      .map(r => path.join(repository.workspaceRoot, r.path))
-      .forEach(p => this.eventuallyScanPossibleSvnRepository(p));
   }
 
   private disable(): void {
@@ -939,11 +931,9 @@ export class SourceControlManager implements IDisposable {
     });
 
     const statusListener = repository.onDidChangeStatus(() => {
-      this.scanExternals(repository);
-      this.scanIgnored(repository);
+      this.scanNestedRepositories(repository);
     });
-    this.scanExternals(repository);
-    this.scanIgnored(repository);
+    this.scanNestedRepositories(repository);
 
     const dispose = () => {
       this.routingValidations.delete(repository);
