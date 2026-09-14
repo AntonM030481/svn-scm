@@ -25,7 +25,7 @@ function uniquePaths(paths: string[]): string[] {
   return [...result.values()];
 }
 
-function isPathInside(parent: string, child: string): boolean {
+export function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return (
     relative === "" ||
