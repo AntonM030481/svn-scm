@@ -4,6 +4,7 @@ The root [README](../README.md) documents the extension for users. This
 directory documents how the current system is designed, developed, tested, and
 released.
 
+- [Settings behavior](settings.md) — application timing, interactions, and validation
 - [Architecture](architecture.md) — runtime components and data flow
 - [Design principles](design-principles.md) — strategy, rationale, and guardrails
 - [Status and refresh](status-and-refresh.md) — status projection and refresh invariants

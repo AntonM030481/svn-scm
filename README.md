@@ -73,6 +73,9 @@ Please use a dedicated extension like [blamer-vs](https://marketplace.visualstud
 ## Settings
 Here are all of the extension settings with their default values. To change any of these, add the relevant Config key and value to your VSCode settings.json file. Alternatively search for the config key in the settings UI to change its value.
 
+See [settings behavior and application timing](docs/settings.md) for interactions,
+validation, and settings that require a refresh or reload.
+
 <!--begin-settings-->
 | Config | Description | Default |
 | --- | --- | --- |
@@ -102,21 +105,21 @@ Here are all of the extension settings with their default values. To change any 
 | `svn.layout.tagsRegex` | Regex to detect path for 'tags' in SVN URL, 'null' to disable. Subpath use 'tags/[^/]+/([^/]+)(/.\*)?'. (Ex.: 'tags/...', 'stamps/...') | `"tags/([^/]+)(/.*)?"` |
 | `svn.layout.trunkRegex` | Regex to detect path for 'trunk' in SVN URL, 'null' to disable. (Ex.: '(trunk)', '(main)') | `"(trunk)(/.*)?"` |
 | `svn.layout.trunkRegexName` | Regex group position for name of trunk | `1` |
-| `svn.log.length` | Number of commit messages to log | `50` |
+| `svn.log.length` | Maximum log entries per history page and previous-message list (1-1000; invalid values use 50) | `50` |
 | `svn.multipleFolders.depth` | Maximum depth to find subfolders using SVN | `4` |
 | `svn.multipleFolders.enabled` | Allow to find subfolders using SVN | `false` |
 | `svn.multipleFolders.ignore` | Folders to ignore using SVN | `["**/.git","**/.hg","**/vendor","**/node_modules"]` |
 | `svn.path` | Path to the svn executable | `null` |
-| `svn.previousCommitsUser` | Only show previous commits for a given user. Requires svn \>= 1.8 | `null` |
+| `svn.previousCommitsUser` | Exact, case-sensitive author for previous commit messages, searched within the latest 1000 log entries; returns at most svn.log.length messages. Requires svn \>= 1.8 | `null` |
 | `svn.refresh.remoteChanges` | Refresh remote changes on refresh command | `false` |
-| `svn.remoteChanges.checkFrequency` | Set the interval in seconds to check changed files on remote repository and show in statusbar. 0 to disable | `300` |
+| `svn.remoteChanges.checkFrequency` | Background remote-check interval in seconds. 0 disables polling, not manual remote refresh. Invalid values disable polling | `300` |
 | `svn.showOutput` | Show the output window when the extension starts | `false` |
 | `svn.showUpdateMessage` | Show the update message when update is run | `true` |
 | `svn.sourceControl.changesLeftClick` | Set left click functionality on changes resource state Allowed values: `"open"`, `"open diff"`. | `"open diff"` |
 | `svn.sourceControl.combineExternalIfSameServer` | Combine the svn external in the main if is from the same server. | `false` |
 | `svn.sourceControl.countUnversioned` | Allow to count unversioned files in status count | `true` |
 | `svn.sourceControl.hideUnversioned` | Hide unversioned files in Source Control UI | `false` |
-| `svn.sourceControl.ignore` | Ignore unversioned files like .gitignore, Configuring this will overlook the default ignore rule | `[]` |
+| `svn.sourceControl.ignore` | Minimatch patterns hiding unversioned files in SCM; does not set SVN ignore properties or implement .gitignore files | `[]` |
 | `svn.sourceControl.ignoreOnCommit` | Changelists to ignore on commit | `["ignore-on-commit"]` |
 | `svn.sourceControl.ignoreOnStatusCount` | Changelists to ignore on status count | `["ignore-on-commit"]` |
 | `svn.update.ignoreExternals` | Set to ignore externals definitions on update (add --ignore-externals) | `true` |
