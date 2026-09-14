@@ -74,7 +74,10 @@ suite("Staged Commit Status Tests", () => {
 
     try {
       repository.inputBox.value = "targeted staged commit";
-      await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
     } finally {
       lowLevelRepository.exec = originalExec;
     }
