@@ -165,11 +165,12 @@ suite("Staging UI Argument Tests", () => {
         ConfigurationTarget.Global
       );
       await repository.fullStatus();
+      assert.equal(repository.getResourceFromFile(directory), undefined);
       assert.equal(
         repository.staged?.resourceStates.some(
           item => item.resourceUri.fsPath === file
         ),
-        false
+        true
       );
 
       repository.inputBox.value = "commit hidden added directory";
