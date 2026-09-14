@@ -15,7 +15,7 @@ abstract class BaseStagingCommand extends Command {
   protected async selectedResources(
     resourceStates: SourceControlResourceState[]
   ): Promise<Resource[]> {
-    return this.getResourceStates(resourceStates, true);
+    return this.getResourceStates(resourceStates);
   }
 }
 
@@ -36,7 +36,8 @@ export class Stage extends BaseStagingCommand {
   }
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
-    const resources = await this.selectedResources(resourceStates);
+    const selected = await this.selectedResources(resourceStates);
+    const resources = await this.staging.validateStageSelection(selected);
     if (resources.length) {
       await this.staging.stage(resources);
     }
@@ -49,7 +50,8 @@ export class Unstage extends BaseStagingCommand {
   }
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
-    const resources = await this.selectedResources(resourceStates);
+    const selected = await this.selectedResources(resourceStates);
+    const resources = await this.staging.validateUnstageSelection(selected);
     if (resources.length) {
       await this.staging.unstage(resources);
     }
