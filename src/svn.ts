@@ -76,6 +76,7 @@ export const svnErrorCodes: { [key: string]: string } = {
   AuthorizationFailed: "E170001",
   RepositoryIsLocked: "E155004",
   NotASvnRepository: "E155007",
+  PropertyNotFound: "W200017",
   NotShareCommonAncestry: "E195012",
   WorkingCopyIsTooOld: "E155036"
 };
@@ -88,7 +89,7 @@ function getSvnErrorCode(stderr: string): string | undefined {
   for (const name in svnErrorCodes) {
     if (svnErrorCodes.hasOwnProperty(name)) {
       const code = svnErrorCodes[name];
-      const regex = new RegExp(`svn: ${code}`);
+      const regex = new RegExp(`^svn: (?:warning: )?${code}:`, "m");
       if (regex.test(stderr)) {
         return code;
       }
