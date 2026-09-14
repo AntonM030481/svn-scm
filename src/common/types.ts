@@ -107,6 +107,7 @@ export enum Operation {
   CleanUp = "CleanUp",
   Commit = "Commit",
   CurrentBranch = "CurrentBranch",
+  Info = "Info",
   Ignore = "Ignore",
   Log = "Log",
   Merge = "Merge",
@@ -297,10 +298,13 @@ export interface ISvnLogEntryPath {
   action: string;
   /** "file" | "dir" e.g. */
   kind: string;
+  copyfromPath?: string;
+  copyfromRev?: string;
 }
 
+/** produced by svn log */
 export interface ISvnLogEntry {
-  revision: number;
+  revision: string;
   author: string;
   date: string;
   msg: string;
@@ -308,10 +312,15 @@ export interface ISvnLogEntry {
 }
 
 export enum SvnDepth {
-  Unknown = "unknown",
-  Exclude = "exclude",
-  Empty = "empty",
-  Files = "files",
-  Immediates = "immediates",
-  Infinity = "infinity"
+  empty = "only the target itself",
+  files = "the target and any immediate file children thereof",
+  immediates = "the target and any immediate children thereof",
+  infinity = "the target and all of its descendants—full recursion"
+}
+
+export interface LineChange {
+  readonly originalStartLineNumber: number;
+  readonly originalEndLineNumber: number;
+  readonly modifiedStartLineNumber: number;
+  readonly modifiedEndLineNumber: number;
 }
