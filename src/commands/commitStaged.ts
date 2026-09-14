@@ -13,6 +13,7 @@ import { Command } from "./command";
 interface CommitEntry {
   repository: Repository;
   resource: Resource;
+  changelist?: string;
 }
 
 function uniquePaths(paths: string[]): string[] {
@@ -62,6 +63,19 @@ async function authoritativeStagedPaths(
   return result;
 }
 
+function isAddedSnapshotPath(
+  repository: Repository,
+  filePath: string
+): boolean {
+  const key = normalizePath(filePath);
+  return (repository.getStatusSnapshot() ?? []).some(status => {
+    const statusPath = path.isAbsolute(status.path)
+      ? status.path
+      : path.resolve(repository.workspaceRoot, status.path);
+    return normalizePath(statusPath) === key && status.status === Status.ADDED;
+  });
+}
+
 async function commitEntries(
   anchor: Repository,
   entries: CommitEntry[],
@@ -86,7 +100,10 @@ async function commitEntries(
       normalizePath(dir) !== normalizePath(repository.root)
     ) {
       const parent = staging.findResource(repository, dir);
-      if (parent?.type === Status.ADDED) {
+      if (
+        parent?.type === Status.ADDED ||
+        isAddedSnapshotPath(repository, dir)
+      ) {
         paths.push(dir);
       }
       dir = path.dirname(dir);
@@ -130,14 +147,17 @@ export class CommitStaged extends Command {
     );
     const entries = this.staging
       .stagedEntriesForWorkingCopy(repository)
-      .filter(({ repository: owner, resource }) =>
-        currentStagedPaths
-          .get(owner)
-          ?.has(normalizePath(resource.resourceUri.fsPath))
+      .filter(
+        ({ repository: owner, resource }) =>
+          resource.type !== Status.CONFLICTED &&
+          currentStagedPaths
+            .get(owner)
+            ?.has(normalizePath(resource.resourceUri.fsPath))
       )
-      .map(({ repository: owner, resource }) => ({
+      .map(({ repository: owner, resource, changelist }) => ({
         repository: owner,
-        resource
+        resource,
+        changelist
       }));
     await commitEntries(repository, entries, this.staging);
   }

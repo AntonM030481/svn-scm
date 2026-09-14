@@ -1,8 +1,11 @@
 import * as path from "path";
-import { SourceControlResourceState, window } from "vscode";
+import { commands, SourceControlResourceState, window } from "vscode";
 import { Status } from "../common/types";
+import { refreshStatusTargets } from "../incrementalStatus";
 import { inputCommitMessage } from "../messages";
+import { isStagingChangelist } from "../stagingModel";
 import SvnError, { getErrorMessage } from "../svnError";
+import { normalizePath } from "../util";
 import { Command } from "./command";
 
 export class Commit extends Command {
@@ -23,6 +26,37 @@ export class Commit extends Command {
 
     await this.runByRepository(uris, async (repository, resources) => {
       if (!repository) {
+        return;
+      }
+
+      await refreshStatusTargets(
+        repository,
+        resources.map(resource => resource.fsPath)
+      );
+
+      const stagedPaths = new Set(
+        (repository.getStatusSnapshot() ?? [])
+          .filter(
+            status =>
+              status.changelist && isStagingChangelist(status.changelist)
+          )
+          .map(status =>
+            normalizePath(
+              path.isAbsolute(status.path)
+                ? status.path
+                : path.resolve(repository.workspaceRoot, status.path)
+            )
+          )
+      );
+      if (
+        resources.some(resource =>
+          stagedPaths.has(normalizePath(resource.fsPath))
+        )
+      ) {
+        await commands.executeCommand(
+          "svn.commitStaged",
+          repository.sourceControl
+        );
         return;
       }
 

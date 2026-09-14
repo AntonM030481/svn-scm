@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Disposable, EventEmitter } from "vscode";
+import { Disposable, EventEmitter, Uri } from "vscode";
 import {
   ConstructorPolicy,
   IFileStatus,
@@ -9,6 +9,7 @@ import {
 import {
   fileSnapshotsEqual,
   enableIncrementalStatusRefresh,
+  refreshStatusTargets,
   isTargetCoveredByTargets,
   isTargetInWorkspace,
   mergeStatuses,
@@ -27,6 +28,11 @@ async function mutationFixture(
 ) {
   const events: string[] = [];
   const notifiedRevisions: string[] = [];
+  const targetedStatusArgs: string[][] = [];
+  const workspaceChange = new EventEmitter<Uri>();
+  const workspaceCreate = new EventEmitter<Uri>();
+  const workspaceDelete = new EventEmitter<Uri>();
+  const svnAny = new EventEmitter<Uri>();
   const svnRepository = await new SvnRepository(
     {} as Svn,
     workspaceRoot,
@@ -49,6 +55,7 @@ async function mutationFixture(
       };
     }
     events.push("targeted-status");
+    targetedStatusArgs.push([...args]);
     return { exitCode: 0, stderr: "", stdout: "<status></status>" };
   };
   const subscribe = () => ({ dispose() {} });
@@ -82,12 +89,18 @@ async function mutationFixture(
     onDidAnyFileChanged() {},
     eventuallyUpdateWhenIdleAndWait() {},
     updateWhenIdleAndWait() {},
-    status() {},
+    whenIdle: async () => true,
+    status: async () => {
+      await svnRepository.getStatus({
+        includeIgnored: true,
+        includeExternals: false
+      });
+    },
     fsWatcher: {
-      onDidWorkspaceChange: subscribe,
-      onDidWorkspaceCreate: subscribe,
-      onDidWorkspaceDelete: subscribe,
-      onDidSvnAny: subscribe
+      onDidWorkspaceChange: workspaceChange.event,
+      onDidWorkspaceCreate: workspaceCreate.event,
+      onDidWorkspaceDelete: workspaceDelete.event,
+      onDidSvnAny: svnAny.event
     },
     addFiles: operation,
     addChangelist: operation,
@@ -113,6 +126,8 @@ async function mutationFixture(
     repository: repository as Repository,
     events,
     notifiedRevisions,
+    targetedStatusArgs,
+    emitWorkspaceChange: (file: string) => workspaceChange.fire(Uri.file(file)),
     dispose: () => {
       repository.dispose();
       disposables.forEach(disposable => disposable.dispose());
@@ -354,6 +369,59 @@ suite("Incremental Status Tests", () => {
       fixture.dispose();
     }
   });
+  test("keeps explicit targets when watcher work is already queued", async () => {
+    const fixture = await mutationFixture("/repo");
+    try {
+      fixture.emitWorkspaceChange("/repo/watcher.ts");
+      await new Promise(resolve => setTimeout(resolve, 20));
+      fixture.events.length = 0;
+      fixture.targetedStatusArgs.length = 0;
+
+      await refreshStatusTargets(fixture.repository, ["/repo/explicit.ts"]);
+
+      assert.equal(fixture.targetedStatusArgs.length, 1);
+      const args = fixture.targetedStatusArgs[0];
+      assert.ok(args.some(arg => /explicit\.ts$/.test(arg)));
+      assert.ok(args.some(arg => /watcher\.ts$/.test(arg)));
+      assert.equal(fixture.events.includes("full-status"), false);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  test("targeted refresh waits for idle before starting status", async () => {
+    const fixture = await mutationFixture("/repo");
+    let releaseIdle!: () => void;
+    const idleGate = new Promise<void>(resolve => {
+      releaseIdle = resolve;
+    });
+    const order: string[] = [];
+    (fixture.repository as any).whenIdle = async () => {
+      order.push("wait-idle");
+      await idleGate;
+      return true;
+    };
+    const status = (fixture.repository as any).status.bind(fixture.repository);
+    (fixture.repository as any).status = async () => {
+      order.push("status");
+      return status();
+    };
+
+    try {
+      const refresh = refreshStatusTargets(fixture.repository, [
+        "/repo/explicit.ts"
+      ]);
+      await Promise.resolve();
+      assert.deepEqual(order, ["wait-idle"]);
+      releaseIdle();
+      await refresh;
+      assert.deepEqual(order, ["wait-idle", "status"]);
+      assert.equal(fixture.events.includes("targeted-status"), true);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
   test("replaces only the targeted file", () => {
     const current = [
       status("src/a.ts", Status.MODIFIED),

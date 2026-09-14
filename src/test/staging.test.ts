@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
+import { commands, ConfigurationTarget, Uri, window, workspace } from "vscode";
 import { IFileStatus, Status } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -47,6 +47,37 @@ suite("Staging Tests", () => {
     svn(["commit", "-m", "initial"], checkout.fsPath);
     return checkout;
   }
+
+  test("repository owns one persistent staged group above Changes", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const stagedGroup = repository.staged;
+    assert.ok(stagedGroup);
+    assert.equal(stagedGroup.id, "staged");
+    assert.equal(stagedGroup.label, "Staged Changes");
+    assert.equal(stagedGroup.hideWhenEmpty, true);
+    assert.equal(stagedGroup.repository, repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "ordered staging edit\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    assert.strictEqual(repository.staged, stagedGroup);
+    assert.equal(
+      stagedGroup.resourceStates.some(item => item.resourceUri.fsPath === file),
+      true
+    );
+  });
 
   test("unstage restores a pre-existing user changelist", async () => {
     const checkout = await createCheckoutWithFiles();
@@ -645,6 +676,186 @@ suite("Staging Tests", () => {
           item => item.resourceUri.fsPath === file
         ),
         true
+      );
+    }
+  });
+
+  test("palette commit routes staged active file through staged finalization", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "a1\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    await window.showTextDocument(Uri.file(file));
+    repository.inputBox.value = "palette staged commit";
+    await commands.executeCommand("svn.commit");
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+
+    fs.writeFileSync(file, "a2\n");
+    await repository.status();
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    await commands.executeCommand("workbench.action.closeActiveEditor");
+  });
+
+  test("palette commit refreshes staging membership after external unstage", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "external-unstage edit\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    await window.showTextDocument(Uri.file(file));
+    const svnConfiguration = workspace.getConfiguration("svn");
+    const previousAutorefresh =
+      svnConfiguration.inspect<boolean>("autorefresh")?.globalValue;
+
+    try {
+      await svnConfiguration.update(
+        "autorefresh",
+        false,
+        ConfigurationTarget.Global
+      );
+      svn(["changelist", "--remove", file], checkout.fsPath);
+      assert.doesNotMatch(
+        svn(["status", "--xml"], checkout.fsPath),
+        /__svn_scm_staged__/
+      );
+
+      repository.inputBox.value = "commit after external unstage";
+      setTimeout(() => {
+        void commands.executeCommand(
+          "svn.forceCommitMessageTest",
+          "commit after external unstage"
+        );
+      }, 100);
+      await commands.executeCommand("svn.commit");
+      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+    } finally {
+      await svnConfiguration.update(
+        "autorefresh",
+        previousAutorefresh,
+        ConfigurationTarget.Global
+      );
+      await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
+  test("hidden staged files remain available to unstage all and commit staged", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    const filesConfiguration = workspace.getConfiguration("files", checkout);
+    const previousExclude =
+      filesConfiguration.inspect<Record<string, boolean>>(
+        "exclude"
+      )?.globalValue;
+    const hiddenExclude = {
+      ...(previousExclude ?? {}),
+      "**/one/a.txt": true
+    };
+
+    try {
+      fs.writeFileSync(file, "a1\n");
+      await repository.status();
+      let resource = repository.changes.resourceStates.find(
+        item => item.resourceUri.fsPath === file
+      );
+      assert.ok(resource);
+      await commands.executeCommand("svn.stage", resource);
+
+      await filesConfiguration.update(
+        "exclude",
+        hiddenExclude,
+        ConfigurationTarget.Global
+      );
+      await repository.fullStatus();
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        false
+      );
+
+      await commands.executeCommand("svn.unstageAll", repository.sourceControl);
+      assert.match(svn(["status"], checkout.fsPath), /^M\s+one[\\/]a\.txt$/m);
+      assert.doesNotMatch(
+        svn(["status", "--xml"], checkout.fsPath),
+        /__svn_scm_staged__/
+      );
+
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
+      );
+      await repository.fullStatus();
+      resource = repository.changes.resourceStates.find(
+        item => item.resourceUri.fsPath === file
+      );
+      assert.ok(resource);
+      await commands.executeCommand("svn.stage", resource);
+
+      await filesConfiguration.update(
+        "exclude",
+        hiddenExclude,
+        ConfigurationTarget.Global
+      );
+      await repository.fullStatus();
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        false
+      );
+
+      repository.inputBox.value = "commit hidden staged file";
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
+      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+    } finally {
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
       );
     }
   });

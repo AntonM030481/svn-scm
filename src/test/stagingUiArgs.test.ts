@@ -1,0 +1,420 @@
+import * as assert from "assert";
+import * as cp from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "path";
+import {
+  commands,
+  ConfigurationTarget,
+  extensions,
+  Uri,
+  workspace
+} from "vscode";
+import { Repository } from "../repository";
+import { SourceControlManager } from "../source_control_manager";
+import * as testUtil from "./testUtil";
+
+function svn(args: string[], cwd: string): string {
+  return cp.execFileSync("svn", args, { cwd, encoding: "utf8" });
+}
+
+suite("Staging UI Argument Tests", () => {
+  let sourceControlManager: SourceControlManager;
+  const opened: Repository[] = [];
+
+  suiteSetup(async () => {
+    await testUtil.activeExtension();
+    sourceControlManager = (await commands.executeCommand(
+      "svn.getSourceControlManager",
+      ""
+    )) as SourceControlManager;
+  });
+
+  suiteTeardown(() => {
+    opened.forEach(repository => sourceControlManager.close(repository));
+  });
+
+  test("manifest exposes Git-like folder and group staging actions", () => {
+    const extension = extensions.getExtension("antonm030481.svn-scm");
+    assert.ok(extension);
+
+    const menus = extension.packageJSON.contributes.menus as Record<
+      string,
+      Array<{ command: string; when?: string; group?: string }>
+    >;
+    const folderMenu = menus["scm/resourceFolder/context"] ?? [];
+    const groupMenu = menus["scm/resourceGroup/context"] ?? [];
+
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.stage" &&
+          item.when?.includes("scmResourceGroup != staged")
+      )
+    );
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.unstage" &&
+          item.when?.includes("scmResourceGroup == staged")
+      )
+    );
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.revert" &&
+          item.when?.includes("scmResourceGroup == changes")
+      )
+    );
+    assert.equal(
+      folderMenu.some(
+        item =>
+          item.command === "svn.revert" &&
+          item.when?.includes("scmResourceGroup == staged")
+      ),
+      false
+    );
+
+    assert.ok(
+      groupMenu.some(
+        item =>
+          item.command === "svn.stageAll" &&
+          item.when?.includes("scmResourceGroup != staged")
+      )
+    );
+    assert.ok(
+      groupMenu.some(
+        item =>
+          item.command === "svn.unstageAll" &&
+          item.when?.includes("scmResourceGroup == staged")
+      )
+    );
+    assert.equal(
+      groupMenu.some(
+        item =>
+          item.command === "svn.revertAll" &&
+          item.when?.includes("scmResourceGroup == staged")
+      ),
+      false
+    );
+  });
+
+  test("Stage and Unstage accept SCM tree resource-node arguments", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+    const file = path.join(checkout.fsPath, "file.txt");
+    fs.writeFileSync(file, "base\n");
+    svn(["add", "file.txt"], checkout.fsPath);
+    svn(["commit", "-m", "initial"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(file, "changed\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    // SCM tree view uses an IResourceNode wrapper as the inline action context.
+    // The actual SourceControlResourceState is stored in `element`.
+    const treeResourceNode = { element: resource };
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
+
+    await commands.executeCommand("svn.stage", treeResourceNode);
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+
+    const stagedResource = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(stagedResource);
+    await commands.executeCommand("svn.unstage", {
+      element: stagedResource
+    });
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.equal(fullStatusCalls, 0);
+  });
+
+  test("SCM tree folders unstage without reverting file contents", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+    const directory = path.join(checkout.fsPath, "folder");
+    const first = path.join(directory, "first.txt");
+    const second = path.join(directory, "second.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(first, "base first\n");
+    fs.writeFileSync(second, "base second\n");
+    svn(["add", "folder"], checkout.fsPath);
+    svn(["commit", "-m", "initial folder"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(first, "changed first\n");
+    fs.writeFileSync(second, "changed second\n");
+    await repository.status();
+
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
+
+    await commands.executeCommand("svn.stage", {
+      uri: Uri.file(directory),
+      context: repository.changes
+    });
+    assert.equal(repository.staged?.resourceStates.length, 2);
+
+    await commands.executeCommand("svn.unstage", {
+      uri: Uri.file(directory),
+      context: repository.staged
+    });
+    assert.equal(repository.staged?.resourceStates.length, 0);
+    const changedPaths = repository.changes.resourceStates.map(
+      resource => resource.resourceUri.fsPath
+    );
+    assert.equal(changedPaths.includes(first), true);
+    assert.equal(changedPaths.includes(second), true);
+    assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
+    assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
+
+    await commands.executeCommand("svn.stage", {
+      uri: Uri.file(directory),
+      context: repository.changes
+    });
+    assert.equal(repository.staged?.resourceStates.length, 2);
+
+    await commands.executeCommand("svn.unstageAll", repository.staged);
+    assert.equal(repository.staged?.resourceStates.length, 0);
+    assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
+    assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^M\s+folder\/first\.txt$/m);
+    assert.match(status, /^M\s+folder\/second\.txt$/m);
+    assert.equal(fullStatusCalls, 0);
+  });
+
+  test("Stage accepts an unversioned SCM tree resource-node argument", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "new.txt");
+    fs.writeFileSync(file, "new\n");
+    await repository.status();
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
+
+    await commands.executeCommand("svn.stage", { element: resource });
+
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.match(svn(["status"], checkout.fsPath), /^A\s+new\.txt$/m);
+    assert.match(
+      svn(["status", "--xml"], checkout.fsPath),
+      /__svn_scm_staged__/
+    );
+
+    const stagedResource = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(stagedResource);
+    await commands.executeCommand("svn.unstage", { element: stagedResource });
+
+    assert.equal(
+      repository.unversioned.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.match(svn(["status"], checkout.fsPath), /^\?\s+new\.txt$/m);
+    assert.equal(fullStatusCalls, 0);
+  });
+
+  test("Commit Staged includes hidden added parent directories", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "hidden-added");
+    const file = path.join(directory, "child.txt");
+    fs.mkdirSync(directory);
+    fs.writeFileSync(file, "child\n");
+    await repository.status();
+
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === directory
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", { element: resource });
+
+    const filesConfiguration = workspace.getConfiguration("files", checkout);
+    const previousExclude =
+      filesConfiguration.inspect<Record<string, boolean>>(
+        "exclude"
+      )?.globalValue;
+
+    try {
+      await filesConfiguration.update(
+        "exclude",
+        { ...(previousExclude ?? {}), "**/hidden-added": true },
+        ConfigurationTarget.Global
+      );
+      await repository.fullStatus();
+      assert.equal(repository.getResourceFromFile(directory), undefined);
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        true
+      );
+
+      repository.inputBox.value = "commit hidden added directory";
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
+
+      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+      const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
+      assert.match(log, /hidden-added/);
+      assert.match(log, /child\.txt/);
+    } finally {
+      await filesConfiguration.update(
+        "exclude",
+        previousExclude,
+        ConfigurationTarget.Global
+      );
+    }
+  });
+
+  test("Commit Staged skips conflicted staged files", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const trunkUrl = `${testUtil.getSvnUrl(repoUri)}/trunk`;
+    const checkout = await testUtil.createRepoCheckout(trunkUrl);
+    const peerCheckout = await testUtil.createRepoCheckout(trunkUrl);
+    const conflictedFile = path.join(checkout.fsPath, "conflicted.txt");
+    const cleanFile = path.join(checkout.fsPath, "clean.txt");
+
+    fs.writeFileSync(conflictedFile, "base\n");
+    fs.writeFileSync(cleanFile, "base\n");
+    svn(["add", "conflicted.txt", "clean.txt"], checkout.fsPath);
+    svn(["commit", "-m", "initial"], checkout.fsPath);
+    svn(["update"], peerCheckout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(conflictedFile, "local\n");
+    fs.writeFileSync(cleanFile, "clean local\n");
+    await repository.status();
+
+    const conflictedResource = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === conflictedFile
+    );
+    const cleanResource = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === cleanFile
+    );
+    assert.ok(conflictedResource);
+    assert.ok(cleanResource);
+
+    await commands.executeCommand("svn.stage", conflictedResource);
+    await commands.executeCommand("svn.stage", cleanResource);
+
+    fs.writeFileSync(
+      path.join(peerCheckout.fsPath, "conflicted.txt"),
+      "remote\n"
+    );
+    svn(
+      ["commit", "-m", "remote change", "conflicted.txt"],
+      peerCheckout.fsPath
+    );
+    svn(["update"], checkout.fsPath);
+    await repository.fullStatus();
+
+    assert.equal(
+      repository.conflicts.resourceStates.some(
+        resource => resource.resourceUri.fsPath === conflictedFile
+      ),
+      true
+    );
+
+    repository.inputBox.value = "commit clean staged file";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
+
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^C\s+conflicted\.txt$/m);
+    assert.doesNotMatch(status, /^M\s+clean\.txt$/m);
+    const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
+    assert.match(log, /clean\.txt/);
+    assert.doesNotMatch(log, /conflicted\.txt/);
+  });
+});

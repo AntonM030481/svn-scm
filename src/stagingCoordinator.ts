@@ -1,7 +1,8 @@
 import * as path from "path";
-import { Disposable, SourceControlResourceGroup, window } from "vscode";
+import { Disposable, SourceControlResourceGroup, Uri, window } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
 import { lstat } from "./fs";
+import { refreshStatusTargets } from "./incrementalStatus";
 import { configuration } from "./helpers/configuration";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
@@ -85,16 +86,43 @@ export class StagingCoordinator implements Disposable {
 
   public stagedEntriesForWorkingCopy(repository: Repository): StagedEntry[] {
     const entries: StagedEntry[] = [];
-    for (const peer of this.repositoriesForWorkingCopy(repository)) {
-      const state = this.states.get(peer);
-      if (!state) continue;
-      for (const resource of state.group.resourceStates) {
-        const changelist = state.metadataByPath.get(
-          normalizePath(resource.resourceUri.fsPath)
-        );
-        if (changelist) {
-          entries.push({ repository: peer, resource, changelist });
+    const seen = new Set<string>();
+    const peers = [...this.repositoriesForWorkingCopy(repository)].sort(
+      (left, right) => right.workspaceRoot.length - left.workspaceRoot.length
+    );
+
+    for (const peer of peers) {
+      for (const status of peer.getStatusSnapshot() ?? []) {
+        if (!status.changelist || !isStagingChangelist(status.changelist)) {
+          continue;
         }
+
+        const filePath = path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(peer.workspaceRoot, status.path);
+        if (!isPathInside(peer.workspaceRoot, filePath)) continue;
+
+        const key = normalizePath(filePath);
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const renameResourceUri = status.rename
+          ? Uri.file(
+              path.isAbsolute(status.rename)
+                ? status.rename
+                : path.resolve(peer.workspaceRoot, status.rename)
+            )
+          : undefined;
+        entries.push({
+          repository: peer,
+          resource: new Resource(
+            Uri.file(filePath),
+            status.status,
+            renameResourceUri,
+            status.props
+          ),
+          changelist: status.changelist
+        });
       }
     }
     return entries;
@@ -189,7 +217,14 @@ export class StagingCoordinator implements Disposable {
 
     const validated: Resource[] = [];
     for (const [repository, selected] of byRepository) {
-      await repository.fullStatus();
+      if (await this.needsFullStatus(selected)) {
+        await repository.fullStatus();
+      } else {
+        await refreshStatusTargets(
+          repository,
+          selected.map(resource => resource.resourceUri.fsPath)
+        );
+      }
       const staged = this.states.get(repository)?.group.resourceStates ?? [];
 
       for (const original of selected) {
@@ -221,15 +256,42 @@ export class StagingCoordinator implements Disposable {
     return uniqueResources(validated);
   }
 
+  private async needsFullStatus(resources: Resource[]): Promise<boolean> {
+    for (const resource of resources) {
+      try {
+        if ((await lstat(resource.resourceUri.fsPath)).isSymbolicLink()) {
+          return true;
+        }
+      } catch {
+        // Missing paths are validated by SVN status itself.
+      }
+    }
+    return false;
+  }
+
   private async refreshProjectionsContainingPaths(
     repository: Repository,
-    resources: Resource[]
+    resources: Resource[],
+    forceFullStatus: boolean = false
   ): Promise<void> {
     const filePaths = resources.map(resource => resource.resourceUri.fsPath);
-    const peers = this.repositoriesForWorkingCopy(repository).filter(peer =>
-      filePaths.some(filePath => isPathInside(peer.workspaceRoot, filePath))
+    const peers = this.repositoriesForWorkingCopy(repository).filter(
+      peer =>
+        peer !== repository &&
+        filePaths.some(filePath => isPathInside(peer.workspaceRoot, filePath))
     );
-    await Promise.all(peers.map(peer => peer.fullStatus()));
+    await Promise.all(
+      peers.map(peer =>
+        forceFullStatus
+          ? peer.fullStatus()
+          : refreshStatusTargets(
+              peer,
+              filePaths.filter(filePath =>
+                isPathInside(peer.workspaceRoot, filePath)
+              )
+            )
+      )
+    );
   }
 
   public async stage(resources: Resource[]): Promise<void> {
@@ -245,8 +307,16 @@ export class StagingCoordinator implements Disposable {
     }
 
     for (const [repository, selected] of byRepository) {
+      const forceFullStatus = await this.needsFullStatus(selected);
       await this.stageInRepository(repository, selected);
-      await this.refreshProjectionsContainingPaths(repository, selected);
+      if (forceFullStatus) {
+        await repository.fullStatus();
+      }
+      await this.refreshProjectionsContainingPaths(
+        repository,
+        selected,
+        forceFullStatus
+      );
     }
   }
 
@@ -280,19 +350,45 @@ export class StagingCoordinator implements Disposable {
         grouped.set(stagingChangelist, resources);
       }
 
+      const forceFullStatus = await this.needsFullStatus(selected);
       for (const [stagingChangelist, resources] of grouped) {
         const metadata = parseStagingChangelist(stagingChangelist);
         if (!metadata) continue;
         await this.restoreDestination(repository, resources, metadata);
       }
-      await this.refreshProjectionsContainingPaths(repository, selected);
+      if (forceFullStatus) {
+        await repository.fullStatus();
+      }
+      await this.refreshProjectionsContainingPaths(
+        repository,
+        selected,
+        forceFullStatus
+      );
     }
   }
 
   public async unstageAll(repository: Repository): Promise<void> {
-    await this.unstage(
-      this.stagedEntriesForWorkingCopy(repository).map(entry => entry.resource)
-    );
+    const byRepository = new Map<Repository, Map<string, Resource[]>>();
+    for (const entry of this.stagedEntriesForWorkingCopy(repository)) {
+      const byChangelist = byRepository.get(entry.repository) ?? new Map();
+      const resources = byChangelist.get(entry.changelist) ?? [];
+      resources.push(entry.resource);
+      byChangelist.set(entry.changelist, resources);
+      byRepository.set(entry.repository, byChangelist);
+    }
+
+    for (const [owner, byChangelist] of byRepository) {
+      const refreshed: Resource[] = [];
+      for (const [stagingChangelist, resources] of byChangelist) {
+        const metadata = parseStagingChangelist(stagingChangelist);
+        if (!metadata) continue;
+        await this.restoreDestination(owner, resources, metadata);
+        refreshed.push(...resources);
+      }
+      if (refreshed.length) {
+        await this.refreshProjectionsContainingPaths(owner, refreshed);
+      }
+    }
   }
 
   public findResource(
@@ -329,11 +425,15 @@ export class StagingCoordinator implements Disposable {
   }
 
   public async finalizeCommitted(
-    entries: Array<{ repository: Repository; resource: Resource }>
+    entries: Array<{
+      repository: Repository;
+      resource: Resource;
+      changelist?: string;
+    }>
   ): Promise<void> {
     const grouped = new Map<Repository, Map<string | undefined, string[]>>();
 
-    for (const { repository, resource } of entries) {
+    for (const { repository, resource, changelist } of entries) {
       // A successfully committed deletion has no working-copy node whose
       // changelist can be restored. A sibling projection may still expose its
       // pre-commit metadata until that projection refreshes.
@@ -341,6 +441,7 @@ export class StagingCoordinator implements Disposable {
 
       const key = normalizePath(resource.resourceUri.fsPath);
       const stagingChangelist =
+        changelist ??
         this.states.get(repository)?.metadataByPath.get(key) ??
         repository.stagedChangelists.get(key);
       if (!stagingChangelist || !isStagingChangelist(stagingChangelist)) {
@@ -371,13 +472,8 @@ export class StagingCoordinator implements Disposable {
   private attach(repository: Repository): void {
     if (this.states.has(repository)) return;
 
-    const group = repository.sourceControl.createResourceGroup(
-      "staged",
-      "Staged Changes"
-    ) as ISvnResourceGroup;
-    group.hideWhenEmpty = true;
-    group.repository = repository;
-    repository.staged = group;
+    const group = repository.staged;
+    if (!group) return;
 
     const state: RepositoryStagingState = {
       group,
@@ -394,7 +490,6 @@ export class StagingCoordinator implements Disposable {
     };
 
     state.disposables.push(
-      group,
       repository.onDidRebuildStatusProjection(() => this.reconcile(repository))
     );
     this.reconcile(repository);
@@ -413,9 +508,7 @@ export class StagingCoordinator implements Disposable {
     while (state.disposables.length) {
       state.disposables.pop()?.dispose();
     }
-    if (repository.staged === state.group) {
-      repository.staged = undefined;
-    }
+    state.group.resourceStates = [];
     repository.stagedChangelists.clear();
     this.states.delete(repository);
   }
@@ -718,6 +811,16 @@ export class StagingCoordinator implements Disposable {
     }
   }
 
+  private snapshotAddedPaths(repository: Repository): string[] {
+    return (repository.getStatusSnapshot() ?? [])
+      .filter(status => status.status === Status.ADDED)
+      .map(status =>
+        path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(repository.workspaceRoot, status.path)
+      );
+  }
+
   private async addedAncestorDirectoriesForUnstage(
     repository: Repository,
     paths: string[],
@@ -732,18 +835,7 @@ export class StagingCoordinator implements Disposable {
     }
 
     const selected = new Set(paths.map(normalizePath));
-    const statuses = await repository.repository.getStatus({
-      includeIgnored: true,
-      includeExternals: false,
-      forceFull: true
-    });
-    const added = statuses
-      .filter(status => status.status === Status.ADDED)
-      .map(status =>
-        path.isAbsolute(status.path)
-          ? status.path
-          : path.resolve(repository.workspaceRoot, status.path)
-      )
+    const added = this.snapshotAddedPaths(repository)
       .filter(candidate => isPathInside(createdDirectoryRoot, candidate))
       .map(normalizePath);
     const addedSet = new Set(added);
@@ -795,19 +887,9 @@ export class StagingCoordinator implements Disposable {
     if (!metadata.wasUnversioned) return;
 
     const selected = new Set(paths.map(normalizePath));
-    const statuses = await repository.repository.getStatus({
-      includeIgnored: true,
-      includeExternals: false,
-      forceFull: true
-    });
-    const addedPaths = statuses
-      .filter(status => status.status === Status.ADDED)
-      .map(status =>
-        path.isAbsolute(status.path)
-          ? status.path
-          : path.resolve(repository.workspaceRoot, status.path)
-      )
-      .filter(candidate => selected.has(normalizePath(candidate)));
+    const addedPaths = this.snapshotAddedPaths(repository).filter(candidate =>
+      selected.has(normalizePath(candidate))
+    );
     if (!addedPaths.length) return;
 
     const addedDirectories = metadata.createdDirectoryRelativeRoot
