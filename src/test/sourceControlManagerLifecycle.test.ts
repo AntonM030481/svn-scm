@@ -292,7 +292,10 @@ suite("Source control manager lifecycle", () => {
     );
 
     assert.deepStrictEqual(disposed, [removedRoot, nestedRoot]);
-    assert.deepStrictEqual(surviving, []);
+    assert.deepStrictEqual(
+      surviving.map((candidate: WorkspaceFolder) => candidate.uri.fsPath),
+      [retainedRoot]
+    );
   });
 
   test("workspace removal rescans a surviving folder nested below a closed projection", async () => {
@@ -360,6 +363,7 @@ suite("Source control manager lifecycle", () => {
     let scans = 0;
     (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () => {
       staleOwner = false;
+      return [];
     };
     (manager as any).getOpenRepository = () =>
       staleOwner ? { repository: {} } : undefined;
