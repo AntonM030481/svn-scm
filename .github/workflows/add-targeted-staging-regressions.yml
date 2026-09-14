@@ -1,0 +1,34 @@
+name: Add targeted staging regressions
+on:
+  push:
+    branches:
+      - fix/post-merge-staging-invariants
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: fix/post-merge-staging-invariants
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: python3 .github/scripts/add-targeted-staging-regressions.py
+      - run: yarn prettier --write src/test/staging.test.ts src/test/incrementalStatus.test.ts
+      - run: yarn check
+      - run: yarn test:unit
+      - run: yarn test-compile
+      - name: Commit tests and remove helpers
+        run: |
+          git config user.name "Anton Makouski"
+          git config user.email "85622715+AntonM030481@users.noreply.github.com"
+          git add src/test/staging.test.ts src/test/incrementalStatus.test.ts
+          git commit -m "test: cover targeted staging concurrency and stale membership"
+          git rm .github/workflows/add-targeted-staging-regressions.yml .github/scripts/add-targeted-staging-regressions.py
+          git commit -m "chore: remove targeted staging regression helpers"
+          git push origin HEAD:fix/post-merge-staging-invariants
