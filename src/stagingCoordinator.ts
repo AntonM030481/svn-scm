@@ -189,7 +189,7 @@ export class StagingCoordinator implements Disposable {
 
     const validated: Resource[] = [];
     for (const [repository, selected] of byRepository) {
-      await repository.ensureStatus();
+      await repository.fullStatus();
       const staged = this.states.get(repository)?.group.resourceStates ?? [];
 
       for (const original of selected) {

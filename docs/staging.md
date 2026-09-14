@@ -32,7 +32,14 @@ Only paths represented by currently opened workspace folders are aggregated; sta
 
 SVN changelists apply to files, not directories. Staging an unversioned folder therefore expands its file descendants; added parent directories are included explicitly in Commit Staged with SVN `--depth empty`, so unstaged siblings are never committed recursively. Unstage restores directory additions created by that staging operation when no staged or unrelated added descendants still require them. Empty directories and directory-only versioned changes (for example, a directory property change) remain in `Changes` and should use Commit All because SVN cannot place them in a changelist.
 
-Stage/unstage operations use the repository operation layer so normal refresh, diagnostics, authentication, and lifecycle rules remain in effect. The UI can reconcile optimistically where safe, but SVN status remains authoritative.
+Stage/unstage operations use the repository operation layer so normal refresh,
+diagnostics, authentication, and lifecycle rules remain in effect. Before an
+explicit Stage, Unstage, Stage All, Unstage All, Commit Staged, or Commit All
+derives its targets, every affected opened projection performs a local full
+status. This prevents an old startup projection or a previously live but stale
+changelist membership from authorizing a mutation. These validations remain
+local and never enable remote status implicitly. The UI can reconcile
+optimistically where safe, but SVN status remains authoritative.
 
 ## Future partial staging
 

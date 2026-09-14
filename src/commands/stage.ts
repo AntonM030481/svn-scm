@@ -26,7 +26,7 @@ async function ensureWorkingCopyLiveStatus(
   await Promise.all(
     staging
       .repositoriesForWorkingCopy(repository)
-      .map(peer => peer.ensureStatus())
+      .map(peer => peer.fullStatus())
   );
 }
 

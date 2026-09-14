@@ -5,6 +5,7 @@ import * as path from "path";
 import { commands, Uri } from "vscode";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
+import { normalizePath } from "../util";
 import * as testUtil from "./testUtil";
 
 function svn(args: string[], cwd: string): string {
@@ -62,9 +63,19 @@ suite("Staging Live Validation Tests", () => {
       resource => resource.resourceUri.fsPath === file
     );
     assert.ok(staleStaged);
+    const stagingChangelist = repository.stagedChangelists.get(
+      normalizePath(file)
+    );
+    assert.ok(stagingChangelist);
 
     svn(["commit", "-m", "external add", "new.txt"], checkout.fsPath);
     fs.writeFileSync(file, "external edit\n");
+    assert.ok(
+      svn(["status", "--xml"], checkout.fsPath).includes(
+        `name="${stagingChangelist}"`
+      ),
+      "external commit must retain the reserved changelist for this regression"
+    );
 
     await commands.executeCommand("svn.unstage", staleStaged);
 
@@ -101,19 +112,8 @@ suite("Staging Live Validation Tests", () => {
     svn(["changelist", "--remove", path.join("one", "a.txt")], checkout.fsPath);
     fs.writeFileSync(staleFile, "external edit\n");
 
-    const originalEnsureStatus = repository.ensureStatus.bind(repository);
-    (repository as any).ensureStatus = async () => {
-      await repository.status();
-    };
-    try {
-      repository.inputBox.value = "commit only still-staged file";
-      await commands.executeCommand(
-        "svn.commitStaged",
-        repository.sourceControl
-      );
-    } finally {
-      (repository as any).ensureStatus = originalEnsureStatus;
-    }
+    repository.inputBox.value = "commit only still-staged file";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
 
     assert.equal(fs.readFileSync(staleFile, "utf8"), "external edit\n");
     const status = svn(["status"], checkout.fsPath);
