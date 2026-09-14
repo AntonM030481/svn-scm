@@ -61,6 +61,9 @@ async function validatedStagedEntries(
   staging: StagingCoordinator,
   repository: Repository
 ): Promise<CommitEntry[]> {
+  const peers = staging.repositoriesForWorkingCopy(repository);
+  await Promise.all(peers.map(peer => peer.initialStatusSettled));
+
   const candidates = staging.stagedEntriesForWorkingCopy(repository);
   if (!candidates.length) {
     return [];
@@ -114,7 +117,7 @@ async function refreshPeerProjections(
   anchor: Repository,
   paths: string[]
 ): Promise<void> {
-  await Promise.all(
+  await Promise.allSettled(
     staging
       .repositoriesForWorkingCopy(anchor)
       .filter(peer => peer !== anchor)
