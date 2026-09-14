@@ -353,7 +353,7 @@ export class Repository implements IRemoteRepository {
 
     // On change config, dispose current interval and create a new.
     this.disposables.push(
-      workspace.onDidChangeConfiguration(e => {
+      configuration.onDidChange(e => {
         if (e.affectsConfiguration("svn.remoteChanges.checkFrequency")) {
           if (this.remoteChangedUpdateInterval) {
             clearInterval(this.remoteChangedUpdateInterval);
@@ -371,8 +371,7 @@ export class Repository implements IRemoteRepository {
             "svn.sourceControl.ignore",
             "svn.sourceControl.ignoreOnStatusCount",
             "svn.diff.withHead",
-            "svn.sourceControl.changesLeftClick",
-            "files.exclude"
+            "svn.sourceControl.changesLeftClick"
           ].some(key => e.affectsConfiguration(key)) &&
           this.statusSnapshot
         ) {
@@ -390,6 +389,20 @@ export class Repository implements IRemoteRepository {
           )
         ) {
           this.fullStatus();
+        }
+      })
+    );
+
+    // The SVN configuration helper intentionally filters out non-SVN events.
+    this.disposables.push(
+      workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration("files.exclude") && this.statusSnapshot) {
+          this.applyStatus(
+            this.statusSnapshot,
+            true,
+            this.snapshotPreview,
+            false
+          );
         }
       })
     );
