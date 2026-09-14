@@ -4,6 +4,7 @@ import { ISvnResourceGroup, Status } from "./common/types";
 import { lstat } from "./fs";
 import { refreshStatusTargets } from "./incrementalStatus";
 import { configuration } from "./helpers/configuration";
+import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
 import { SourceControlManager } from "./source_control_manager";
@@ -772,11 +773,15 @@ export class StagingCoordinator implements Disposable {
       }
     }
 
-    const statuses = await repository.repository.getStatus({
-      includeIgnored: true,
-      includeExternals: false,
-      forceFull: true
-    });
+    const target = repository.repository.removeAbsolutePath(directory);
+    const result = await repository.repository.exec([
+      "stat",
+      "--xml",
+      "--no-ignore",
+      "--ignore-externals",
+      target
+    ]);
+    const statuses = await parseStatusXml(result.stdout);
     const hidden = statuses
       .filter(status => status.status === Status.ADDED)
       .map(status =>
