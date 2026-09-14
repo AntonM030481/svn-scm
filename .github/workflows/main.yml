@@ -34,6 +34,12 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Show Prettier diff
+        run: |
+          yarn prettier --write src/unversionedDirectoryContents.ts
+          git diff -- src/unversionedDirectoryContents.ts
+          exit 1
+
       - name: Check
         run: yarn check
 
