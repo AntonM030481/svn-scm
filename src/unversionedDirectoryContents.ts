@@ -150,10 +150,7 @@ export class UnversionedDirectoryContents implements Disposable {
     const children: UnversionedChildResource[] = [];
 
     for (const resource of baseResources) {
-      if (
-        resource.type !== Status.UNVERSIONED ||
-        budget.remaining <= 0
-      ) {
+      if (resource.type !== Status.UNVERSIONED || budget.remaining <= 0) {
         continue;
       }
       try {
