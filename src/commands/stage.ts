@@ -140,7 +140,9 @@ export class Stage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) return;
+    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {
+      return;
+    }
     const resources = await this.staging.validateStageSelection(selected);
     if (resources.length) {
       await this.staging.stage(resources);
@@ -155,7 +157,9 @@ export class Unstage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) return;
+    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {
+      return;
+    }
     const resources = await this.staging.validateUnstageSelection(selected);
     if (resources.length) {
       await this.staging.unstage(resources);
@@ -169,7 +173,9 @@ export class StageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    if (!(await waitForWorkingCopyIdle(this.staging, repository))) return;
+    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {
+      return;
+    }
     const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
     const resources = await this.staging.validateStageSelection(selected);
     if (resources.length) {
@@ -184,7 +190,9 @@ export class UnstageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    if (!(await waitForWorkingCopyIdle(this.staging, repository))) return;
+    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {
+      return;
+    }
     const selected = this.staging
       .stagedEntriesForWorkingCopy(repository)
       .map(entry => entry.resource);

@@ -55,7 +55,10 @@ suite("Shared working-copy staging guard", () => {
     opened.push(repositoryOne, repositoryTwo);
 
     assert.notStrictEqual(repositoryOne, repositoryTwo);
-    assert.equal(path.resolve(repositoryOne.root), path.resolve(repositoryTwo.root));
+    assert.equal(
+      path.resolve(repositoryOne.root),
+      path.resolve(repositoryTwo.root)
+    );
 
     fs.writeFileSync(fileOne, "a1\n");
     await repositoryOne.fullStatus();
