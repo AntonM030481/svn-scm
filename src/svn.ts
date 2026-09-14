@@ -81,6 +81,10 @@ export const svnErrorCodes: { [key: string]: string } = {
 };
 
 function getSvnErrorCode(stderr: string): string | undefined {
+  if (/^svn: E215004:/m.test(stderr)) {
+    return svnErrorCodes.AuthorizationFailed;
+  }
+
   for (const name in svnErrorCodes) {
     if (svnErrorCodes.hasOwnProperty(name)) {
       const code = svnErrorCodes[name];
@@ -95,7 +99,10 @@ function getSvnErrorCode(stderr: string): string | undefined {
     return svnErrorCodes.AuthorizationFailed;
   }
 
-  return void 0;
+  return (
+    stderr.match(/^svn: (E\d{6}):/m)?.[1] ??
+    stderr.match(/^svn: (W\d{6}):/m)?.[1]
+  );
 }
 
 export function cpErrorHandler(
