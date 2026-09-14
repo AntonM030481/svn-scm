@@ -11,6 +11,7 @@ import {
   Uri,
   window,
   workspace,
+  WorkspaceFolder,
   WorkspaceFoldersChangeEvent
 } from "vscode";
 import {
@@ -22,6 +23,7 @@ import {
 } from "./common/types";
 import { cancelDebounces, debounce } from "./decorators";
 import { readdir, stat } from "./fs";
+import { boundedInteger } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
 import { RemoteRepository } from "./remoteRepository";
 import { Repository } from "./repository";
@@ -46,6 +48,7 @@ interface DiscoveryOptions {
   allowNested?: boolean;
   recursive?: boolean;
   lifecycleGeneration?: number;
+  workspaceFolderGeneration?: number;
 }
 
 export function getSvnRepositoryPathFromMetadata(
@@ -95,6 +98,11 @@ export class SourceControlManager implements IDisposable {
   private enabled = false;
   private disposed = false;
   private lifecycleGeneration = 0;
+  private workspaceFolderGeneration = 0;
+  private pendingWorkspaceFolderDiscoveries = new Map<
+    string,
+    { folder: WorkspaceFolder; generation: number }
+  >();
   private enableTask: Promise<void> = Promise.resolve();
   private initialization?: Promise<void>;
   private routingValidations = new WeakMap<
@@ -245,7 +253,7 @@ export class SourceControlManager implements IDisposable {
       false
     );
     this.maxDepth = recursive
-      ? configuration.get<number>("multipleFolders.depth", 0)
+      ? boundedInteger(configuration.get("multipleFolders.depth"), 4, 0, 100)
       : 0;
     this.ignoreList = recursive
       ? configuration.get<string[]>("multipleFolders.ignore", [])
@@ -442,6 +450,7 @@ export class SourceControlManager implements IDisposable {
     this.openRepositories = [];
     this.disposables = [];
     this.possibleSvnRepositoryPaths.clear();
+    this.pendingWorkspaceFolderDiscoveries.clear();
     // Detach the old session before close listeners can enable a new one.
     disposeResources(disposables);
     disposeResources(repositories);
@@ -451,24 +460,84 @@ export class SourceControlManager implements IDisposable {
     added,
     removed
   }: WorkspaceFoldersChangeEvent) {
-    const possibleRepositoryFolders = added.filter(
-      folder => !this.getOpenRepository(folder.uri)
+    const workspaceFolderGeneration = ++this.workspaceFolderGeneration;
+    const currentFolders = this.currentWorkspaceFolders();
+    const survivingFolders =
+      this.disposeRepositoriesUncoveredByWorkspaceRemoval(
+        removed,
+        currentFolders
+      );
+    const currentRoots = new Set(
+      currentFolders.map(folder => normalizePath(folder.uri.fsPath))
     );
 
-    const openRepositoriesToDispose = removed
-      .map(folder => this.getOpenRepository(folder.uri.fsPath))
-      .filter(repository => !!repository)
-      .filter(
-        repository =>
-          !(workspace.workspaceFolders || []).some(f =>
-            repository!.repository.workspaceRoot.startsWith(f.uri.fsPath)
-          )
-      ) as IOpenRepository[];
+    for (const root of this.pendingWorkspaceFolderDiscoveries.keys()) {
+      if (!currentRoots.has(root)) {
+        this.pendingWorkspaceFolderDiscoveries.delete(root);
+      }
+    }
+    for (const folder of [...added, ...survivingFolders]) {
+      const root = normalizePath(folder.uri.fsPath);
+      this.pendingWorkspaceFolderDiscoveries.set(root, {
+        folder,
+        generation: workspaceFolderGeneration
+      });
+    }
 
-    possibleRepositoryFolders.forEach(p =>
-      this.tryOpenRepository(p.uri.fsPath)
+    for (const [root, pending] of this.pendingWorkspaceFolderDiscoveries) {
+      if (this.getOpenRepository(pending.folder.uri)) {
+        this.pendingWorkspaceFolderDiscoveries.delete(root);
+        continue;
+      }
+      const request = {
+        folder: pending.folder,
+        generation: workspaceFolderGeneration
+      };
+      this.pendingWorkspaceFolderDiscoveries.set(root, request);
+      void Promise.resolve(
+        this.tryOpenRepository(request.folder.uri.fsPath, 0, {
+          workspaceFolderGeneration
+        })
+      ).finally(() => {
+        if (this.pendingWorkspaceFolderDiscoveries.get(root) === request) {
+          this.pendingWorkspaceFolderDiscoveries.delete(root);
+        }
+      });
+    }
+  }
+
+  private currentWorkspaceFolders(): readonly WorkspaceFolder[] {
+    return workspace.workspaceFolders || [];
+  }
+
+  private disposeRepositoriesUncoveredByWorkspaceRemoval(
+    removed: readonly WorkspaceFolder[],
+    remaining: readonly WorkspaceFolder[] = workspace.workspaceFolders || []
+  ): WorkspaceFolder[] {
+    const removedRoots = removed.map(folder => folder.uri.fsPath);
+    const remainingRoots = remaining.map(folder => folder.uri.fsPath);
+    const repositories = this.openRepositories.filter(({ repository }) => {
+      const workspaceRoot = repository.workspaceRoot;
+      return (
+        removedRoots.some(root => isDescendant(root, workspaceRoot)) &&
+        !remainingRoots.some(root => isDescendant(root, workspaceRoot))
+      );
+    });
+    const survivingFolders = remaining.filter(folder =>
+      repositories.some(({ repository }) =>
+        isDescendant(repository.workspaceRoot, folder.uri.fsPath)
+      )
     );
-    openRepositoriesToDispose.forEach(r => r.dispose());
+
+    for (const repository of repositories) {
+      // Closing publishes an event; its listeners may synchronously close
+      // another entry selected by this same workspace transition.
+      if (this.openRepositories.includes(repository)) {
+        repository.dispose();
+      }
+    }
+
+    return survivingFolders;
   }
 
   private async scanWorkspaceFolders(
@@ -497,17 +566,32 @@ export class SourceControlManager implements IDisposable {
     return this.hasExactRepository(path);
   }
 
+  private isDiscoveryRequestActive(
+    lifecycleGeneration: number,
+    workspaceFolderGeneration?: number
+  ): boolean {
+    return (
+      this.isDiscoveryActive(lifecycleGeneration) &&
+      (workspaceFolderGeneration === undefined ||
+        workspaceFolderGeneration === this.workspaceFolderGeneration)
+    );
+  }
+
   public async tryOpenRepository(
     path: string,
     level = 0,
     {
       allowNested = false,
       recursive = true,
-      lifecycleGeneration = this.lifecycleGeneration
+      lifecycleGeneration = this.lifecycleGeneration,
+      workspaceFolderGeneration
     }: DiscoveryOptions = {}
   ): Promise<void> {
     if (
-      !this.isDiscoveryActive(lifecycleGeneration) ||
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      ) ||
       this.isDiscoveryCandidateOwned(path, allowNested)
     ) {
       return;
@@ -516,7 +600,12 @@ export class SourceControlManager implements IDisposable {
     const checkParent = level === 0;
 
     const svnFolder = await isSvnFolder(path, checkParent);
-    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
       return;
     }
 
@@ -535,13 +624,21 @@ export class SourceControlManager implements IDisposable {
 
       try {
         const repositoryRoot = await this.svn.getRepositoryRoot(path);
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
         const baseRepository = await this.svn.open(repositoryRoot, path);
         if (
-          !this.isDiscoveryActive(lifecycleGeneration) ||
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          ) ||
           this.isDiscoveryCandidateOwned(path, allowNested)
         ) {
           return;
@@ -556,10 +653,17 @@ export class SourceControlManager implements IDisposable {
         this.registerDiscoveredRepository(
           repository,
           lifecycleGeneration,
-          allowNested
+          allowNested,
+          undefined,
+          workspaceFolderGeneration
         );
       } catch (err) {
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
@@ -584,7 +688,12 @@ export class SourceControlManager implements IDisposable {
         return;
       }
 
-      if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      if (
+        !this.isDiscoveryRequestActive(
+          lifecycleGeneration,
+          workspaceFolderGeneration
+        )
+      ) {
         return;
       }
 
@@ -598,7 +707,12 @@ export class SourceControlManager implements IDisposable {
           continue;
         }
 
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
@@ -606,7 +720,10 @@ export class SourceControlManager implements IDisposable {
           stats.isDirectory() &&
           !matchAll(dir, this.ignoreList, { dot: true })
         ) {
-          await this.tryOpenRepository(dir, newLevel, { lifecycleGeneration });
+          await this.tryOpenRepository(dir, newLevel, {
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          });
         }
       }
     }
@@ -616,9 +733,15 @@ export class SourceControlManager implements IDisposable {
     repository: Repository,
     lifecycleGeneration: number,
     allowNested: boolean,
-    workspaceFolders = workspace.workspaceFolders || []
+    workspaceFolders = workspace.workspaceFolders || [],
+    workspaceFolderGeneration?: number
   ): void {
-    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
       repository.dispose();
       return;
     }
@@ -645,7 +768,12 @@ export class SourceControlManager implements IDisposable {
       for (const child of children) {
         // Closing publishes an event; its listeners may disable the manager
         // or close another child synchronously.
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           break;
         }
         if (this.openRepositories.includes(child)) {
@@ -654,6 +782,15 @@ export class SourceControlManager implements IDisposable {
       }
     }
 
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
+      repository.dispose();
+      return;
+    }
     this.open(repository, lifecycleGeneration);
   }
 

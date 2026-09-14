@@ -54,12 +54,16 @@ documented polling setting.
 
 This distinction keeps the editor responsive on slow or unavailable networks.
 
-### One model per working copy
+### One model per opened working-copy projection
 
-Each detected working copy is represented by one `Repository`, which owns its
-VS Code SCM instance and derived UI state. `SourceControlManager` owns discovery
-and routing across repositories; commands and views should ask it for the
-repository rather than reimplementing path discovery.
+Each opened workspace projection of a detected working copy is represented by
+one `Repository`, which owns its VS Code SCM instance and derived UI state.
+Sibling workspace folders inside one physical working copy may therefore have
+separate projections sharing the same canonical root. Features whose semantics
+belong to that physical root must coordinate those projections explicitly.
+`SourceControlManager` owns discovery and routing across repositories; commands
+and views should ask it for the repository rather than reimplementing path
+discovery.
 
 Nested working copies, ignored roots, externals, and multi-root workspaces make
 simple “first path prefix wins” routing incorrect. The most specific valid
@@ -114,7 +118,7 @@ observable behavior over silent heuristics that are difficult to debug.
 | Decision | Why | Guardrail |
 | --- | --- | --- |
 | Use the local `svn` CLI | Respects the user's SVN ecosystem and avoids maintaining a protocol client | Do not add a bundled SVN binary or a second SVN implementation without an explicit architecture review |
-| One `Repository` per working copy | Gives SCM state and lifecycle a single owner | Views and commands must not maintain competing repository state |
+| One `Repository` per opened workspace projection | Gives each SCM projection a lifecycle owner while preserving multi-root scope | Coordinate physical-root features across sibling projections; views and commands must not maintain competing repository state |
 | Register virtual file systems before SVN discovery completes | VS Code may restore diff editors immediately during startup | Initialization failure must resolve restored reads with a useful error, never a permanently pending promise |
 | Use `svn:` for repository-backed read-only content | Integrates BASE, HEAD, and revision content with native editors and diffs | Keep the provider read-only and avoid remote or expensive metadata calls from `stat()` |
 | Use `tempsvnfs:` for ephemeral history files | Some comparisons need materialized content with a stable document URI | Delete content when documents close and clear buffered events on disposal |

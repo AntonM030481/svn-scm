@@ -1,6 +1,7 @@
 import { QuickPickItem, window } from "vscode";
 import { Repository } from "../repository";
 import { Command } from "./command";
+import { logLimit } from "../helpers/settingValues";
 import { configuration } from "../helpers/configuration";
 import * as semver from "semver";
 import { ISvnLogEntry } from "../common/types";
@@ -17,7 +18,11 @@ export class PickCommitMessage extends Command {
     if (user && is18orGreater) {
       logs = await repository.logByUser(user);
     } else {
-      logs = await repository.log("HEAD", "0", 20);
+      logs = await repository.log(
+        "HEAD",
+        "0",
+        logLimit(configuration.get("log.length"))
+      );
     }
 
     if (!logs.length) {

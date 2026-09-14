@@ -88,7 +88,6 @@ export class Resource implements SourceControlResourceState {
     };
   }
 
-  @memoize
   get command(): Command {
     const diffHead = configuration.get<boolean>("diff.withHead", true);
     const changesLeftClick = configuration.get<string>(

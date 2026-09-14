@@ -5,7 +5,8 @@ import {
   EventEmitter,
   ExtensionContext,
   Uri,
-  workspace
+  workspace,
+  WorkspaceFolder
 } from "vscode";
 import { ConstructorPolicy, RepositoryState } from "../common/types";
 import { configuration } from "../helpers/configuration";
@@ -260,5 +261,193 @@ suite("Source control manager lifecycle", () => {
     scans[1].resolve();
     await tick();
     assert.equal((manager as any).enabled, true);
+  });
+
+  test("workspace removal closes every uncovered repository projection once", () => {
+    const folder = (root: string) =>
+      ({ uri: Uri.file(root) }) as WorkspaceFolder;
+    const disposed: string[] = [];
+    const entry = (workspaceRoot: string) => ({
+      repository: { workspaceRoot },
+      dispose: () => disposed.push(workspaceRoot)
+    });
+    const removedRoot = Uri.file("/workspace/removed").fsPath;
+    const nestedRoot = Uri.file("/workspace/removed/nested").fsPath;
+    const retainedRoot = Uri.file("/workspace/removed/retained").fsPath;
+    const similarRoot = Uri.file("/workspace/removed-copy").fsPath;
+    const unrelatedRoot = Uri.file("/workspace/other").fsPath;
+    (manager as any).openRepositories = [
+      entry(removedRoot),
+      entry(nestedRoot),
+      entry(retainedRoot),
+      entry(similarRoot),
+      entry(unrelatedRoot)
+    ];
+
+    const surviving = (
+      manager as any
+    ).disposeRepositoriesUncoveredByWorkspaceRemoval(
+      [folder(removedRoot), folder(nestedRoot)],
+      [folder(retainedRoot), folder(unrelatedRoot)]
+    );
+
+    assert.deepStrictEqual(disposed, [removedRoot, nestedRoot]);
+    assert.deepStrictEqual(
+      surviving.map((candidate: WorkspaceFolder) => candidate.uri.fsPath),
+      [retainedRoot]
+    );
+  });
+
+  test("workspace removal rescans a surviving folder nested below a closed projection", async () => {
+    const removed = {
+      uri: Uri.file("/workspace")
+    } as WorkspaceFolder;
+    const surviving = {
+      uri: Uri.file("/workspace/wc/sub")
+    } as WorkspaceFolder;
+    const scanned: string[] = [];
+    (manager as any).currentWorkspaceFolders = () => [surviving];
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () => [
+      surviving
+    ];
+    (manager as any).getOpenRepository = () => undefined;
+    (manager as any).tryOpenRepository = (root: string) => scanned.push(root);
+
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: [removed]
+    });
+
+    assert.deepStrictEqual(scanned, [surviving.uri.fsPath]);
+  });
+
+  test("later workspace events restart or cancel pending rediscovery by folder", async () => {
+    const surviving = {
+      uri: Uri.file("/workspace/wc/sub")
+    } as WorkspaceFolder;
+    const requests: any[] = [];
+    let currentFolders: WorkspaceFolder[] = [surviving];
+    let events = 0;
+    (manager as any).enabled = true;
+    (manager as any).currentWorkspaceFolders = () => currentFolders;
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () =>
+      events++ === 0 ? [surviving] : [];
+    (manager as any).getOpenRepository = () => undefined;
+    (manager as any).tryOpenRepository = (
+      _root: string,
+      _level: number,
+      options: unknown
+    ) => {
+      requests.push(options);
+      return new Promise<void>(() => {});
+    };
+
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: []
+    });
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: [{ uri: Uri.file("/unrelated") } as WorkspaceFolder]
+    });
+
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[0].workspaceFolderGeneration <
+        requests[1].workspaceFolderGeneration,
+      true
+    );
+    assert.equal(
+      (manager as any).isDiscoveryRequestActive(
+        (manager as any).lifecycleGeneration,
+        requests[0].workspaceFolderGeneration
+      ),
+      false
+    );
+    assert.equal(
+      (manager as any).isDiscoveryRequestActive(
+        (manager as any).lifecycleGeneration,
+        requests[1].workspaceFolderGeneration
+      ),
+      true
+    );
+
+    currentFolders = [];
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: [surviving]
+    });
+    assert.equal(requests.length, 2);
+
+    let disposed = 0;
+    const staleRepository = { dispose: () => disposed++ } as any;
+    (manager as any).registerDiscoveredRepository(
+      staleRepository,
+      (manager as any).lifecycleGeneration,
+      false,
+      [],
+      requests[1].workspaceFolderGeneration
+    );
+    assert.equal(disposed, 1);
+    assert.equal(manager.openRepositories.length, 0);
+  });
+
+  test("workspace removal skips projections closed by reentrant callbacks", () => {
+    const folder = (root: string) =>
+      ({ uri: Uri.file(root) }) as WorkspaceFolder;
+    const firstRoot = Uri.file("/workspace/first").fsPath;
+    const secondRoot = Uri.file("/workspace/second").fsPath;
+    const disposed: string[] = [];
+    let first: any;
+    let second: any;
+    const close = (entry: any, root: string) => {
+      disposed.push(root);
+      (manager as any).openRepositories = (
+        manager as any
+      ).openRepositories.filter((candidate: any) => candidate !== entry);
+    };
+    second = {
+      repository: { workspaceRoot: secondRoot },
+      dispose: () => close(second, secondRoot)
+    };
+    first = {
+      repository: { workspaceRoot: firstRoot },
+      dispose: () => {
+        close(first, firstRoot);
+        second.dispose();
+      }
+    };
+    (manager as any).openRepositories = [first, second];
+
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval(
+      [folder("/workspace")],
+      []
+    );
+
+    assert.deepStrictEqual(disposed, [firstRoot, secondRoot]);
+  });
+
+  test("workspace replacement disposes stale ownership before scanning additions", async () => {
+    const added = {
+      uri: Uri.file("/workspace/replacement")
+    } as WorkspaceFolder;
+    let staleOwner = true;
+    let scans = 0;
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () => {
+      staleOwner = false;
+      return [];
+    };
+    (manager as any).getOpenRepository = () =>
+      staleOwner ? { repository: {} } : undefined;
+    (manager as any).tryOpenRepository = () => {
+      scans++;
+    };
+
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [added],
+      removed: []
+    });
+
+    assert.equal(scans, 1);
   });
 });

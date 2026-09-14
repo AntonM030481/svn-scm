@@ -13,6 +13,7 @@ import {
 } from "vscode";
 import { ISvnLogEntry, ISvnLogEntryPath } from "../common/types";
 import { exists, lstat } from "../fs";
+import { logLimit } from "../helpers/settingValues";
 import { configuration } from "../helpers/configuration";
 import { IRemoteRepository } from "../remoteRepository";
 import { SvnRI } from "../svnRI";
@@ -161,14 +162,7 @@ export async function checkIfFile(
 }
 
 export function getLimit(): number {
-  const limit = Number.parseInt(
-    configuration.get<string>("log.length") || "50",
-    10
-  );
-  if (isNaN(limit) || limit <= 0) {
-    throw new Error("Invalid log.length setting value");
-  }
-  return limit;
+  return logLimit(configuration.get("log.length"));
 }
 
 /// @note: cached.svnTarget should be valid

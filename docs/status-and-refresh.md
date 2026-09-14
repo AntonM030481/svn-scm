@@ -243,3 +243,13 @@ properties on a directory do not prove its recursive target set is unchanged.
 Ordinary live directory selections retain their existing behavior. Incoming
 updates from SCM validate against the refreshed remote group, including
 preview provenance, rather than resolving through local change groups.
+
+## Settings-driven projection
+
+Repository retains the last accepted raw SVN status as projection input. Display
+configuration events reproject it without SVN calls or authoritative status
+events. Incremental validation seeds from this raw input, not filtered SCM rows,
+so hiding a file cannot erase it from a later targeted refresh. Local results
+retain previous remote evidence by path until the next remote scan. Persisted
+startup previews keep their preview safeguards when reprojected. See
+[settings behavior](settings.md) for manual and scheduled remote semantics.
