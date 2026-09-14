@@ -307,6 +307,53 @@ suite("Staging Tests", () => {
     );
   });
 
+  test("sourceControl.ignore does not dereference staged symlinks", async () => {
+    if (process.platform === "win32") return;
+
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const svnConfiguration = workspace.getConfiguration("svn");
+    const previousIgnore = svnConfiguration.inspect<string[]>(
+      "sourceControl.ignore"
+    )?.globalValue;
+    await svnConfiguration.update(
+      "sourceControl.ignore",
+      ["**/*.ignored"],
+      ConfigurationTarget.Global
+    );
+
+    try {
+      const link = path.join(checkout.fsPath, "ignored-path-link");
+      fs.symlinkSync("one", link);
+      await repository.status();
+
+      const resource = repository.unversioned.resourceStates.find(
+        item => item.resourceUri.fsPath === link
+      );
+      assert.ok(resource);
+
+      await commands.executeCommand("svn.stage", resource);
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === link
+        ),
+        true
+      );
+      assert.match(svn(["status"], checkout.fsPath), /^A\s+ignored-path-link/m);
+    } finally {
+      await svnConfiguration.update(
+        "sourceControl.ignore",
+        previousIgnore,
+        ConfigurationTarget.Global
+      );
+    }
+  });
+
   test("directory-only versioned changes stay unstaged", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
