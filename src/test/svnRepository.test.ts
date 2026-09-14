@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as path from "path";
 import {
   ConstructorPolicy,
   ICpOptions,
@@ -66,6 +67,43 @@ suite("Svn Repository Tests", () => {
     assert.equal(status[0].path, "test.php");
     assert.equal(status[1].path, "newfiletester.php");
     assert.equal(status[2].path, "added.php");
+  });
+
+  test("show and showBuffer share local revision target resolution", async () => {
+    svn = new Svn(options);
+    const workspaceRoot = path.resolve("show-target");
+    const file = path.join(workspaceRoot, "nested", "file.txt");
+    const repository = await new Repository(
+      svn,
+      workspaceRoot,
+      workspaceRoot,
+      ConstructorPolicy.LateInit
+    );
+    repository.getInfo = async () => info;
+
+    const calls: string[][] = [];
+    repository.exec = async args => {
+      calls.push(args);
+      return { exitCode: 0, stderr: "", stdout: "text" };
+    };
+    repository.execBuffer = async args => {
+      calls.push(args);
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout: Buffer.from("raw")
+      };
+    };
+
+    assert.equal(await repository.show(file, "42"), "text");
+    assert.deepEqual(
+      await repository.showBuffer(file, "42"),
+      Buffer.from("raw")
+    );
+    assert.deepEqual(calls, [
+      ["cat", "-r", "42", `${info.url}/nested/file.txt`],
+      ["cat", "-r", "42", `${info.url}/nested/file.txt`]
+    ]);
   });
 
   test("Resolves external repository UUID only when requested", async () => {
