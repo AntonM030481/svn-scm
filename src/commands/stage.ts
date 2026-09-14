@@ -12,7 +12,10 @@ import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
-import { createStagingChangelist } from "../stagingModel";
+import {
+  createStagingChangelist,
+  parseStagingChangelist
+} from "../stagingModel";
 import {
   isUnversionedChildResource,
   UnversionedChildResource
@@ -210,6 +213,51 @@ async function stageUnversionedChildren(
   return regular;
 }
 
+async function collectUnstageRefreshTargets(
+  resources: Resource[]
+): Promise<Map<Repository, string[]>> {
+  const sourceControlManager = await getSourceControlManager();
+  const byRepository = new Map<Repository, Map<string, string>>();
+
+  for (const resource of resources) {
+    const repository = sourceControlManager.getRepository(resource.resourceUri);
+    if (!repository) continue;
+
+    const targets = byRepository.get(repository) ?? new Map<string, string>();
+    const add = (target: string) => targets.set(normalizePath(target), target);
+    add(resource.resourceUri.fsPath);
+
+    const changelist = repository.stagedChangelists.get(
+      normalizePath(resource.resourceUri.fsPath)
+    );
+    const createdDirectoryRelativeRoot = changelist
+      ? parseStagingChangelist(changelist)?.createdDirectoryRelativeRoot
+      : undefined;
+    if (createdDirectoryRelativeRoot) {
+      add(path.resolve(repository.root, createdDirectoryRelativeRoot));
+    }
+
+    byRepository.set(repository, targets);
+  }
+
+  return new Map(
+    [...byRepository].map(([repository, targets]) => [
+      repository,
+      [...targets.values()]
+    ])
+  );
+}
+
+async function refreshUnstageTargets(
+  targetsByRepository: Map<Repository, string[]>
+): Promise<void> {
+  await Promise.all(
+    [...targetsByRepository].map(([repository, targets]) =>
+      refreshStatusTargets(repository, targets)
+    )
+  );
+}
+
 abstract class BaseStagingCommand extends Command {
   constructor(
     commandName: string,
@@ -288,7 +336,9 @@ export class Unstage extends BaseStagingCommand {
       async () => {
         const resources = await this.staging.validateUnstageSelection(selected);
         if (resources.length) {
+          const refreshTargets = await collectUnstageRefreshTargets(resources);
           await this.staging.unstage(resources);
+          await refreshUnstageTargets(refreshTargets);
         }
       }
     );
@@ -323,9 +373,11 @@ export class UnstageAll extends Command {
       const selected = this.staging
         .stagedEntriesForWorkingCopy(repository)
         .map(entry => entry.resource);
+      const refreshTargets = await collectUnstageRefreshTargets(selected);
 
       await this.staging.validateUnstageSelection(selected);
       await this.staging.unstageAll(repository);
+      await refreshUnstageTargets(refreshTargets);
     });
   }
 }
