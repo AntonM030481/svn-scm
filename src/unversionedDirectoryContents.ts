@@ -100,13 +100,9 @@ export class UnversionedDirectoryContents implements Disposable {
   private readonly disposables: Disposable[] = [];
 
   constructor(sourceControlManager: SourceControlManager) {
-    sourceControlManager.repositories.forEach(repository =>
-      this.attach(repository)
-    );
+    sourceControlManager.repositories.forEach(repository => this.attach(repository));
     this.disposables.push(
-      sourceControlManager.onDidOpenRepository(repository =>
-        this.attach(repository)
-      ),
+      sourceControlManager.onDidOpenRepository(repository => this.attach(repository)),
       sourceControlManager.onDidCloseRepository(repository =>
         this.detach(repository)
       )
