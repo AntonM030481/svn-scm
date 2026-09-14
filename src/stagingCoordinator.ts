@@ -321,6 +321,11 @@ export class StagingCoordinator implements Disposable {
     const grouped = new Map<Repository, Map<string | undefined, string[]>>();
 
     for (const { repository, resource } of entries) {
+      // A successfully committed deletion has no working-copy node whose
+      // changelist can be restored. A sibling projection may still expose its
+      // pre-commit metadata until that projection refreshes.
+      if (resource.type === Status.DELETED) continue;
+
       const key = normalizePath(resource.resourceUri.fsPath);
       const stagingChangelist =
         this.states.get(repository)?.metadataByPath.get(key) ??

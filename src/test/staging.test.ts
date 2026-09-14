@@ -3,7 +3,7 @@ import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
 import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
-import { IFileStatus } from "../common/types";
+import { IFileStatus, Status } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import {
@@ -606,7 +606,7 @@ suite("Staging Tests", () => {
     const fileOne = path.join(one, "a.txt");
     const fileTwo = path.join(two, "b.txt");
     fs.writeFileSync(fileOne, "a1\n");
-    fs.writeFileSync(fileTwo, "b1\n");
+    svn(["delete", path.join("two", "b.txt")], checkout.fsPath);
     await repositoryOne.status();
     await repositoryTwo.status();
 
@@ -618,6 +618,7 @@ suite("Staging Tests", () => {
     );
     assert.ok(resourceOne);
     assert.ok(resourceTwo);
+    assert.equal(resourceTwo.type, Status.DELETED);
 
     await commands.executeCommand("svn.stage", resourceOne);
     await commands.executeCommand("svn.stage", resourceTwo);
@@ -629,6 +630,8 @@ suite("Staging Tests", () => {
     );
 
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+    assert.equal(fs.existsSync(fileTwo), false);
+    assert.equal(repositoryOne.inputBox.value, "");
     const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
     assert.match(log, /one[\\/]a\.txt/);
     assert.match(log, /two[\\/]b\.txt/);
