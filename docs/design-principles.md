@@ -34,13 +34,15 @@ SVN metadata watchers report files such as `wc.db`, not the working path that
 caused the write. During a targeted mutation and its short grace period, the
 extension therefore suppresses metadata echoes for the whole physical working
 copy. A concurrent external SVN process can be hidden during that bounded
-window. State is reconciled by the next eligible unsuppressed metadata event
-when auto-refresh is enabled, any later operation that actually takes the
-full-status path (including remote-status polling and full-status fallback), or
-targeted activity that covers the externally changed path; unrelated targeted
-activity is not sufficient. Avoid restoring unconditional delayed full status
-after every mutation, because that would erase the targeted-refresh benefit for
-the normal case.
+window. Status-derived state is reconciled by the next eligible unsuppressed
+metadata event when auto-refresh is enabled, any later operation that actually
+takes the full-status path (including remote-status polling and full-status
+fallback), or targeted activity that covers the externally changed path;
+unrelated targeted activity is not sufficient. Cached `svn info` fields, such
+as the current branch after an external switch, require a separate repository
+info refresh. Avoid restoring unconditional delayed full status after every
+mutation, because that would erase the targeted-refresh benefit for the normal
+case.
 
 ### Local work should remain local
 
