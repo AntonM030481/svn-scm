@@ -121,6 +121,43 @@ suite("Settings on an open working copy", () => {
     }
   });
 
+  test("files.exclude alone reprojects rows and counts without SVN", async () => {
+    const config = workspace.getConfiguration("files");
+    const previous = config.inspect("exclude")?.globalValue;
+    let scans = 0;
+    let events = 0;
+    const status = repo.repository.getStatus;
+    repo.repository.getStatus = async () => {
+      scans++;
+      return [];
+    };
+    const listener = repo.onDidChangeStatus(() => events++);
+    try {
+      await set("sourceControl.countUnversioned", true);
+      assert.strictEqual(repo.sourceControl.count, 1);
+      await config.update(
+        "exclude",
+        { "**/visible.txt": true },
+        ConfigurationTarget.Global
+      );
+      assert.strictEqual(repo.unversioned.resourceStates.length, 0);
+      assert.strictEqual(repo.sourceControl.count, 0);
+      await config.update(
+        "exclude",
+        { "**/visible.txt": false },
+        ConfigurationTarget.Global
+      );
+      assert.strictEqual(repo.unversioned.resourceStates.length, 1);
+      assert.strictEqual(repo.sourceControl.count, 1);
+      assert.strictEqual(scans, 0);
+      assert.strictEqual(events, 0);
+    } finally {
+      listener.dispose();
+      repo.repository.getStatus = status;
+      await config.update("exclude", previous, ConfigurationTarget.Global);
+    }
+  });
+
   test("hidden records survive an unrelated incremental operation", async () => {
     const adapters: Disposable[] = [];
     enableIncrementalStatusRefresh(

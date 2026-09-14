@@ -353,7 +353,7 @@ export class Repository implements IRemoteRepository {
 
     // On change config, dispose current interval and create a new.
     this.disposables.push(
-      configuration.onDidChange(e => {
+      workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration("svn.remoteChanges.checkFrequency")) {
           if (this.remoteChangedUpdateInterval) {
             clearInterval(this.remoteChangedUpdateInterval);
