@@ -1651,6 +1651,7 @@ export class Repository implements IRemoteRepository {
     this.startupAbort?.abort();
     this._onDidDispose.fire();
     this._onDidDispose.dispose();
+    this._onDidRebuildStatusProjection.dispose();
     cancelDebounces(this);
     this.disposables = dispose(this.disposables);
   }

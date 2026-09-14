@@ -308,7 +308,7 @@ suite("Staging Tests", () => {
     assert.match(status, /^\?\s+inherited-root$/m);
   });
 
-  test("unstaging an unversioned folder restores its scheduled additions", async () => {
+  test("unstaging after a working-copy move restores folder additions", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
     const repository = sourceControlManager.getRepository(
@@ -335,8 +335,19 @@ suite("Staging Tests", () => {
       path.relative(repository.root, directory)
     );
 
-    await commands.executeCommand("svn.unstageAll", repository.staged);
-    const status = svn(["status"], checkout.fsPath);
+    sourceControlManager.close(repository);
+    const movedCheckout = Uri.file(`${checkout.fsPath}-moved`);
+    fs.renameSync(checkout.fsPath, movedCheckout.fsPath);
+    await sourceControlManager.tryOpenRepository(movedCheckout.fsPath);
+    const movedRepository = sourceControlManager.getRepository(
+      movedCheckout
+    ) as Repository;
+    opened.push(movedRepository);
+    await movedRepository.initialStatusSettled;
+    assert.ok(movedRepository.staged?.resourceStates.length);
+
+    await commands.executeCommand("svn.unstageAll", movedRepository.staged);
+    const status = svn(["status"], movedCheckout.fsPath);
     assert.doesNotMatch(status, /^A\s+new-folder/m);
     assert.match(status, /^\?\s+new-folder/m);
   });
