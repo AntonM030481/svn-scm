@@ -22,6 +22,17 @@ function uniquePaths(paths: string[]): string[] {
   return [...result.values()];
 }
 
+async function ensureWorkingCopyLiveStatus(
+  staging: StagingCoordinator,
+  repository: Repository
+): Promise<void> {
+  await Promise.all(
+    staging
+      .repositoriesForWorkingCopy(repository)
+      .map(peer => peer.ensureStatus())
+  );
+}
+
 async function commitEntries(
   anchor: Repository,
   entries: CommitEntry[],
@@ -83,6 +94,7 @@ export class CommitStaged extends Command {
   }
 
   public async execute(repository: Repository) {
+    await ensureWorkingCopyLiveStatus(this.staging, repository);
     const entries = this.staging
       .stagedEntriesForWorkingCopy(repository)
       .map(({ repository: owner, resource }) => ({
@@ -99,6 +111,7 @@ export class CommitAll extends Command {
   }
 
   public async execute(repository: Repository) {
+    await ensureWorkingCopyLiveStatus(this.staging, repository);
     await commitEntries(
       repository,
       this.staging.allCommittableEntriesForWorkingCopy(repository),
