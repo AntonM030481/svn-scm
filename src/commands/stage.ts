@@ -5,6 +5,24 @@ import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
 import { Command } from "./command";
 
+function resourceUriFromScmArgument(value: unknown): Uri | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const direct = (value as { resourceUri?: unknown }).resourceUri;
+  if (direct instanceof Uri) return direct;
+
+  // In SCM tree view VS Code sets the inline action context to an
+  // IResourceNode wrapper. The actual SourceControlResourceState is stored in
+  // `element`, while list view passes the resource directly.
+  const element = (value as { element?: unknown }).element;
+  if (element && typeof element === "object") {
+    const nested = (element as { resourceUri?: unknown }).resourceUri;
+    if (nested instanceof Uri) return nested;
+  }
+
+  return undefined;
+}
+
 abstract class BaseStagingCommand extends Command {
   constructor(
     commandName: string,
@@ -20,19 +38,15 @@ abstract class BaseStagingCommand extends Command {
       return this.getResourceStates(resourceStates);
     }
 
-    // SCM menu actions are contributed by package.json and VS Code is free to
-    // forward resource-state-shaped objects rather than our concrete Resource
-    // instances. Resolve those arguments structurally by URI instead of
-    // silently dropping them via `instanceof Resource`.
     const sourceControlManager = (await commands.executeCommand(
       "svn.getSourceControlManager",
       ""
     )) as SourceControlManager;
     const resources: Resource[] = [];
 
-    for (const resourceState of resourceStates) {
-      const uri = resourceState?.resourceUri;
-      if (!(uri instanceof Uri)) continue;
+    for (const resourceState of resourceStates as unknown[]) {
+      const uri = resourceUriFromScmArgument(resourceState);
+      if (!uri) continue;
 
       const repository = sourceControlManager.getRepository(uri);
       const resource = repository?.getResourceFromFile(uri);
