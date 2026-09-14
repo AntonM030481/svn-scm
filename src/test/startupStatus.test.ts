@@ -173,6 +173,21 @@ suite("Persisted startup status integration", () => {
     const events = new EventEmitter<Uri>();
     const deletions = new EventEmitter<Uri>();
     const adapters: Disposable[] = [];
+    const emitFileEvent = async (emitter: EventEmitter<Uri>, file: string) => {
+      const accepted = gate();
+      const validate = repo.validateStartupFile;
+      repo.validateStartupFile = (target, deleted) => {
+        validate.call(repo, target, deleted);
+        if (target === file) accepted.resolve();
+      };
+      try {
+        emitter.fire(Uri.file(file));
+        // The adapter asynchronously checks echo suppression before enqueueing.
+        await accepted.promise;
+      } finally {
+        repo.validateStartupFile = validate;
+      }
+    };
     let publications = 0;
     const listener = repo.onDidChangeStatus(() => publications++);
     try {
@@ -191,8 +206,7 @@ suite("Persisted startup status integration", () => {
         .update("autorefresh", true, ConfigurationTarget.Global);
       const changed = path.join(f.root, "new.txt");
       await fs.appendFile(changed, "during startup\n");
-      events.fire(Uri.file(changed));
-      await new Promise<void>(resolve => setImmediate(resolve));
+      await emitFileEvent(events, changed);
       await (repo as any).scanStartupFiles();
       assert.equal(repo.isInitialStatusPending, true);
       assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
@@ -208,26 +222,22 @@ suite("Persisted startup status integration", () => {
       // the exact file's startup evidence so it cannot be resurrected by overlay.
       const transient = path.join(f.root, "transient.txt");
       await fs.writeFile(transient, "temporary");
-      events.fire(Uri.file(transient));
-      await new Promise<void>(resolve => setImmediate(resolve));
+      await emitFileEvent(events, transient);
       await (repo as any).scanStartupFiles();
       assert.equal(
         repo.getResourceFromFile(transient)!.type,
         Status.UNVERSIONED
       );
       await fs.appendFile(descendant, "modified child");
-      events.fire(Uri.file(descendant));
-      await new Promise<void>(resolve => setImmediate(resolve));
+      await emitFileEvent(events, descendant);
       await (repo as any).scanStartupFiles();
       assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MODIFIED);
       await fs.rm(directory, { recursive: true });
       // A recursive delete may emit only the directory URI.
-      deletions.fire(Uri.file(directory));
-      await new Promise<void>(resolve => setImmediate(resolve));
+      await emitFileEvent(deletions, directory);
       await (repo as any).scanStartupFiles();
       await fs.unlink(transient);
-      deletions.fire(Uri.file(transient));
-      await new Promise<void>(resolve => setImmediate(resolve));
+      await emitFileEvent(deletions, transient);
       await (repo as any).scanStartupFiles();
       release.resolve();
       await repo.initialStatusSettled;
