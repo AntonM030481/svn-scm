@@ -1,0 +1,30 @@
+name: Check staging merge with master
+
+on:
+  push:
+    paths:
+      - .github/workflows/check-staging-master-merge.yml
+
+permissions:
+  contents: read
+
+jobs:
+  merge-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feature/git-like-staging
+          fetch-depth: 0
+      - name: Merge master and report conflicts
+        shell: bash
+        run: |
+          set +e
+          git fetch origin master
+          git merge --no-commit --no-ff origin/master
+          status=$?
+          echo "merge_status=$status"
+          git status --short
+          echo "CONFLICTS:"
+          git diff --name-only --diff-filter=U
+          exit $status
