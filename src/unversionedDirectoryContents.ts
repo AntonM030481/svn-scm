@@ -17,7 +17,10 @@ interface RepositoryState {
 }
 
 export class UnversionedChildResource extends Resource {
-  constructor(resourceUri: Uri, public readonly unversionedRoot: string) {
+  constructor(
+    resourceUri: Uri,
+    public readonly unversionedRoot: string
+  ) {
     super(resourceUri, Status.UNVERSIONED);
   }
 }
