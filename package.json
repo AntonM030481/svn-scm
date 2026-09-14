@@ -900,6 +900,28 @@
                     "group": "inline"
                 }
             ],
+            "scm/resourceFolder/context": [
+                {
+                    "command": "svn.stage",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "group": "inline"
+                },
+                {
+                    "command": "svn.unstage",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "group": "inline"
+                },
+                {
+                    "command": "svn.revert",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "group": "2_modification"
+                },
+                {
+                    "command": "svn.revert",
+                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "group": "inline"
+                }
+            ],
             "scm/resourceState/context": [
                 {
                     "command": "svn.stage",
