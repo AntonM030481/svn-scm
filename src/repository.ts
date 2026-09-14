@@ -88,6 +88,8 @@ export class Repository implements IRemoteRepository {
   public statusBar: StatusBarCommands;
   public changes: ISvnResourceGroup;
   public unversioned: ISvnResourceGroup;
+  public staged?: ISvnResourceGroup;
+  public stagedChangelists: Map<string, string> = new Map();
   public remoteChanges?: ISvnResourceGroup;
   public changelists: Map<string, ISvnResourceGroup> = new Map();
   public conflicts: ISvnResourceGroup;
@@ -143,6 +145,10 @@ export class Repository implements IRemoteRepository {
   public readonly onDidChangeStatus: Event<void> =
     this._onDidChangeStatus.event;
 
+  private _onDidRebuildStatusProjection = new EventEmitter<void>();
+  public readonly onDidRebuildStatusProjection: Event<void> =
+    this._onDidRebuildStatusProjection.event;
+
   private _onDidChangeRemoteChangedFiles = new EventEmitter<void>();
   public readonly onDidChangeRemoteChangedFile: Event<void> =
     this._onDidChangeRemoteChangedFiles.event;
@@ -177,6 +183,10 @@ export class Repository implements IRemoteRepository {
 
     this.changes.resourceStates = [];
     this.unversioned.resourceStates = [];
+    if (this.staged) {
+      this.staged.resourceStates = [];
+    }
+    this.stagedChangelists.clear();
     this.conflicts.resourceStates = [];
     this.changelists.forEach((group, _changelist) => {
       group.resourceStates = [];
@@ -924,6 +934,8 @@ export class Repository implements IRemoteRepository {
       }
     }
 
+    this._onDidRebuildStatusProjection.fire();
+
     if (preview) {
       this.sourceControl.quickDiffProvider = this;
     } else if (publishStatus) {
@@ -1011,6 +1023,7 @@ export class Repository implements IRemoteRepository {
       this.changes,
       this.conflicts,
       this.unversioned,
+      ...(this.staged ? [this.staged] : []),
       ...this.changelists.values()
     ];
 
@@ -1638,6 +1651,7 @@ export class Repository implements IRemoteRepository {
     this.startupAbort?.abort();
     this._onDidDispose.fire();
     this._onDidDispose.dispose();
+    this._onDidRebuildStatusProjection?.dispose();
     cancelDebounces(this);
     this.disposables = dispose(this.disposables);
   }

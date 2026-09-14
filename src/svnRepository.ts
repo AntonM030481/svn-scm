@@ -17,7 +17,7 @@ import {
 import { isSnapshotPath } from "./statusSnapshot";
 import { sequentialize } from "./decorators";
 import * as encodeUtil from "./encoding";
-import { exists, writeFile, stat, readdir } from "./fs";
+import { exists, writeFile, lstat, readdir } from "./fs";
 import { getBranchName } from "./helpers/branch";
 import { logLimit } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
@@ -557,7 +557,7 @@ export class Repository {
 
   public async addFilesByIgnore(files: string[], ignoreList: string[]) {
     const allFiles = async (file: string): Promise<string[]> => {
-      if ((await stat(file)).isDirectory()) {
+      if ((await lstat(file)).isDirectory()) {
         const nestedFiles = (
           await Promise.all(
             (await readdir(file)).map(subfile => {

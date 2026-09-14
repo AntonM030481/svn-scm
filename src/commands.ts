@@ -7,6 +7,7 @@ import { Checkout } from "./commands/checkout";
 import { Cleanup } from "./commands/cleanup";
 import { Close } from "./commands/close";
 import { Commit } from "./commands/commit";
+import { CommitAll, CommitStaged } from "./commands/commitStaged";
 import { CommitWithMessage } from "./commands/commitWithMessage";
 import { DeleteUnversioned } from "./commands/deleteUnversioned";
 import { FileOpen } from "./commands/fileOpen";
@@ -39,6 +40,7 @@ import { Revert } from "./commands/revert";
 import { RevertAll } from "./commands/revertAll";
 import { RevertChange } from "./commands/revertChange";
 import { RevertExplorer } from "./commands/revertExplorer";
+import { Stage, StageAll, Unstage, UnstageAll } from "./commands/stage";
 import { SwitchBranch } from "./commands/switchBranch";
 import { Update } from "./commands/update";
 import { Upgrade } from "./commands/upgrade";
@@ -46,6 +48,7 @@ import { SourceControlManager } from "./source_control_manager";
 import { SearchLogByRevision } from "./commands/search_log_by_revision";
 import { SearchLogByText } from "./commands/search_log_by_text";
 import { Merge } from "./commands/merge";
+import { StagingCoordinator } from "./stagingCoordinator";
 
 export function registerCommands(
   sourceControlManager: SourceControlManager,
@@ -54,11 +57,20 @@ export function registerCommands(
     | SourceControlManager
     | PromiseLike<SourceControlManager> = sourceControlManager
 ) {
+  const staging = new StagingCoordinator(sourceControlManager);
+  disposables.push(staging);
+
   disposables.push(new GetSourceControlManager(ready));
   disposables.push(new FileOpen());
   disposables.push(new OpenFile());
   disposables.push(new PromptAuth());
   disposables.push(new CommitWithMessage());
+  disposables.push(new CommitStaged(staging));
+  disposables.push(new CommitAll(staging));
+  disposables.push(new Stage(staging));
+  disposables.push(new Unstage(staging));
+  disposables.push(new StageAll(staging));
+  disposables.push(new UnstageAll(staging));
   disposables.push(new Add());
   disposables.push(new ChangeList());
   disposables.push(new Refresh());
