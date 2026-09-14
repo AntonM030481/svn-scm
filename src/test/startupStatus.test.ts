@@ -141,8 +141,9 @@ suite("Persisted startup status integration", () => {
 
   test("file events publish during initial scan and survive its older result", async () => {
     const f = await fixture();
-    const directory = path.join(f.root, "transient-directory");
-    await fs.mkdir(directory);
+    const directory = await fs.mkdtemp(
+      path.join(f.root, "transient-directory-")
+    );
     const descendant = path.join(directory, "child.txt");
     await fs.writeFile(descendant, "base child");
     await f.base.exec(["add", directory]);
@@ -163,6 +164,8 @@ suite("Persisted startup status integration", () => {
       return old;
     };
     const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
     const events = new EventEmitter<Uri>();
     const deletions = new EventEmitter<Uri>();
     const adapters: Disposable[] = [];
@@ -267,6 +270,8 @@ suite("Persisted startup status integration", () => {
       return result;
     };
     const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
     try {
       await entered.promise;
       const parentFile = path.join(f.root, "new.txt");
@@ -306,6 +311,8 @@ suite("Persisted startup status integration", () => {
       return old;
     };
     const repo = f.open(base);
+    // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+    (repo as any).scheduleStartupFileScan = () => {};
     const localEntered = gate();
     const localRelease = gate();
     let pending: Promise<void> | undefined;
@@ -358,6 +365,8 @@ suite("Persisted startup status integration", () => {
         return getStatus(params);
       };
       const repo = f.open(base);
+      // These ordering tests drive each flush explicitly rather than racing a real debounce timer.
+      (repo as any).scheduleStartupFileScan = () => {};
       const localEntered = gate();
       const localRelease = gate();
       let pending: Promise<void> | undefined;
