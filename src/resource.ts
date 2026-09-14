@@ -1,9 +1,11 @@
+import { statSync } from "node:fs";
 import * as path from "path";
 import {
   Command,
   SourceControlResourceDecorations,
   SourceControlResourceState,
   ThemeColor,
+  ThemeIcon,
   Uri
 } from "vscode";
 import { PropStatus, Status } from "./common/types";
@@ -42,6 +44,7 @@ export class Resource implements SourceControlResourceState {
       Unversioned: getIconUri("status-unversioned", "dark")
     }
   };
+  private _isDirectory?: boolean;
 
   constructor(
     private _resourceUri: Uri,
@@ -73,8 +76,12 @@ export class Resource implements SourceControlResourceState {
 
   get decorations(): SourceControlResourceDecorations {
     // TODO@joh, still requires restart/redraw in the SCM viewlet
-    const light = { iconPath: this.getIconPath("light") };
-    const dark = { iconPath: this.getIconPath("dark") };
+    const light = {
+      iconPath: this.isDirectory ? ThemeIcon.Folder : this.getIconPath("light")
+    };
+    const dark = {
+      iconPath: this.isDirectory ? ThemeIcon.Folder : this.getIconPath("dark")
+    };
     const tooltip = this.tooltip;
     const strikeThrough = this.strikeThrough;
     const faded = this.faded;
@@ -116,6 +123,24 @@ export class Resource implements SourceControlResourceState {
       title: "Open Diff With Base",
       arguments: [this]
     };
+  }
+
+  private get isDirectory(): boolean {
+    if (this.type !== Status.UNVERSIONED) {
+      return false;
+    }
+
+    if (this._isDirectory !== undefined) {
+      return this._isDirectory;
+    }
+
+    try {
+      this._isDirectory = statSync(this.resourceUri.fsPath).isDirectory();
+    } catch {
+      this._isDirectory = false;
+    }
+
+    return this._isDirectory;
   }
 
   private getIconPath(theme: string): Uri | undefined {
