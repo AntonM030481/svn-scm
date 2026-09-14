@@ -42,7 +42,7 @@ suite("Staging Live Validation Tests", () => {
     return checkout;
   }
 
-  test("stale unstage selection is re-resolved after live status", async () => {
+  test("stale unversioned metadata cannot revert a versioned edit", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
     const repository = sourceControlManager.getRepository(
@@ -59,28 +59,31 @@ suite("Staging Live Validation Tests", () => {
     assert.ok(unversioned);
 
     await commands.executeCommand("svn.stage", unversioned);
-    const staleStaged = repository.staged?.resourceStates.find(
-      resource => resource.resourceUri.fsPath === file
-    );
-    assert.ok(staleStaged);
     const stagingChangelist = repository.stagedChangelists.get(
       normalizePath(file)
     );
     assert.ok(stagingChangelist);
 
+    // SVN versions may clear changelists on commit, so explicitly recreate the
+    // dangerous state: a versioned modified file carrying stale :u metadata.
     svn(["commit", "-m", "external add", "new.txt"], checkout.fsPath);
     fs.writeFileSync(file, "external edit\n");
-    assert.ok(
-      svn(["status", "--xml"], checkout.fsPath).includes(
-        `name="${stagingChangelist}"`
-      ),
-      "external commit must retain the reserved changelist for this regression"
-    );
+    svn(["changelist", stagingChangelist, "new.txt"], checkout.fsPath);
+    await repository.fullStatus();
 
-    await commands.executeCommand("svn.unstage", staleStaged);
+    const staleMetadataStaged = repository.staged?.resourceStates.find(
+      resource => resource.resourceUri.fsPath === file
+    );
+    assert.ok(staleMetadataStaged);
+
+    await commands.executeCommand("svn.unstage", staleMetadataStaged);
 
     assert.equal(fs.readFileSync(file, "utf8"), "external edit\n");
     assert.match(svn(["status"], checkout.fsPath), /^M\s+new\.txt$/m);
+    assert.doesNotMatch(
+      svn(["status", "--xml"], checkout.fsPath),
+      /__svn_scm_staged__/
+    );
   });
 
   test("commit staged rebuilds selection after live status", async () => {
