@@ -282,6 +282,13 @@ export class Repository implements IRemoteRepository {
       this.disposables
     );
 
+    // VS Code renders SCM resource groups in creation order. Keep the Git-like
+    // staging group above Changes by creating it first; StagingCoordinator only
+    // owns its contents and staging metadata, not the group's lifetime.
+    this.staged = this.sourceControl.createResourceGroup(
+      "staged",
+      "Staged Changes"
+    ) as ISvnResourceGroup;
     this.changes = this.sourceControl.createResourceGroup(
       "changes",
       "Changes"
@@ -295,13 +302,16 @@ export class Repository implements IRemoteRepository {
       "Unversioned"
     ) as ISvnResourceGroup;
 
+    this.staged.repository = this;
     this.changes.repository = this;
     this.conflicts.repository = this;
     this.unversioned.repository = this;
+    this.staged.hideWhenEmpty = true;
     this.changes.hideWhenEmpty = true;
     this.unversioned.hideWhenEmpty = true;
     this.conflicts.hideWhenEmpty = true;
 
+    this.disposables.push(this.staged);
     this.disposables.push(this.changes);
     this.disposables.push(this.conflicts);
 

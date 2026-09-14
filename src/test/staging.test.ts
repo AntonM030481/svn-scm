@@ -48,6 +48,37 @@ suite("Staging Tests", () => {
     return checkout;
   }
 
+  test("repository owns one persistent staged group above Changes", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const stagedGroup = repository.staged;
+    assert.ok(stagedGroup);
+    assert.equal(stagedGroup.id, "staged");
+    assert.equal(stagedGroup.label, "Staged Changes");
+    assert.equal(stagedGroup.hideWhenEmpty, true);
+    assert.equal(stagedGroup.repository, repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "ordered staging edit\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    assert.strictEqual(repository.staged, stagedGroup);
+    assert.equal(
+      stagedGroup.resourceStates.some(item => item.resourceUri.fsPath === file),
+      true
+    );
+  });
+
   test("unstage restores a pre-existing user changelist", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);

@@ -472,13 +472,8 @@ export class StagingCoordinator implements Disposable {
   private attach(repository: Repository): void {
     if (this.states.has(repository)) return;
 
-    const group = repository.sourceControl.createResourceGroup(
-      "staged",
-      "Staged Changes"
-    ) as ISvnResourceGroup;
-    group.hideWhenEmpty = true;
-    group.repository = repository;
-    repository.staged = group;
+    const group = repository.staged;
+    if (!group) return;
 
     const state: RepositoryStagingState = {
       group,
@@ -495,7 +490,6 @@ export class StagingCoordinator implements Disposable {
     };
 
     state.disposables.push(
-      group,
       repository.onDidRebuildStatusProjection(() => this.reconcile(repository))
     );
     this.reconcile(repository);
@@ -514,9 +508,7 @@ export class StagingCoordinator implements Disposable {
     while (state.disposables.length) {
       state.disposables.pop()?.dispose();
     }
-    if (repository.staged === state.group) {
-      repository.staged = undefined;
-    }
+    state.group.resourceStates = [];
     repository.stagedChangelists.clear();
     this.states.delete(repository);
   }
