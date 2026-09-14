@@ -142,7 +142,6 @@ export interface IFileStatus {
   path: string;
   changelist?: string;
   rename?: string;
-  isDirectory?: boolean;
   wcStatus: IWcStatus;
   commit?: {
     revision: string;
