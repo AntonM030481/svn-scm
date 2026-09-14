@@ -43,6 +43,7 @@ import {
 import { exists } from "./fs";
 import { configuration } from "./helpers/configuration";
 import OperationsImpl from "./operationsImpl";
+import { getOperationPolicy } from "./operationPolicy";
 import { PathNormalizer } from "./pathNormalizer";
 import { IRemoteRepository } from "./remoteRepository";
 import {
@@ -68,24 +69,12 @@ import {
   filterEvent,
   getSvnDir,
   isDescendant,
-  isReadOnly,
   timeout,
   toDisposable
 } from "./util";
 import { match, matchAll } from "./util/globMatch";
 import { RepositoryFilesWatcher } from "./watchers/repositoryFilesWatcher";
 import { withWorkingCopyMutationLock } from "./workingCopyMutationLock";
-
-function shouldShowProgress(operation: Operation): boolean {
-  switch (operation) {
-    case Operation.CurrentBranch:
-    case Operation.Show:
-    case Operation.Info:
-      return false;
-    default:
-      return true;
-  }
-}
 
 export class Repository implements IRemoteRepository {
   public sourceControl: SourceControl;
@@ -1675,16 +1664,13 @@ export class Repository implements IRemoteRepository {
     signal?: AbortSignal,
     allowStatusRecovery = false
   ): Promise<T> {
+    const policy = getOperationPolicy(operation);
     const execute = async (): Promise<T> => {
       if (this.disposed || this.state !== RepositoryState.Idle) {
         throw new Error("Repository not initialized");
       }
 
-      if (
-        !isReadOnly(operation) &&
-        operation !== Operation.Status &&
-        operation !== Operation.StatusRemote
-      ) {
+      if (policy.requiresReadyStatus) {
         if (operation === Operation.CleanUp && allowStatusRecovery) {
           // Recovery must remain available when status itself cannot succeed.
           // Let startup settle first so cleanup never races its status subprocess.
@@ -1702,13 +1688,11 @@ export class Repository implements IRemoteRepository {
         try {
           const result = await this.retryRun(runOperation, signal);
 
-          const checkRemote = operation === Operation.StatusRemote;
-
-          if (!isReadOnly(operation)) {
+          if (policy.refreshStatus) {
             if (forceFullStatus) {
-              await this.updateModelStateSequential(checkRemote, true);
+              await this.updateModelStateSequential(policy.checkRemote, true);
             } else {
-              await this.updateModelState(checkRemote);
+              await this.updateModelState(policy.checkRemote);
             }
           }
 
@@ -1733,17 +1717,12 @@ export class Repository implements IRemoteRepository {
         }
       };
 
-      return shouldShowProgress(operation)
+      return policy.showProgress
         ? window.withProgress({ location: ProgressLocation.SourceControl }, run)
         : run();
     };
 
-    const locksWorkingCopy =
-      !isReadOnly(operation) &&
-      operation !== Operation.Status &&
-      operation !== Operation.StatusRemote;
-
-    return locksWorkingCopy
+    return policy.locksWorkingCopy
       ? withWorkingCopyMutationLock(this.root, execute)
       : execute();
   }
