@@ -99,10 +99,7 @@ suite("Staging Live Validation Tests", () => {
     await commands.executeCommand("svn.stage", changed);
     assert.equal(repository.staged?.resourceStates.length, 1);
 
-    svn(
-      ["changelist", "--remove", path.join("one", "a.txt")],
-      checkout.fsPath
-    );
+    svn(["changelist", "--remove", path.join("one", "a.txt")], checkout.fsPath);
     fs.writeFileSync(file, "external edit\n");
 
     const originalEnsureStatus = repository.ensureStatus.bind(repository);
