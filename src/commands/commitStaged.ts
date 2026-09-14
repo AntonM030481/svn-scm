@@ -9,6 +9,7 @@ import { Resource } from "../resource";
 import { StagingCoordinator } from "../stagingCoordinator";
 import SvnError, { getErrorMessage } from "../svnError";
 import { normalizePath } from "../util";
+import { withWorkingCopyMutationLock } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
 interface CommitEntry {
@@ -204,11 +205,13 @@ export class CommitStaged extends Command {
   }
 
   public async execute(repository: Repository) {
-    await commitEntries(
-      repository,
-      await validatedStagedEntries(this.staging, repository),
-      this.staging
-    );
+    await withWorkingCopyMutationLock(repository.root, async () => {
+      await commitEntries(
+        repository,
+        await validatedStagedEntries(this.staging, repository),
+        this.staging
+      );
+    });
   }
 }
 
