@@ -152,9 +152,11 @@ target-specific because a watcher event for `wc.db` or similar administration
 files does not identify the working path that caused it. A concurrent external
 SVN process can therefore have its metadata event hidden during this bounded
 window. With auto-refresh enabled, the next eligible unsuppressed metadata event
-reconciles the whole projection. Any later full-status path provides the same
-guarantee even when auto-refresh is disabled; examples include an explicit full
-refresh and automatic remote-status polling. A working-file event or later
+reconciles the whole projection. Any later operation that actually takes the
+full-status path provides the same guarantee even when auto-refresh is disabled;
+examples include automatic remote-status polling and a full-status fallback.
+The user-visible Refresh command is not itself such a guarantee because queued
+file targets can turn it into a targeted scan. A working-file event or later
 targeted operation reconciles only the paths it covers, so unrelated activity
 does not guarantee recovery of the hidden change. Running an unconditional
 delayed full status after every targeted mutation would remove the optimization
