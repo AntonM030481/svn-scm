@@ -1,6 +1,5 @@
 import * as path from "path";
 import { Event, commands } from "vscode";
-import { Operation } from "./common/types";
 import { exists, lstat, readdir, rmdir, unlink } from "./fs";
 import {
   DisposableResource,
@@ -133,20 +132,6 @@ export function camelcase(name: string) {
 
 export function timeout(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-export function isReadOnly(operation: Operation): boolean {
-  switch (operation) {
-    case Operation.CurrentBranch:
-    case Operation.Log:
-    case Operation.Show:
-    case Operation.Info:
-    case Operation.Changes:
-    case Operation.List:
-      return true;
-    default:
-      return false;
-  }
 }
 
 /**
