@@ -688,6 +688,53 @@ suite("Staging Tests", () => {
     await commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  test("palette commit refreshes staging membership after external unstage", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "one", "a.txt");
+    fs.writeFileSync(file, "external-unstage edit\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    await window.showTextDocument(Uri.file(file));
+    const svnConfiguration = workspace.getConfiguration("svn");
+    const previousAutorefresh =
+      svnConfiguration.inspect<boolean>("autorefresh")?.globalValue;
+
+    try {
+      await svnConfiguration.update(
+        "autorefresh",
+        false,
+        ConfigurationTarget.Global
+      );
+      svn(["changelist", "--remove", file], checkout.fsPath);
+      assert.doesNotMatch(
+        svn(["status", "--xml"], checkout.fsPath),
+        /__svn_scm_staged__/
+      );
+
+      repository.inputBox.value = "commit after external unstage";
+      await commands.executeCommand("svn.commit");
+      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+    } finally {
+      await svnConfiguration.update(
+        "autorefresh",
+        previousAutorefresh,
+        ConfigurationTarget.Global
+      );
+      await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
   test("hidden staged files remain available to unstage all and commit staged", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
