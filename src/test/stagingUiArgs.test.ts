@@ -122,7 +122,10 @@ suite("Staging UI Argument Tests", () => {
       path.join(peerCheckout.fsPath, "conflicted.txt"),
       "remote\n"
     );
-    svn(["commit", "-m", "remote change", "conflicted.txt"], peerCheckout.fsPath);
+    svn(
+      ["commit", "-m", "remote change", "conflicted.txt"],
+      peerCheckout.fsPath
+    );
     svn(["update"], checkout.fsPath);
     await repository.fullStatus();
 
