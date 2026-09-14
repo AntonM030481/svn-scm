@@ -112,6 +112,13 @@ suite("Staging UI Argument Tests", () => {
     );
     assert.ok(resource);
 
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
+
     await commands.executeCommand("svn.stage", { element: resource });
 
     assert.equal(
@@ -125,6 +132,21 @@ suite("Staging UI Argument Tests", () => {
       svn(["status", "--xml"], checkout.fsPath),
       /__svn_scm_staged__/
     );
+
+    const stagedResource = repository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(stagedResource);
+    await commands.executeCommand("svn.unstage", { element: stagedResource });
+
+    assert.equal(
+      repository.unversioned.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      true
+    );
+    assert.match(svn(["status"], checkout.fsPath), /^\?\s+new\.txt$/m);
+    assert.equal(fullStatusCalls, 0);
   });
 
   test("Commit Staged includes hidden added parent directories", async () => {

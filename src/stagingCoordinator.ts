@@ -819,6 +819,16 @@ export class StagingCoordinator implements Disposable {
     }
   }
 
+  private snapshotAddedPaths(repository: Repository): string[] {
+    return (repository.getStatusSnapshot() ?? [])
+      .filter(status => status.status === Status.ADDED)
+      .map(status =>
+        path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(repository.workspaceRoot, status.path)
+      );
+  }
+
   private async addedAncestorDirectoriesForUnstage(
     repository: Repository,
     paths: string[],
@@ -833,18 +843,7 @@ export class StagingCoordinator implements Disposable {
     }
 
     const selected = new Set(paths.map(normalizePath));
-    const statuses = await repository.repository.getStatus({
-      includeIgnored: true,
-      includeExternals: false,
-      forceFull: true
-    });
-    const added = statuses
-      .filter(status => status.status === Status.ADDED)
-      .map(status =>
-        path.isAbsolute(status.path)
-          ? status.path
-          : path.resolve(repository.workspaceRoot, status.path)
-      )
+    const added = this.snapshotAddedPaths(repository)
       .filter(candidate => isPathInside(createdDirectoryRoot, candidate))
       .map(normalizePath);
     const addedSet = new Set(added);
@@ -896,19 +895,9 @@ export class StagingCoordinator implements Disposable {
     if (!metadata.wasUnversioned) return;
 
     const selected = new Set(paths.map(normalizePath));
-    const statuses = await repository.repository.getStatus({
-      includeIgnored: true,
-      includeExternals: false,
-      forceFull: true
-    });
-    const addedPaths = statuses
-      .filter(status => status.status === Status.ADDED)
-      .map(status =>
-        path.isAbsolute(status.path)
-          ? status.path
-          : path.resolve(repository.workspaceRoot, status.path)
-      )
-      .filter(candidate => selected.has(normalizePath(candidate)));
+    const addedPaths = this.snapshotAddedPaths(repository).filter(candidate =>
+      selected.has(normalizePath(candidate))
+    );
     if (!addedPaths.length) return;
 
     const addedDirectories = metadata.createdDirectoryRelativeRoot

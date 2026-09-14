@@ -1,6 +1,7 @@
 import * as path from "path";
 import { commands, SourceControlResourceState, window } from "vscode";
 import { Status } from "../common/types";
+import { refreshStatusTargets } from "../incrementalStatus";
 import { inputCommitMessage } from "../messages";
 import { isStagingChangelist } from "../stagingModel";
 import SvnError, { getErrorMessage } from "../svnError";
@@ -27,6 +28,11 @@ export class Commit extends Command {
       if (!repository) {
         return;
       }
+
+      await refreshStatusTargets(
+        repository,
+        resources.map(resource => resource.fsPath)
+      );
 
       const stagedPaths = new Set(
         (repository.getStatusSnapshot() ?? [])

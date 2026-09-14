@@ -439,6 +439,18 @@ function operationTargets(
     : undefined;
 }
 
+function mergeStatusTargets(
+  repository: Repository,
+  targets: string[]
+): string[] {
+  const unique = new Map<string, string>();
+  for (const target of targets) {
+    if (!isTargetInWorkspace(repository.workspaceRoot, target)) continue;
+    unique.set(absolutePathKey(repository.workspaceRoot, target), target);
+  }
+  return [...unique.values()];
+}
+
 function patchRepository(repository: Repository): Disposable {
   const svnRepository = repository.repository;
   const originalGetStatus = svnRepository.getStatus.bind(svnRepository);
@@ -729,7 +741,10 @@ function patchRepository(repository: Repository): Disposable {
       state.repositoryState = undefined;
     } else if (state.fsTargets.size) {
       state.statuses = snapshotStatuses(repository);
-      state.pendingTargets = Array.from(state.fsTargets);
+      state.pendingTargets = mergeStatusTargets(repository, [
+        ...(state.pendingTargets ?? []),
+        ...state.fsTargets
+      ]);
       state.repositoryState = getRepositoryStateForTargets(
         repository,
         state.pendingTargets
@@ -763,6 +778,10 @@ export async function refreshStatusTargets(
   const scopedTargets = operationTargets(repository, targets);
   if (!state || !scopedTargets?.length) {
     await repository.fullStatus();
+    return;
+  }
+
+  if (!(await repository.whenIdle())) {
     return;
   }
 

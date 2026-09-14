@@ -600,13 +600,20 @@ export class Repository implements IRemoteRepository {
     });
   }
 
+  public async whenIdle(): Promise<boolean> {
+    while (!this.disposed && !this.operations.isIdle()) {
+      if (!(await this.waitForEventOrDispose(this.onDidRunOperation))) {
+        return false;
+      }
+    }
+
+    return !this.disposed;
+  }
+
   public async whenIdleAndFocused(): Promise<boolean> {
     while (!this.disposed) {
-      if (!this.operations.isIdle()) {
-        if (!(await this.waitForEventOrDispose(this.onDidRunOperation))) {
-          return false;
-        }
-        continue;
+      if (!(await this.whenIdle())) {
+        return false;
       }
 
       if (!window.state.focused) {
@@ -1072,17 +1079,7 @@ export class Repository implements IRemoteRepository {
 
   @throttle
   public async fullStatus() {
-    while (!this.operations.isIdle() && !this.disposed) {
-      const operationFinished = await this.waitForEventOrDispose(
-        this.onDidRunOperation
-      );
-
-      if (!operationFinished) {
-        return;
-      }
-    }
-
-    if (this.disposed) {
+    if (!(await this.whenIdle())) {
       return;
     }
 
