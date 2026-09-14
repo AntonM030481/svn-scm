@@ -268,7 +268,10 @@ With auto-refresh enabled, ordinary file events also feed a debounced local
 startup queue while the initial full scan runs. It admits at most 50 distinct
 paths per startup and reuses the 10 MiB/file and 50 MiB/batch limits. Real-path
 ancestor checks exclude nested working copies/externals even without a saved
-snapshot; administration markers are checked independently of cached status. One shallow
+snapshot; administration markers are checked independently of cached status.
+Pre-1.7 SVN clients follow the existing discovery ownership rule instead, since
+ordinary versioned directories also contain administration folders; known
+external markers are still excluded. One shallow
 local status request runs at a time; directories, missing paths, known external
 descendants and rename pairs stay in the normal reconciliation queue.
 

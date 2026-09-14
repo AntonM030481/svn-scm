@@ -1011,10 +1011,11 @@ export class Repository implements IRemoteRepository {
         // Even a previously clean path now needs validation.
         status: Status.MODIFIED
       }));
-      const targets = await selectStartupTargets(this.workspaceRoot, [
-        ...candidates,
-        ...saved.filter(s => s.status === Status.EXTERNAL)
-      ]);
+      const targets = await selectStartupTargets(
+        this.workspaceRoot,
+        [...candidates, ...saved.filter(s => s.status === Status.EXTERNAL)],
+        this.repository.usesPerDirectoryMetadata
+      );
       if (
         this.disposed ||
         this.hasLiveStatus ||
@@ -1095,7 +1096,11 @@ export class Repository implements IRemoteRepository {
         ) > 0,
         true
       );
-      const targets = await selectStartupTargets(this.workspaceRoot, saved);
+      const targets = await selectStartupTargets(
+        this.workspaceRoot,
+        saved,
+        this.repository.usesPerDirectoryMetadata
+      );
       if (this.disposed || !targets.length) return;
       const updated = await this.repository.getStartupStatus(
         targets,

@@ -150,6 +150,43 @@ suite("Status snapshot", () => {
     }
   });
 
+  test("distinguishes modern nested roots from legacy per-directory metadata", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "svn-layout-"));
+    try {
+      for (const admin of [".svn", "_svn"]) {
+        const directory = path.join(
+          root,
+          admin === ".svn" ? "modern" : "alternate"
+        );
+        await fs.mkdir(path.join(directory, admin), { recursive: true });
+        const file = path.join(directory, "file.txt");
+        await fs.writeFile(file, "changed");
+        const relative = path.relative(root, file);
+        assert.deepEqual(
+          await selectStartupTargets(root, [status(relative)]),
+          []
+        );
+        assert.deepEqual(
+          await selectStartupTargets(root, [status(relative)], true),
+          [relative]
+        );
+        assert.deepEqual(
+          await selectStartupTargets(
+            root,
+            [
+              status(relative),
+              status(path.relative(root, directory), Status.EXTERNAL)
+            ],
+            true
+          ),
+          []
+        );
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("serializes writes, detaches live objects and isolates workspace scopes", async () => {
     const data = new Map<string, unknown>();
     const state = {

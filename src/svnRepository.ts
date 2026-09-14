@@ -1,4 +1,5 @@
 import * as path from "path";
+import * as semver from "semver";
 import * as tmp from "tmp";
 import { Uri, workspace } from "vscode";
 import {
@@ -37,6 +38,11 @@ import { matchAll } from "./util/globMatch";
 import { parseDiffXml } from "./parser/diffParser";
 
 export class Repository {
+  public get usesPerDirectoryMetadata(): boolean {
+    // Match SourceControlManager's ownership rule for supported pre-1.7 clients.
+    return semver.satisfies(this.svn.version, "<1.7.0");
+  }
+
   private _infoCache: {
     [index: string]: ISvnInfo;
   } = {};

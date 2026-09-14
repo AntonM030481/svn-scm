@@ -159,7 +159,8 @@ export async function workingCopyIdentity(
 
 export async function selectStartupTargets(
   workspaceRoot: string,
-  statuses: IFileStatus[]
+  statuses: IFileStatus[],
+  usesPerDirectoryMetadata = false
 ): Promise<string[]> {
   const candidates = statuses.filter(
     s =>
@@ -208,7 +209,10 @@ export async function selectStartupTargets(
       // independently: nested working copies own their own administration dir.
       let directory = path.dirname(realFile);
       let nested = false;
-      while (snapshotPathKey(directory) !== snapshotPathKey(realRoot)) {
+      while (
+        !usesPerDirectoryMetadata &&
+        snapshotPathKey(directory) !== snapshotPathKey(realRoot)
+      ) {
         let hasAdmin = adminDirectories.get(directory);
         if (hasAdmin === undefined) {
           hasAdmin = false;
