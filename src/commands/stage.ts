@@ -105,17 +105,6 @@ abstract class BaseStagingCommand extends Command {
   }
 }
 
-async function ensureWorkingCopyLiveStatus(
-  staging: StagingCoordinator,
-  repository: Repository
-): Promise<void> {
-  await Promise.all(
-    staging
-      .repositoriesForWorkingCopy(repository)
-      .map(peer => peer.fullStatus())
-  );
-}
-
 export class Stage extends BaseStagingCommand {
   constructor(staging: StagingCoordinator) {
     super("svn.stage", staging);
@@ -150,8 +139,11 @@ export class StageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    await ensureWorkingCopyLiveStatus(this.staging, repository);
-    await this.staging.stageAll(repository);
+    const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
+    const resources = await this.staging.validateStageSelection(selected);
+    if (resources.length) {
+      await this.staging.stage(resources);
+    }
   }
 }
 
@@ -161,7 +153,12 @@ export class UnstageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    await ensureWorkingCopyLiveStatus(this.staging, repository);
-    await this.staging.unstageAll(repository);
+    const selected = this.staging
+      .stagedEntriesForWorkingCopy(repository)
+      .map(entry => entry.resource);
+    const resources = await this.staging.validateUnstageSelection(selected);
+    if (resources.length) {
+      await this.staging.unstage(resources);
+    }
   }
 }
