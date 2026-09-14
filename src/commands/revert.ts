@@ -6,7 +6,6 @@ import {
   window
 } from "vscode";
 import { checkAndPromptDepth, confirmRevert } from "../input/revert";
-import { Resource } from "../resource";
 import { Command } from "./command";
 
 function isPathInside(parent: string, child: string): boolean {
