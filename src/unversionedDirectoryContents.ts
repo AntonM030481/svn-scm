@@ -10,10 +10,16 @@ import { dispose, getSvnDir } from "./util";
 import { matchAll } from "./util/globMatch";
 
 const MAX_UNVERSIONED_CHILDREN = 2000;
+const MAX_UNVERSIONED_SCAN_ENTRIES = 10000;
 
 interface RepositoryState {
   generation: number;
   disposables: Disposable[];
+}
+
+interface ScanBudget {
+  filesRemaining: number;
+  entriesRemaining: number;
 }
 
 export class UnversionedChildResource extends Resource {
@@ -39,15 +45,20 @@ function excludePatterns(repository: Repository): string[] {
   );
 }
 
+function slashPath(filePath: string): string {
+  return filePath.split(path.sep).join("/");
+}
+
 function shouldInclude(
   relativePath: string,
   excludeList: string[],
   ignoreList: string[]
 ): boolean {
-  if (matchAll(relativePath, excludeList, { dot: true })) return false;
+  const normalized = slashPath(relativePath);
+  if (matchAll(normalized, excludeList, { dot: true })) return false;
   if (
     ignoreList.length &&
-    matchAll(path.sep + relativePath, ignoreList, {
+    matchAll("/" + normalized, ignoreList, {
       dot: true,
       matchBase: true
     })
@@ -60,14 +71,18 @@ function shouldInclude(
 async function collectFiles(
   repository: Repository,
   root: string,
-  budget: { remaining: number }
+  budget: ScanBudget
 ): Promise<UnversionedChildResource[]> {
   const result: UnversionedChildResource[] = [];
   const queue = [root];
   const excludeList = excludePatterns(repository);
   const ignoreList = configuration.get<string[]>("sourceControl.ignore");
 
-  while (queue.length && budget.remaining > 0) {
+  while (
+    queue.length &&
+    budget.filesRemaining > 0 &&
+    budget.entriesRemaining > 0
+  ) {
     const directory = queue.shift()!;
     let entries: import("node:fs").Dirent[];
     try {
@@ -77,7 +92,8 @@ async function collectFiles(
     }
 
     for (const entry of entries) {
-      if (budget.remaining <= 0) break;
+      if (budget.filesRemaining <= 0 || budget.entriesRemaining <= 0) break;
+      budget.entriesRemaining -= 1;
       if (entry.name === getSvnDir()) continue;
 
       const absolute = path.join(directory, entry.name);
@@ -91,7 +107,7 @@ async function collectFiles(
       if (!entry.isFile() && !entry.isSymbolicLink()) continue;
 
       result.push(new UnversionedChildResource(Uri.file(absolute), root));
-      budget.remaining -= 1;
+      budget.filesRemaining -= 1;
     }
   }
 
@@ -149,11 +165,18 @@ export class UnversionedDirectoryContents implements Disposable {
     const baseResources = repository.unversioned.resourceStates.filter(
       resource => !(resource instanceof UnversionedChildResource)
     ) as Resource[];
-    const budget = { remaining: MAX_UNVERSIONED_CHILDREN };
+    const budget: ScanBudget = {
+      filesRemaining: MAX_UNVERSIONED_CHILDREN,
+      entriesRemaining: MAX_UNVERSIONED_SCAN_ENTRIES
+    };
     const children: UnversionedChildResource[] = [];
 
     for (const resource of baseResources) {
-      if (resource.type !== Status.UNVERSIONED || budget.remaining <= 0) {
+      if (
+        resource.type !== Status.UNVERSIONED ||
+        budget.filesRemaining <= 0 ||
+        budget.entriesRemaining <= 0
+      ) {
         continue;
       }
       try {
@@ -174,9 +197,9 @@ export class UnversionedDirectoryContents implements Disposable {
       return;
     }
 
-    if (budget.remaining === 0) {
+    if (budget.filesRemaining === 0 || budget.entriesRemaining === 0) {
       console.warn(
-        `Unversioned directory contents capped at ${MAX_UNVERSIONED_CHILDREN} files for ${repository.workspaceRoot}`
+        `Unversioned directory scan capped for ${repository.workspaceRoot}`
       );
     }
 
