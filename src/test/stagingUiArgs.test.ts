@@ -54,6 +54,12 @@ suite("Staging UI Argument Tests", () => {
     // SCM tree view uses an IResourceNode wrapper as the inline action context.
     // The actual SourceControlResourceState is stored in `element`.
     const treeResourceNode = { element: resource };
+    const originalFullStatus = repository.fullStatus.bind(repository);
+    let fullStatusCalls = 0;
+    repository.fullStatus = async () => {
+      fullStatusCalls += 1;
+      return originalFullStatus();
+    };
 
     await commands.executeCommand("svn.stage", treeResourceNode);
     assert.equal(
@@ -82,6 +88,7 @@ suite("Staging UI Argument Tests", () => {
       ),
       true
     );
+    assert.equal(fullStatusCalls, 0);
   });
 
   test("Stage accepts an unversioned SCM tree resource-node argument", async () => {

@@ -53,6 +53,10 @@ interface WorkingCopyMutationState {
 const SELF_SVN_METADATA_GRACE_MS = 2000;
 const SELF_FS_ECHO_GRACE_MS = 5000;
 const workingCopyMutations = new Map<string, WorkingCopyMutationState>();
+const incrementalStatusStates = new WeakMap<
+  Repository,
+  IncrementalStatusState
+>();
 
 function pathApi(workspaceRoot: string) {
   return /^[a-zA-Z]:[\\/]/.test(workspaceRoot) || /^\\\\/.test(workspaceRoot)
@@ -444,6 +448,7 @@ function patchRepository(repository: Repository): Disposable {
     fsTargets: new Set<string>(),
     svnRefreshPending: false
   };
+  incrementalStatusStates.set(repository, state);
 
   const rememberFsEchoes = async (targets: string[]) => {
     await Promise.all(
@@ -741,12 +746,39 @@ function patchRepository(repository: Repository): Disposable {
   };
 
   return toDisposable(() => {
+    incrementalStatusStates.delete(repository);
     svnRepository.getStatus = originalGetStatus;
     originals.forEach((original, name) => {
       (repository as any)[name] = original;
     });
     fsDisposables = dispose(fsDisposables);
   });
+}
+
+export async function refreshStatusTargets(
+  repository: Repository,
+  targets: string[]
+): Promise<void> {
+  const state = incrementalStatusStates.get(repository);
+  const scopedTargets = operationTargets(repository, targets);
+  if (!state || !scopedTargets?.length) {
+    await repository.fullStatus();
+    return;
+  }
+
+  state.statuses = snapshotStatuses(repository);
+  state.pendingTargets = scopedTargets;
+  state.repositoryState = getRepositoryStateForTargets(
+    repository,
+    scopedTargets
+  );
+
+  try {
+    await repository.status();
+  } finally {
+    state.pendingTargets = undefined;
+    state.repositoryState = undefined;
+  }
 }
 
 export function enableIncrementalStatusRefresh(

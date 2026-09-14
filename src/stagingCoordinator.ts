@@ -2,6 +2,7 @@ import * as path from "path";
 import { Disposable, SourceControlResourceGroup, Uri, window } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
 import { lstat } from "./fs";
+import { refreshStatusTargets } from "./incrementalStatus";
 import { configuration } from "./helpers/configuration";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
@@ -216,7 +217,10 @@ export class StagingCoordinator implements Disposable {
 
     const validated: Resource[] = [];
     for (const [repository, selected] of byRepository) {
-      await repository.fullStatus();
+      await refreshStatusTargets(
+        repository,
+        selected.map(resource => resource.resourceUri.fsPath)
+      );
       const staged = this.states.get(repository)?.group.resourceStates ?? [];
 
       for (const original of selected) {
@@ -253,10 +257,21 @@ export class StagingCoordinator implements Disposable {
     resources: Resource[]
   ): Promise<void> {
     const filePaths = resources.map(resource => resource.resourceUri.fsPath);
-    const peers = this.repositoriesForWorkingCopy(repository).filter(peer =>
-      filePaths.some(filePath => isPathInside(peer.workspaceRoot, filePath))
+    const peers = this.repositoriesForWorkingCopy(repository).filter(
+      peer =>
+        peer !== repository &&
+        filePaths.some(filePath => isPathInside(peer.workspaceRoot, filePath))
     );
-    await Promise.all(peers.map(peer => peer.fullStatus()));
+    await Promise.all(
+      peers.map(peer =>
+        refreshStatusTargets(
+          peer,
+          filePaths.filter(filePath =>
+            isPathInside(peer.workspaceRoot, filePath)
+          )
+        )
+      )
+    );
   }
 
   public async stage(resources: Resource[]): Promise<void> {
