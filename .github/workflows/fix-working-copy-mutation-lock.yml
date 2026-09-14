@@ -2,14 +2,15 @@ name: Apply working-copy mutation lock
 
 on:
   push:
-    branches: [fix/block-staging-during-wc-mutation]
+    branches:
+      - fix/block-staging-during-wc-mutation
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -21,189 +22,17 @@ jobs:
       - run: corepack enable
       - run: yarn install --immutable
       - name: Apply lock implementation
-        shell: python
-        run: |
-          from pathlib import Path
-
-          Path('src/workingCopyMutationLock.ts').write_text(r'''import { AsyncLocalStorage } from "node:async_hooks";
-import { normalizeWorkingCopyRoot } from "./stagingModel";
-
-const heldLocks = new AsyncLocalStorage<ReadonlySet<string>>();
-const lockTails = new Map<string, Promise<void>>();
-
-async function withLockKey<T>(key: string, run: () => Promise<T>): Promise<T> {
-  const held = heldLocks.getStore();
-  if (held?.has(key)) {
-    return run();
-  }
-
-  const previous = lockTails.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const gate = new Promise<void>(resolve => {
-    release = resolve;
-  });
-  const tail = previous.then(() => gate);
-  lockTails.set(key, tail);
-
-  await previous;
-  const nextHeld = new Set(held ?? []);
-  nextHeld.add(key);
-
-  try {
-    return await heldLocks.run(nextHeld, run);
-  } finally {
-    release();
-    if (lockTails.get(key) === tail) {
-      lockTails.delete(key);
-    }
-  }
-}
-
-export async function withWorkingCopyMutationLocks<T>(
-  roots: string[],
-  run: () => Promise<T>
-): Promise<T> {
-  const keys = [...new Set(roots.map(normalizeWorkingCopyRoot))].sort();
-
-  const acquire = (index: number): Promise<T> => {
-    if (index >= keys.length) {
-      return run();
-    }
-    return withLockKey(keys[index], () => acquire(index + 1));
-  };
-
-  return acquire(0);
-}
-
-export function withWorkingCopyMutationLock<T>(
-  root: string,
-  run: () => Promise<T>
-): Promise<T> {
-  return withWorkingCopyMutationLocks([root], run);
-}
-''', encoding='utf-8')
-
-          repo = Path('src/repository.ts')
-          text = repo.read_text(encoding='utf-8')
-          import_marker = 'import { RepositoryFilesWatcher } from "./watchers/repositoryFilesWatcher";\n'
-          lock_import = 'import { withWorkingCopyMutationLock } from "./workingCopyMutationLock";\n'
-          if lock_import not in text:
-              text = text.replace(import_marker, import_marker + lock_import)
-
-          start = text.index('  private async run<T>(\n')
-          retry = text.index('  private async retryRun<T>(\n', start)
-          block = text[start:retry]
-          signature_end = block.index('  ): Promise<T> {\n') + len('  ): Promise<T> {\n')
-          body = block[signature_end:]
-          ending = '''    return shouldShowProgress(operation)\n      ? window.withProgress({ location: ProgressLocation.SourceControl }, run)\n      : run();\n  }\n\n'''
-          if not body.endswith(ending):
-              raise SystemExit('repository run ending drifted')
-          core = body[:-len(ending)]
-          replacement = block[:signature_end] + '''    const execute = async (): Promise<T> => {\n''' + core + '''      return shouldShowProgress(operation)\n        ? window.withProgress({ location: ProgressLocation.SourceControl }, run)\n        : run();\n    };\n\n    const locksWorkingCopy =\n      !isReadOnly(operation) &&\n      operation !== Operation.Status &&\n      operation !== Operation.StatusRemote;\n\n    return locksWorkingCopy\n      ? withWorkingCopyMutationLock(this.root, execute)\n      : execute();\n  }\n\n'''
-          text = text[:start] + replacement + text[retry:]
-          repo.write_text(text, encoding='utf-8')
-
-          stage = Path('src/commands/stage.ts')
-          text = stage.read_text(encoding='utf-8')
-          import_marker = 'import { StagingCoordinator } from "../stagingCoordinator";\n'
-          lock_import = 'import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";\n'
-          if lock_import not in text:
-              text = text.replace(import_marker, import_marker + lock_import)
-
-          old = '''async function waitForSelectedWorkingCopiesIdle(\n  staging: StagingCoordinator,\n  resources: Resource[]\n): Promise<boolean> {\n  const sourceControlManager = await getSourceControlManager();\n  const repositories = new Set<Repository>();\n\n  for (const resource of resources) {\n    const repository = sourceControlManager.getRepository(resource.resourceUri);\n    if (repository) repositories.add(repository);\n  }\n\n  const results = await Promise.all(\n    [...repositories].map(repository =>\n      waitForWorkingCopyIdle(staging, repository)\n    )\n  );\n  return results.every(Boolean);\n}\n'''
-          new = '''async function runWithSelectedWorkingCopiesLocked(\n  staging: StagingCoordinator,\n  resources: Resource[],\n  run: () => Promise<void>\n): Promise<void> {\n  const sourceControlManager = await getSourceControlManager();\n  const repositories = new Set<Repository>();\n\n  for (const resource of resources) {\n    const repository = sourceControlManager.getRepository(resource.resourceUri);\n    if (repository) repositories.add(repository);\n  }\n\n  await withWorkingCopyMutationLocks(\n    [...repositories].map(repository => repository.root),\n    async () => {\n      const results = await Promise.all(\n        [...repositories].map(repository =>\n          waitForWorkingCopyIdle(staging, repository)\n        )\n      );\n      if (results.every(Boolean)) {\n        await run();\n      }\n    }\n  );\n}\n\nasync function runWithWorkingCopyLocked(\n  staging: StagingCoordinator,\n  repository: Repository,\n  run: () => Promise<void>\n): Promise<void> {\n  await withWorkingCopyMutationLocks([repository.root], async () => {\n    if (await waitForWorkingCopyIdle(staging, repository)) {\n      await run();\n    }\n  });\n}\n'''
-          if old not in text:
-              raise SystemExit('selected wait helper drifted')
-          text = text.replace(old, new)
-
-          text = text.replace('''    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {\n      return;\n    }\n    const resources = await this.staging.validateStageSelection(selected);\n    if (resources.length) {\n      await this.staging.stage(resources);\n    }\n''', '''    await runWithSelectedWorkingCopiesLocked(this.staging, selected, async () => {\n      const resources = await this.staging.validateStageSelection(selected);\n      if (resources.length) {\n        await this.staging.stage(resources);\n      }\n    });\n''', 1)
-          text = text.replace('''    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {\n      return;\n    }\n    const resources = await this.staging.validateUnstageSelection(selected);\n    if (resources.length) {\n      await this.staging.unstage(resources);\n    }\n''', '''    await runWithSelectedWorkingCopiesLocked(this.staging, selected, async () => {\n      const resources = await this.staging.validateUnstageSelection(selected);\n      if (resources.length) {\n        await this.staging.unstage(resources);\n      }\n    });\n''', 1)
-          text = text.replace('''    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {\n      return;\n    }\n    const selected = this.staging.unstagedResourcesForWorkingCopy(repository);\n    const resources = await this.staging.validateStageSelection(selected);\n    if (resources.length) {\n      await this.staging.stage(resources);\n    }\n''', '''    await runWithWorkingCopyLocked(this.staging, repository, async () => {\n      const selected = this.staging.unstagedResourcesForWorkingCopy(repository);\n      const resources = await this.staging.validateStageSelection(selected);\n      if (resources.length) {\n        await this.staging.stage(resources);\n      }\n    });\n''', 1)
-          text = text.replace('''    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {\n      return;\n    }\n    const selected = this.staging\n      .stagedEntriesForWorkingCopy(repository)\n      .map(entry => entry.resource);\n\n    await this.staging.validateUnstageSelection(selected);\n    await this.staging.unstageAll(repository);\n''', '''    await runWithWorkingCopyLocked(this.staging, repository, async () => {\n      const selected = this.staging\n        .stagedEntriesForWorkingCopy(repository)\n        .map(entry => entry.resource);\n\n      await this.staging.validateUnstageSelection(selected);\n      await this.staging.unstageAll(repository);\n    });\n''', 1)
-          stage.write_text(text, encoding='utf-8')
-
-          test = Path('src/test/stagingSharedWorkingCopyGuard.test.ts')
-          text = test.read_text(encoding='utf-8')
-          text = text.replace('import { Repository } from "../repository";\n', 'import { Operation } from "../common/types";\nimport { Repository } from "../repository";\n')
-          old = '''      release();\n      await stage;\n      assert.equal(\n        repositoryOne.staged?.resourceStates.some(\n          item => item.resourceUri.fsPath === fileOne\n        ),\n        true\n      );\n'''
-          new = '''      let updateStarted = false;\n      const updateStartedDisposable = repositoryTwo.onRunOperation(operation => {\n        if (operation === Operation.Update) {\n          updateStarted = true;\n          assert.equal(\n            repositoryOne.staged?.resourceStates.some(\n              item => item.resourceUri.fsPath === fileOne\n            ),\n            true\n          );\n        }\n      });\n      const update = repositoryTwo.updateRevision();\n      assert.equal(updateStarted, false);\n\n      release();\n      await stage;\n      await update;\n      updateStartedDisposable.dispose();\n      assert.equal(updateStarted, true);\n      assert.equal(\n        repositoryOne.staged?.resourceStates.some(\n          item => item.resourceUri.fsPath === fileOne\n        ),\n        true\n      );\n'''
-          if old not in text:
-              raise SystemExit('guard test drifted')
-          test.write_text(text.replace(old, new), encoding='utf-8')
-
-          Path('src/test/workingCopyMutationLock.test.ts').write_text(r'''import * as assert from "assert";
-import * as os from "node:os";
-import * as path from "node:path";
-import {
-  withWorkingCopyMutationLock,
-  withWorkingCopyMutationLocks
-} from "../workingCopyMutationLock";
-
-suite("Working-copy mutation lock", () => {
-  test("serializes one physical working copy and is reentrant", async () => {
-    const root = path.join(os.tmpdir(), "svn-scm-lock-a");
-    const events: string[] = [];
-    let entered!: () => void;
-    let release!: () => void;
-    const enteredPromise = new Promise<void>(resolve => (entered = resolve));
-    const blocked = new Promise<void>(resolve => (release = resolve));
-
-    const first = withWorkingCopyMutationLock(root, async () => {
-      events.push("first");
-      await withWorkingCopyMutationLock(root, async () => {
-        events.push("nested");
-      });
-      entered();
-      await blocked;
-      events.push("first-done");
-    });
-
-    await enteredPromise;
-    const second = withWorkingCopyMutationLock(root, async () => {
-      events.push("second");
-    });
-    assert.deepStrictEqual(events, ["first", "nested"]);
-
-    release();
-    await Promise.all([first, second]);
-    assert.deepStrictEqual(events, ["first", "nested", "first-done", "second"]);
-  });
-
-  test("orders multi-root acquisition without blocking unrelated roots", async () => {
-    const rootA = path.join(os.tmpdir(), "svn-scm-lock-a");
-    const rootB = path.join(os.tmpdir(), "svn-scm-lock-b");
-    const rootC = path.join(os.tmpdir(), "svn-scm-lock-c");
-    let release!: () => void;
-    let entered!: () => void;
-    const enteredPromise = new Promise<void>(resolve => (entered = resolve));
-    const blocked = new Promise<void>(resolve => (release = resolve));
-
-    const both = withWorkingCopyMutationLocks([rootB, rootA], async () => {
-      entered();
-      await blocked;
-    });
-    await enteredPromise;
-
-    let unrelatedRan = false;
-    await withWorkingCopyMutationLock(rootC, async () => {
-      unrelatedRan = true;
-    });
-    assert.equal(unrelatedRan, true);
-
-    release();
-    await both;
-  });
-});
-''', encoding='utf-8')
+        run: python tools/apply-working-copy-mutation-lock.py
       - name: Validate
         run: |
           yarn prettier --write src/workingCopyMutationLock.ts src/repository.ts src/commands/stage.ts src/test/stagingSharedWorkingCopyGuard.test.ts src/test/workingCopyMutationLock.test.ts
           yarn check
           yarn test:unit
           yarn test-compile
-      - name: Commit and remove helper
+      - name: Commit and remove helpers
         run: |
           rm .github/workflows/fix-working-copy-mutation-lock.yml
+          rm tools/apply-working-copy-mutation-lock.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
