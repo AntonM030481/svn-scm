@@ -174,6 +174,7 @@ export async function selectStartupTargets(
   const targets: string[] = [];
   let bytes = 0;
   const realRoot = await fs.realpath(workspaceRoot);
+  const adminDirectories = new Map<string, boolean>();
   for (const status of [...candidates].sort((a, b) =>
     a.path < b.path ? -1 : 1
   )) {
@@ -200,8 +201,40 @@ export async function selectStartupTargets(
         bytes + stat.size > STARTUP_MAX_TOTAL_BYTES
       )
         continue;
-      const relative = path.relative(realRoot, await fs.realpath(absolute));
+      const realFile = await fs.realpath(absolute);
+      const relative = path.relative(realRoot, realFile);
       if (!isSnapshotPath(relative)) continue;
+      // A first-open snapshot cannot identify externals. Check real ancestors
+      // independently: nested working copies own their own administration dir.
+      let directory = path.dirname(realFile);
+      let nested = false;
+      while (snapshotPathKey(directory) !== snapshotPathKey(realRoot)) {
+        let hasAdmin = adminDirectories.get(directory);
+        if (hasAdmin === undefined) {
+          hasAdmin = false;
+          for (const name of [".svn", "_svn"]) {
+            try {
+              await fs.lstat(path.join(directory, name));
+              hasAdmin = true;
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+                throw error;
+            }
+          }
+          adminDirectories.set(directory, hasAdmin);
+        }
+        if (hasAdmin) {
+          nested = true;
+          break;
+        }
+        const parent = path.dirname(directory);
+        if (parent === directory) {
+          nested = true;
+          break;
+        }
+        directory = parent;
+      }
+      if (nested) continue;
       targets.push(status.path);
       bytes += stat.size;
     } catch {

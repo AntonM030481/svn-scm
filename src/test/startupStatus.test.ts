@@ -247,6 +247,52 @@ suite("Persisted startup status integration", () => {
     }
   });
 
+  test("first-open file checks exclude nested working copies without a snapshot", async () => {
+    const f = await fixture();
+    f.data.clear();
+    const nested = path.join(f.root, "nested-checkout");
+    await f.base.exec([
+      "checkout",
+      testUtil.getSvnUrl(server) + "/trunk",
+      nested
+    ]);
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      const result = await getStatus(params);
+      entered.resolve();
+      await release.promise;
+      return result;
+    };
+    const repo = f.open(base);
+    try {
+      await entered.promise;
+      const parentFile = path.join(f.root, "new.txt");
+      const nestedFile = path.join(nested, "new.txt");
+      await fs.appendFile(parentFile, "parent edit");
+      await fs.appendFile(nestedFile, "nested edit");
+      const checked: string[] = [];
+      const local = base.getStartupStatus.bind(base);
+      base.getStartupStatus = async (targets, signal) => {
+        checked.push(...targets);
+        return local(targets, signal);
+      };
+      repo.validateStartupFile(nestedFile);
+      repo.validateStartupFile(parentFile);
+      await (repo as any).scanStartupFiles();
+      assert.deepEqual(checked, ["new.txt"]);
+      assert.equal(repo.getResourceFromFile(nestedFile), undefined);
+      assert.equal(repo.getResourceFromFile(parentFile)!.type, Status.MODIFIED);
+      release.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(nestedFile), undefined);
+    } finally {
+      release.resolve();
+    }
+  });
+
   test("a repeated edit invalidates in-flight startup validation", async () => {
     const f = await fixture();
     const base = await manager.svn.open(f.root, f.root);
