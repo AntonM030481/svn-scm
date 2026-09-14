@@ -1,6 +1,6 @@
 # Settings behavior and application timing
 
-The generated [settings reference](../README.md#configuration) lists all 44
+The generated [settings reference](../README.md#settings) lists all 44
 supported keys and defaults. All settings have window scope unless specified:
 `svn.path` has machine scope and `svn.ignoreRepositories` has resource scope.
 Folder-specific values therefore apply only to the latter. Legacy
@@ -20,7 +20,7 @@ uses the regex settings and SVN directory listing.
 | `remoteChanges.checkFrequency` | Replaces the background timer immediately. Disabling it invalidates waiting polls, but does not erase the last known remote list or cancel a remote command already running. |
 | `sourceControl.hideUnversioned/countUnversioned/ignore/ignoreOnStatusCount`, `diff.withHead`, `sourceControl.changesLeftClick` | Immediately rebuild SCM rows/counts from the last accepted status, with no SVN call. Existing diff editors are unchanged; reopen the diff to apply its new mode. |
 | `sourceControl.combineExternalIfSameServer` | Runs a full status to collect the newly required external metadata. “Same server” means equal repository UUID, not hostname. |
-| `gravatar.icon_url`, `gravatar.default`, `gravatar.size` | Next tree-item render uses current settings. History is not reloaded automatically; use its refresh action to redraw visible items (which can fetch history). |
+| `gravatar.icon_url`, `gravatars.enabled` | Next tree-item render uses current settings. History is not reloaded automatically; use its refresh action to redraw visible items (which can fetch history). |
 | `layout.*` | Next branch-name calculation or branch selection; Refresh updates the status bar. Invalid expressions disable the affected matching rule. |
 | `log.length`, `previousCommitsUser` | Next history page or previous-message request; cached history is not automatically refetched. |
 | Other command and decoding settings | Next corresponding command/output decode. |
