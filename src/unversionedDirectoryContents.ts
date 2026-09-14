@@ -99,7 +99,7 @@ export class UnversionedDirectoryContents implements Disposable {
   private readonly states = new Map<Repository, RepositoryState>();
   private readonly disposables: Disposable[] = [];
 
-  constructor(private readonly sourceControlManager: SourceControlManager) {
+  constructor(sourceControlManager: SourceControlManager) {
     sourceControlManager.repositories.forEach(repository =>
       this.attach(repository)
     );
