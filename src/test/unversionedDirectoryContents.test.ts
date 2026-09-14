@@ -49,7 +49,9 @@ suite("Unversioned Directory Contents Tests", () => {
   test("shows unversioned descendants and stages one file only", async () => {
     const checkout = await createCheckout();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
-    const repository = sourceControlManager.getRepository(checkout) as Repository;
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
     opened.push(repository);
 
     const directory = path.join(checkout.fsPath, "new-folder");
