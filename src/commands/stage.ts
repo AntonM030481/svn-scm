@@ -1,10 +1,12 @@
 import * as path from "path";
+import { promises as fs } from "node:fs";
 import {
   commands,
   SourceControlResourceGroup,
   SourceControlResourceState,
   Uri
 } from "vscode";
+import { Status } from "../common/types";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
@@ -14,6 +16,7 @@ import {
   isUnversionedChildResource,
   UnversionedChildResource
 } from "../unversionedDirectoryContents";
+import { normalizePath } from "../util";
 import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
@@ -136,14 +139,52 @@ async function stageUnversionedChildren(
   }
 
   for (const [repository, selected] of byRepository) {
-    const relativeFiles = selected.map(resource =>
+    await repository.fullStatus();
+
+    const liveUnversionedRoots = new Set(
+      repository.unversioned.resourceStates
+        .filter(
+          resource =>
+            resource.type === Status.UNVERSIONED &&
+            !isUnversionedChildResource(resource as Resource)
+        )
+        .map(resource => normalizePath(resource.resourceUri.fsPath))
+    );
+    const validated: UnversionedChildResource[] = [];
+
+    for (const resource of selected) {
+      const filePath = resource.resourceUri.fsPath;
+      const current = repository.getResourceFromFile(resource.resourceUri);
+      if (current && !isUnversionedChildResource(current)) {
+        regular.push(current);
+        continue;
+      }
+
+      if (
+        !liveUnversionedRoots.has(normalizePath(resource.unversionedRoot)) ||
+        !isPathInside(resource.unversionedRoot, filePath)
+      ) {
+        continue;
+      }
+
+      try {
+        const stat = await fs.lstat(filePath);
+        if (stat.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      validated.push(resource);
+    }
+
+    if (!validated.length) continue;
+    const relativeFiles = validated.map(resource =>
       repository.repository.removeAbsolutePath(resource.resourceUri.fsPath)
     );
 
     await repository.repository.exec(["add", "--parents", ...relativeFiles]);
 
     const byStagingChangelist = new Map<string, string[]>();
-    for (const resource of selected) {
+    for (const resource of validated) {
       const createdDirectoryRelativeRoot = path.relative(
         repository.root,
         resource.unversionedRoot
