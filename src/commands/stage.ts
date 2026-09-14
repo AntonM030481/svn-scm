@@ -9,6 +9,7 @@ import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
+import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
 function isPathInside(parent: string, child: string): boolean {
@@ -69,10 +70,11 @@ async function waitForWorkingCopyIdle(
   return results.every(Boolean);
 }
 
-async function waitForSelectedWorkingCopiesIdle(
+async function runWithSelectedWorkingCopiesLocked(
   staging: StagingCoordinator,
-  resources: Resource[]
-): Promise<boolean> {
+  resources: Resource[],
+  run: () => Promise<void>
+): Promise<void> {
   const sourceControlManager = await getSourceControlManager();
   const repositories = new Set<Repository>();
 
@@ -81,12 +83,31 @@ async function waitForSelectedWorkingCopiesIdle(
     if (repository) repositories.add(repository);
   }
 
-  const results = await Promise.all(
-    [...repositories].map(repository =>
-      waitForWorkingCopyIdle(staging, repository)
-    )
+  await withWorkingCopyMutationLocks(
+    [...repositories].map(repository => repository.root),
+    async () => {
+      const results = await Promise.all(
+        [...repositories].map(repository =>
+          waitForWorkingCopyIdle(staging, repository)
+        )
+      );
+      if (results.every(Boolean)) {
+        await run();
+      }
+    }
   );
-  return results.every(Boolean);
+}
+
+async function runWithWorkingCopyLocked(
+  staging: StagingCoordinator,
+  repository: Repository,
+  run: () => Promise<void>
+): Promise<void> {
+  await withWorkingCopyMutationLocks([repository.root], async () => {
+    if (await waitForWorkingCopyIdle(staging, repository)) {
+      await run();
+    }
+  });
 }
 
 abstract class BaseStagingCommand extends Command {
@@ -140,13 +161,16 @@ export class Stage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {
-      return;
-    }
-    const resources = await this.staging.validateStageSelection(selected);
-    if (resources.length) {
-      await this.staging.stage(resources);
-    }
+    await runWithSelectedWorkingCopiesLocked(
+      this.staging,
+      selected,
+      async () => {
+        const resources = await this.staging.validateStageSelection(selected);
+        if (resources.length) {
+          await this.staging.stage(resources);
+        }
+      }
+    );
   }
 }
 
@@ -157,13 +181,16 @@ export class Unstage extends BaseStagingCommand {
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
     const selected = await this.selectedResources(resourceStates);
-    if (!(await waitForSelectedWorkingCopiesIdle(this.staging, selected))) {
-      return;
-    }
-    const resources = await this.staging.validateUnstageSelection(selected);
-    if (resources.length) {
-      await this.staging.unstage(resources);
-    }
+    await runWithSelectedWorkingCopiesLocked(
+      this.staging,
+      selected,
+      async () => {
+        const resources = await this.staging.validateUnstageSelection(selected);
+        if (resources.length) {
+          await this.staging.unstage(resources);
+        }
+      }
+    );
   }
 }
 
@@ -173,14 +200,13 @@ export class StageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {
-      return;
-    }
-    const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
-    const resources = await this.staging.validateStageSelection(selected);
-    if (resources.length) {
-      await this.staging.stage(resources);
-    }
+    await runWithWorkingCopyLocked(this.staging, repository, async () => {
+      const selected = this.staging.unstagedResourcesForWorkingCopy(repository);
+      const resources = await this.staging.validateStageSelection(selected);
+      if (resources.length) {
+        await this.staging.stage(resources);
+      }
+    });
   }
 }
 
@@ -190,14 +216,13 @@ export class UnstageAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    if (!(await waitForWorkingCopyIdle(this.staging, repository))) {
-      return;
-    }
-    const selected = this.staging
-      .stagedEntriesForWorkingCopy(repository)
-      .map(entry => entry.resource);
+    await runWithWorkingCopyLocked(this.staging, repository, async () => {
+      const selected = this.staging
+        .stagedEntriesForWorkingCopy(repository)
+        .map(entry => entry.resource);
 
-    await this.staging.validateUnstageSelection(selected);
-    await this.staging.unstageAll(repository);
+      await this.staging.validateUnstageSelection(selected);
+      await this.staging.unstageAll(repository);
+    });
   }
 }

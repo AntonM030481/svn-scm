@@ -3,6 +3,7 @@ import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
 import { commands, Uri } from "vscode";
+import { Operation } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
 import * as testUtil from "./testUtil";
@@ -92,8 +93,28 @@ suite("Shared working-copy staging guard", () => {
         false
       );
 
+      let updateStarted = false;
+      const updateStartedDisposable = repositoryTwo.onRunOperation(
+        operation => {
+          if (operation === Operation.Update) {
+            updateStarted = true;
+            assert.equal(
+              repositoryOne.staged?.resourceStates.some(
+                item => item.resourceUri.fsPath === fileOne
+              ),
+              true
+            );
+          }
+        }
+      );
+      const update = repositoryTwo.updateRevision();
+      assert.equal(updateStarted, false);
+
       release();
       await stage;
+      await update;
+      updateStartedDisposable.dispose();
+      assert.equal(updateStarted, true);
       assert.equal(
         repositoryOne.staged?.resourceStates.some(
           item => item.resourceUri.fsPath === fileOne

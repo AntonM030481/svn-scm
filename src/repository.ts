@@ -74,6 +74,7 @@ import {
 } from "./util";
 import { match, matchAll } from "./util/globMatch";
 import { RepositoryFilesWatcher } from "./watchers/repositoryFilesWatcher";
+import { withWorkingCopyMutationLock } from "./workingCopyMutationLock";
 
 function shouldShowProgress(operation: Operation): boolean {
   switch (operation) {
@@ -1674,66 +1675,77 @@ export class Repository implements IRemoteRepository {
     signal?: AbortSignal,
     allowStatusRecovery = false
   ): Promise<T> {
-    if (this.disposed || this.state !== RepositoryState.Idle) {
-      throw new Error("Repository not initialized");
-    }
-
-    if (
-      !isReadOnly(operation) &&
-      operation !== Operation.Status &&
-      operation !== Operation.StatusRemote
-    ) {
-      if (operation === Operation.CleanUp && allowStatusRecovery) {
-        // Recovery must remain available when status itself cannot succeed.
-        // Let startup settle first so cleanup never races its status subprocess.
-        await this.initialStatusSettled;
-      } else {
-        await this.ensureStatus();
+    const execute = async (): Promise<T> => {
+      if (this.disposed || this.state !== RepositoryState.Idle) {
+        throw new Error("Repository not initialized");
       }
-    }
-    if (this.disposed) throw new Error("Repository disposed");
 
-    const run = async () => {
-      this._operations.start(operation);
-      this._onRunOperation.fire(operation);
+      if (
+        !isReadOnly(operation) &&
+        operation !== Operation.Status &&
+        operation !== Operation.StatusRemote
+      ) {
+        if (operation === Operation.CleanUp && allowStatusRecovery) {
+          // Recovery must remain available when status itself cannot succeed.
+          // Let startup settle first so cleanup never races its status subprocess.
+          await this.initialStatusSettled;
+        } else {
+          await this.ensureStatus();
+        }
+      }
+      if (this.disposed) throw new Error("Repository disposed");
 
-      try {
-        const result = await this.retryRun(runOperation, signal);
+      const run = async () => {
+        this._operations.start(operation);
+        this._onRunOperation.fire(operation);
 
-        const checkRemote = operation === Operation.StatusRemote;
+        try {
+          const result = await this.retryRun(runOperation, signal);
 
-        if (!isReadOnly(operation)) {
-          if (forceFullStatus) {
-            await this.updateModelStateSequential(checkRemote, true);
-          } else {
-            await this.updateModelState(checkRemote);
+          const checkRemote = operation === Operation.StatusRemote;
+
+          if (!isReadOnly(operation)) {
+            if (forceFullStatus) {
+              await this.updateModelStateSequential(checkRemote, true);
+            } else {
+              await this.updateModelState(checkRemote);
+            }
           }
-        }
 
-        return result;
-      } catch (err) {
-        if (
-          err instanceof SvnError &&
-          err.svnErrorCode === svnErrorCodes.NotASvnRepository
-        ) {
-          this.state = RepositoryState.Disposed;
-        }
+          return result;
+        } catch (err) {
+          if (
+            err instanceof SvnError &&
+            err.svnErrorCode === svnErrorCodes.NotASvnRepository
+          ) {
+            this.state = RepositoryState.Disposed;
+          }
 
-        const rootExists = await exists(this.workspaceRoot);
-        if (!rootExists) {
-          await commands.executeCommand("svn.close", this);
-        }
+          const rootExists = await exists(this.workspaceRoot);
+          if (!rootExists) {
+            await commands.executeCommand("svn.close", this);
+          }
 
-        throw err;
-      } finally {
-        this._operations.end(operation);
-        this._onDidRunOperation.fire(operation);
-      }
+          throw err;
+        } finally {
+          this._operations.end(operation);
+          this._onDidRunOperation.fire(operation);
+        }
+      };
+
+      return shouldShowProgress(operation)
+        ? window.withProgress({ location: ProgressLocation.SourceControl }, run)
+        : run();
     };
 
-    return shouldShowProgress(operation)
-      ? window.withProgress({ location: ProgressLocation.SourceControl }, run)
-      : run();
+    const locksWorkingCopy =
+      !isReadOnly(operation) &&
+      operation !== Operation.Status &&
+      operation !== Operation.StatusRemote;
+
+    return locksWorkingCopy
+      ? withWorkingCopyMutationLock(this.root, execute)
+      : execute();
   }
 
   private async retryRun<T>(
