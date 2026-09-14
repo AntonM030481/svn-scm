@@ -98,9 +98,20 @@ multi-root workspaces.
 
 ### `Repository`
 
-`src/repository.ts` represents one working copy in the VS Code Source Control
-API. It owns resource groups, status refreshes, operations, authentication,
-watchers, remote-change polling, and repository-specific UI state.
+`src/repository.ts` represents one opened workspace projection of a working copy
+in the VS Code Source Control API. It owns resource groups, status refreshes,
+operations, authentication, watchers, remote-change polling, and
+projection-specific UI state. Several sibling workspace folders may share one
+physical SVN root while retaining separate SCM projections.
+
+Incremental mutation tracking associates `.svn` metadata suppression with the
+physical working-copy root because administration-file watcher events cannot be
+attributed to an individual operation target or opened projection. Status
+recovery and publication remain owned by each `Repository`: a full or remote
+scan updates only the projection that ran it. Consequently every affected
+sibling projection requires its own qualifying scan, or targeted activity that
+covers the changed path; one sibling's refresh is not broadcast as another
+sibling's status snapshot.
 
 `src/operationsImpl.ts` tracks operation concurrency. Files in `src/commands/`
 translate VS Code commands into repository operations.
@@ -151,9 +162,10 @@ has only partially completed.
 
 - `Svn` executes and normalizes commands; it does not own VS Code UI state.
 - `SourceControlManager` discovers and routes repositories; it does not own the
-  detailed status model of an individual working copy.
-- `Repository` owns one working copy and its SCM projection; views do not keep a
-  competing copy of that state.
+  detailed status model of an individual workspace projection.
+- `Repository` owns one opened workspace projection; features scoped to the
+  physical working-copy root coordinate sibling projections explicitly, and
+  views do not keep a competing copy of that state.
 - Commands coordinate user actions through the repository instead of spawning
   SVN processes directly.
 - Parsers convert SVN output into typed data and should remain independent of UI

@@ -102,6 +102,8 @@ or count toward the extension's unit baseline.
   editors, SCM UI integration, and workspace events.
 - Lifecycle regressions should verify both cleanup and safe reuse or
   reactivation when the component supports it.
+- Tests for debounce or metadata-suppression grace periods should use controlled
+  time/state and must not add real multi-second waits to the CI matrix.
 - Tests that create timers, listeners, temporary repositories, or providers
   must dispose them even when an assertion fails.
 

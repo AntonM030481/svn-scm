@@ -30,6 +30,25 @@ When adding an optimization:
   targets when relevant;
 - do not infer SVN state solely from file-system events.
 
+SVN metadata watchers report files such as `wc.db`, not the working path that
+caused the write. During a targeted mutation and its short grace period, the
+extension therefore suppresses metadata echoes for the whole physical working
+copy. A concurrent external SVN process can be hidden during that bounded
+window. For each affected opened projection, local status-derived state is
+reconciled by its next eligible unsuppressed metadata event when auto-refresh is
+enabled, a later operation on that projection that actually takes the
+full-status path (including remote-status polling and full-status fallback), or
+targeted activity in that projection that covers the externally changed path.
+A qualifying scan in one sibling projection does not update the others, and
+unrelated targeted activity is not sufficient. A local full status retains
+existing `remoteChanges`; only a successful authoritative remote-status scan on
+the projection reconciles that group. Cached `svn info` fields, such
+as the current branch after an external switch, require repository-info refresh
+followed by a model update; either action alone does not guarantee that the
+displayed branch changes. Avoid restoring unconditional delayed full status
+after every mutation, because that would erase the targeted-refresh benefit for
+the normal case.
+
 ### Local work should remain local
 
 Typing, saving, opening a diff, and reading local status must not accidentally
@@ -39,12 +58,16 @@ documented polling setting.
 
 This distinction keeps the editor responsive on slow or unavailable networks.
 
-### One model per working copy
+### One model per opened working-copy projection
 
-Each detected working copy is represented by one `Repository`, which owns its
-VS Code SCM instance and derived UI state. `SourceControlManager` owns discovery
-and routing across repositories; commands and views should ask it for the
-repository rather than reimplementing path discovery.
+Each opened workspace projection of a detected working copy is represented by
+one `Repository`, which owns its VS Code SCM instance and derived UI state.
+Sibling workspace folders inside one physical working copy may therefore have
+separate projections sharing the same canonical root. Features whose semantics
+belong to that physical root must coordinate those projections explicitly.
+`SourceControlManager` owns discovery and routing across repositories; commands
+and views should ask it for the repository rather than reimplementing path
+discovery.
 
 Nested working copies, ignored roots, externals, and multi-root workspaces make
 simple “first path prefix wins” routing incorrect. The most specific valid
@@ -99,11 +122,12 @@ observable behavior over silent heuristics that are difficult to debug.
 | Decision | Why | Guardrail |
 | --- | --- | --- |
 | Use the local `svn` CLI | Respects the user's SVN ecosystem and avoids maintaining a protocol client | Do not add a bundled SVN binary or a second SVN implementation without an explicit architecture review |
-| One `Repository` per working copy | Gives SCM state and lifecycle a single owner | Views and commands must not maintain competing repository state |
+| One `Repository` per opened workspace projection | Gives each SCM projection a lifecycle owner while preserving multi-root scope | Coordinate physical-root features across sibling projections; views and commands must not maintain competing repository state |
 | Register virtual file systems before SVN discovery completes | VS Code may restore diff editors immediately during startup | Initialization failure must resolve restored reads with a useful error, never a permanently pending promise |
 | Use `svn:` for repository-backed read-only content | Integrates BASE, HEAD, and revision content with native editors and diffs | Keep the provider read-only and avoid remote or expensive metadata calls from `stat()` |
 | Use `tempsvnfs:` for ephemeral history files | Some comparisons need materialized content with a stable document URI | Delete content when documents close and clear buffered events on disposal |
 | Debounce watcher-driven refreshes | File operations generate bursts of duplicate events | Cancel pending callbacks on disable/dispose and never use debounce to hide correctness races |
+| Suppress mutation metadata echoes per physical working copy | `.svn` events do not identify the working path and otherwise duplicate post-operation status | Keep the window bounded, keep unrelated working-file events eligible, and document that concurrent external SVN metadata writes may need a later refresh |
 | Combine initial local and remote status when polling is enabled | Avoids two back-to-back scans because remote status already includes local state | Do not add a second unconditional initial status call |
 | Bundle runtime code with webpack | Produces a small, predictable VSIX without runtime package installation | Keep `vscode` external and inspect VSIX contents after build changes |
 | Test minimum and stable VS Code | Protects the compatibility floor while detecting platform drift | Do not treat “works on current VS Code” as sufficient evidence |
