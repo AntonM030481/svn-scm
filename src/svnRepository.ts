@@ -25,6 +25,7 @@ import { parseInfoXml } from "./parser/infoParser";
 import { parseSvnList } from "./parser/listParser";
 import { parseSvnLog } from "./parser/logParser";
 import { parseStatusXml } from "./parser/statusParser";
+import { refreshUnversionedDirectoryKinds } from "./resourceKinds";
 import { Svn, BufferResult } from "./svn";
 import {
   fixPathSeparator,
@@ -167,7 +168,9 @@ export class Repository {
       ],
       { signal }
     );
-    return parseStatusXml(result.stdout);
+    const status = await parseStatusXml(result.stdout);
+    await refreshUnversionedDirectoryKinds(this.workspaceRoot, status);
+    return status;
   }
 
   public async getStatus(params: {
@@ -202,6 +205,7 @@ export class Repository {
     const result = await this.exec(args);
 
     const status: IFileStatus[] = await parseStatusXml(result.stdout);
+    await refreshUnversionedDirectoryKinds(this.workspaceRoot, status);
 
     for (const s of status) {
       if (
@@ -919,25 +923,16 @@ export class Repository {
 
   public async getCurrentIgnore(directory: string) {
     directory = this.removeAbsolutePath(directory);
-
     let currentIgnore = "";
-
     try {
       const args = ["propget", "svn:ignore"];
-
-      if (directory) {
-        args.push(directory);
-      }
-
+      if (directory) args.push(directory);
       const currentIgnoreResult = await this.exec(args);
-
       currentIgnore = currentIgnoreResult.stdout.trim();
     } catch (error) {
       console.error(error);
     }
-
     const ignores = currentIgnore.split(/[\r\n]+/);
-
     return ignores;
   }
 
@@ -947,28 +942,17 @@ export class Repository {
     recursive: boolean = false
   ) {
     const ignores = await this.getCurrentIgnore(directory);
-
     directory = this.removeAbsolutePath(directory);
-
     ignores.push(...expressions);
     const newIgnore = [...new Set(ignores)]
       .filter(v => !!v)
       .sort()
       .join("\n");
-
     const args = ["propset", "svn:ignore", newIgnore];
-
-    if (directory) {
-      args.push(directory);
-    } else {
-      args.push(".");
-    }
-    if (recursive) {
-      args.push("--recursive");
-    }
-
+    if (directory) args.push(directory);
+    else args.push(".");
+    if (recursive) args.push("--recursive");
     const result = await this.exec(args);
-
     return result.stdout;
   }
 
@@ -976,9 +960,7 @@ export class Repository {
     oldName = this.removeAbsolutePath(oldName);
     newName = this.removeAbsolutePath(newName);
     const args = ["rename", oldName, newName];
-
     const result = await this.exec(args);
-
     return result.stdout;
   }
 }
