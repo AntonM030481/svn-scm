@@ -5,7 +5,8 @@ import {
   EventEmitter,
   ExtensionContext,
   Uri,
-  workspace
+  workspace,
+  WorkspaceFolder
 } from "vscode";
 import { ConstructorPolicy, RepositoryState } from "../common/types";
 import { configuration } from "../helpers/configuration";
@@ -260,5 +261,57 @@ suite("Source control manager lifecycle", () => {
     scans[1].resolve();
     await tick();
     assert.equal((manager as any).enabled, true);
+  });
+
+  test("workspace removal closes every uncovered repository projection once", () => {
+    const folder = (root: string) =>
+      ({ uri: Uri.file(root) }) as WorkspaceFolder;
+    const disposed: string[] = [];
+    const entry = (workspaceRoot: string) => ({
+      repository: { workspaceRoot },
+      dispose: () => disposed.push(workspaceRoot)
+    });
+    const removedRoot = Uri.file("/workspace/removed").fsPath;
+    const nestedRoot = Uri.file("/workspace/removed/nested").fsPath;
+    const retainedRoot = Uri.file("/workspace/removed/retained").fsPath;
+    const similarRoot = Uri.file("/workspace/removed-copy").fsPath;
+    const unrelatedRoot = Uri.file("/workspace/other").fsPath;
+    (manager as any).openRepositories = [
+      entry(removedRoot),
+      entry(nestedRoot),
+      entry(retainedRoot),
+      entry(similarRoot),
+      entry(unrelatedRoot)
+    ];
+
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval(
+      [folder(removedRoot), folder(nestedRoot)],
+      [folder(retainedRoot), folder(unrelatedRoot)]
+    );
+
+    assert.deepStrictEqual(disposed, [removedRoot, nestedRoot]);
+  });
+
+  test("workspace replacement disposes stale ownership before scanning additions", async () => {
+    const added = {
+      uri: Uri.file("/workspace/replacement")
+    } as WorkspaceFolder;
+    let staleOwner = true;
+    let scans = 0;
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () => {
+      staleOwner = false;
+    };
+    (manager as any).getOpenRepository = () =>
+      staleOwner ? { repository: {} } : undefined;
+    (manager as any).tryOpenRepository = () => {
+      scans++;
+    };
+
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [added],
+      removed: []
+    });
+
+    assert.equal(scans, 1);
   });
 });

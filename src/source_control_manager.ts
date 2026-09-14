@@ -11,6 +11,7 @@ import {
   Uri,
   window,
   workspace,
+  WorkspaceFolder,
   WorkspaceFoldersChangeEvent
 } from "vscode";
 import {
@@ -451,24 +452,32 @@ export class SourceControlManager implements IDisposable {
     added,
     removed
   }: WorkspaceFoldersChangeEvent) {
+    this.disposeRepositoriesUncoveredByWorkspaceRemoval(removed);
+
     const possibleRepositoryFolders = added.filter(
       folder => !this.getOpenRepository(folder.uri)
     );
 
-    const openRepositoriesToDispose = removed
-      .map(folder => this.getOpenRepository(folder.uri.fsPath))
-      .filter(repository => !!repository)
-      .filter(
-        repository =>
-          !(workspace.workspaceFolders || []).some(f =>
-            repository!.repository.workspaceRoot.startsWith(f.uri.fsPath)
-          )
-      ) as IOpenRepository[];
-
     possibleRepositoryFolders.forEach(p =>
       this.tryOpenRepository(p.uri.fsPath)
     );
-    openRepositoriesToDispose.forEach(r => r.dispose());
+  }
+
+  private disposeRepositoriesUncoveredByWorkspaceRemoval(
+    removed: readonly WorkspaceFolder[],
+    remaining: readonly WorkspaceFolder[] = workspace.workspaceFolders || []
+  ): void {
+    const removedRoots = removed.map(folder => folder.uri.fsPath);
+    const remainingRoots = remaining.map(folder => folder.uri.fsPath);
+    const repositories = this.openRepositories.filter(({ repository }) => {
+      const workspaceRoot = repository.workspaceRoot;
+      return (
+        removedRoots.some(root => isDescendant(root, workspaceRoot)) &&
+        !remainingRoots.some(root => isDescendant(root, workspaceRoot))
+      );
+    });
+
+    repositories.forEach(repository => repository.dispose());
   }
 
   private async scanWorkspaceFolders(
