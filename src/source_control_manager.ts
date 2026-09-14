@@ -22,6 +22,7 @@ import {
 } from "./common/types";
 import { cancelDebounces, debounce } from "./decorators";
 import { readdir, stat } from "./fs";
+import { boundedInteger } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
 import { RemoteRepository } from "./remoteRepository";
 import { Repository } from "./repository";
@@ -245,7 +246,7 @@ export class SourceControlManager implements IDisposable {
       false
     );
     this.maxDepth = recursive
-      ? configuration.get<number>("multipleFolders.depth", 0)
+      ? boundedInteger(configuration.get("multipleFolders.depth"), 4, 0, 100)
       : 0;
     this.ignoreList = recursive
       ? configuration.get<string[]>("multipleFolders.ignore", [])
@@ -549,7 +550,8 @@ export class SourceControlManager implements IDisposable {
 
         const repository = new Repository(
           baseRepository,
-          this.extensionContact.secrets
+          this.extensionContact.secrets,
+          this.extensionContact.workspaceState
         );
 
         this.registerDiscoveredRepository(

@@ -39,6 +39,7 @@ suite("Validated repository routing", () => {
         statusIgnored: [],
         isInitialStatusPending: false,
         initialStatusSettled: Promise.resolve(),
+        ensureStatus: async () => undefined,
         state: RepositoryState.Idle,
         sourceControl: {},
         onDidChangeStatus: status.event,

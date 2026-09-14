@@ -178,3 +178,60 @@ publish a mixture of old and new groups as a stable result.
 Tests for this area should cover target containment, merge behavior, deletes,
 rename pairs, repository-wide flags, watcher echoes, metadata fallback, failed
 targeted status, and disposal.
+
+
+## Reopening a working copy
+
+A workspace-scoped `StatusSnapshotStore` saves accepted status metadata through
+VS Code's Memento storage. It stores no file contents or diffs. Snapshots are
+versioned and bounded to 4 MiB / 50,000 records, validated on read, and bound to
+the canonical working-copy root, opened workspace scope, UUID, URL and the
+administrative directory's filesystem identity. Replacement checkouts and
+switches detected through that identity do not reuse the previous projection.
+
+Startup restores that projection using the same grouping/filtering code as live
+status, under ordinary SCM progress. It adds no stale-state labels or warnings.
+Preview application does not publish authoritative status events or enable
+automatic deletion/conflict actions. Diff navigation remains available. Commands
+that build a complete commit/revert selection wait for successful live status;
+mutations also wait for initial validation. Cleanup waits for startup to settle
+but only plain cleanup opts out of successful status; remove-unversioned keeps
+the live-status prerequisite. Plain cleanup can recover a working copy whose
+status fails; its normal post-operation scan establishes live readiness. Failed startup validation retains
+the visible list and reports the ordinary refresh error.
+
+For at most 50 saved changed entries, startup selects existing regular files up
+to 10 MiB each and 50 MiB total, in deterministic path order. A single local
+`svn stat --xml --verbose --depth empty --ignore-externals` checks them before
+the full scan. Missing files, directories, rename pairs, external descendants
+and oversized files retain their saved entries until full reconciliation.
+Explicit clean results remove files from visible change groups; absent results
+are not interpreted as clean. Only selected exact paths are replaced, preserving
+other entries and remote state. Thresholds are internal starting values.
+
+The normal initial full scan always follows, including remote status only when
+configured. It explicitly resets incremental targets, seeds the normal adapter
+and discovers changes outside the saved list. Fast-phase errors fall through to
+that scan. Only accepted live snapshots are persisted; previews never overwrite
+stored state. Local-only refreshes merge the retained remote SCM group into
+the saved snapshot, including remote-only paths. Only an authoritative remote
+scan clears that evidence. Disposal prevents late preview/full publication and new writes.
+
+Preview resource objects are tracked by their repository in a weak set. A
+mutation selected from the restored list re-resolves that selection after live
+validation and before prompting. Restored directories (or paths whose file kind
+cannot be confirmed) require reselection from the refreshed list: unchanged
+properties on a directory do not prove its recursive target set is unchanged.
+Ordinary live directory selections retain their existing behavior. Incoming
+updates from SCM validate against the refreshed remote group, including
+preview provenance, rather than resolving through local change groups.
+
+## Settings-driven projection
+
+Repository retains the last accepted raw SVN status as projection input. Display
+configuration events reproject it without SVN calls or authoritative status
+events. Incremental validation seeds from this raw input, not filtered SCM rows,
+so hiding a file cannot erase it from a later targeted refresh. Local results
+retain previous remote evidence by path until the next remote scan. Persisted
+startup previews keep their preview safeguards when reprojected. See
+[settings behavior](settings.md) for manual and scheduled remote semantics.

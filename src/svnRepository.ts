@@ -14,10 +14,12 @@ import {
   ISvnPath,
   ISvnListItem
 } from "./common/types";
+import { isSnapshotPath } from "./statusSnapshot";
 import { sequentialize } from "./decorators";
 import * as encodeUtil from "./encoding";
 import { exists, writeFile, lstat, readdir } from "./fs";
 import { getBranchName } from "./helpers/branch";
+import { logLimit } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
 import { parseInfoXml } from "./parser/infoParser";
 import { parseSvnList } from "./parser/listParser";
@@ -138,6 +140,34 @@ export class Repository {
     }
 
     return fixPegRevision(file);
+  }
+
+  /** Shallow local validation of existing small files, independent of incremental state. */
+  public async getStartupStatus(
+    targets: string[],
+    signal?: AbortSignal
+  ): Promise<IFileStatus[]> {
+    if (!targets.length) return [];
+    if (targets.some(target => !isSnapshotPath(target) || target === ".")) {
+      throw new Error("Invalid startup status target");
+    }
+    const result = await this.exec(
+      [
+        "stat",
+        "--xml",
+        "--verbose",
+        "--depth",
+        "empty",
+        "--ignore-externals",
+        "--no-ignore",
+        // Prefix paths instead of using --: the executor appends global/auth options.
+        ...targets.map(target =>
+          fixPegRevision("./" + fixPathSeparator(target))
+        )
+      ],
+      { signal }
+    );
+    return parseStatusXml(result.stdout);
   }
 
   public async getStatus(params: {
@@ -613,77 +643,6 @@ export class Repository {
     return info.url.replace(regex, "").replace(/\/$/, "");
   }
 
-  public async getBranches() {
-    const trunkLayout = configuration.get<string>("layout.trunk");
-    const branchesLayout = configuration.get<string>("layout.branches");
-    const tagsLayout = configuration.get<string>("layout.tags");
-
-    const repoUrl = await this.getRepoUrl();
-
-    const branches: string[] = [];
-
-    const promises = [];
-
-    if (trunkLayout) {
-      promises.push(
-        new Promise<string[]>(async resolve => {
-          try {
-            await this.exec([
-              "ls",
-              repoUrl + "/" + trunkLayout,
-              "--depth",
-              "empty"
-            ]);
-
-            resolve([trunkLayout]);
-          } catch (_error) {
-            resolve([]);
-          }
-        })
-      );
-    }
-
-    const trees: string[] = [];
-
-    if (branchesLayout) {
-      trees.push(branchesLayout);
-    }
-
-    if (tagsLayout) {
-      trees.push(tagsLayout);
-    }
-
-    for (const tree of trees) {
-      promises.push(
-        new Promise<string[]>(async resolve => {
-          const branchUrl = repoUrl + "/" + tree;
-
-          try {
-            const result = await this.exec(["ls", branchUrl]);
-
-            const list = result.stdout
-              .trim()
-              .replace(/\/|\\/g, "")
-              .split(/[\r\n]+/)
-              .filter((x: string) => !!x)
-              .map((i: string) => tree + "/" + i);
-
-            resolve(list);
-          } catch (_error) {
-            resolve([]);
-          }
-        })
-      );
-    }
-
-    const all = await Promise.all<any>(promises);
-    all.forEach(list => {
-      branches.push(...list);
-    });
-
-    return branches;
-  }
-
   public async newBranch(
     name: string,
     commitMessage: string = "Created new branch"
@@ -820,7 +779,7 @@ export class Repository {
   }
 
   public async plainLog(): Promise<string> {
-    const logLength = configuration.get<string>("log.length") || "50";
+    const logLength = String(logLimit(configuration.get("log.length")));
     const result = await this.exec([
       "log",
       "-r",
@@ -833,7 +792,7 @@ export class Repository {
   }
 
   public async plainLogBuffer(): Promise<Buffer> {
-    const logLength = configuration.get<string>("log.length") || "50";
+    const logLength = String(logLimit(configuration.get("log.length")));
     const result = await this.execBuffer([
       "log",
       "-r",
@@ -897,9 +856,12 @@ export class Repository {
   }
 
   public async logByUser(user: string) {
-    const result = await this.exec(["log", "--xml", "-v", "--search", user]);
-
-    return parseSvnLog(result.stdout);
+    // Bound the search by revisions, then match the author literally. SVN --search
+    // also matches dates, messages and changed paths and treats input as a glob.
+    const entries = await this.log("HEAD", "0", 1000);
+    return entries
+      .filter(entry => entry.author === user)
+      .slice(0, logLimit(configuration.get("log.length")));
   }
 
   public async countNewCommit(revision: string = "BASE:HEAD") {

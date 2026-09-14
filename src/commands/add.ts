@@ -7,7 +7,7 @@ export class Add extends Command {
   }
 
   public async execute(...resourceStates: SourceControlResourceState[]) {
-    const selection = await this.getResourceStates(resourceStates);
+    const selection = await this.getResourceStates(resourceStates, true);
 
     if (selection.length === 0) {
       return;

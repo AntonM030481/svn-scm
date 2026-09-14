@@ -1,3 +1,13 @@
+# Unreleased
+
+- Fix manual remote refresh with polling disabled, apply SCM display settings
+  without scanning, and validate numeric and regex settings.
+- Match previous-commit authors exactly with bounded history retrieval; document
+  settings application timing and encoding compatibility.
+
+- Restore the previous SCM changes list on startup and quickly validate small
+  known changes before the full working-copy scan.
+
 # [Unreleased]
 
 # [2.20.0](https://github.com/AntonM030481/svn-scm/compare/v2.19.0...v2.20.0) (2026-09-13)

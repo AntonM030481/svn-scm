@@ -1,3 +1,4 @@
+import { remoteIntervalSeconds } from "./helpers/settingValues";
 import * as path from "path";
 import { clearInterval, setInterval } from "timers";
 import {
@@ -6,6 +7,7 @@ import {
   Disposable,
   Event,
   EventEmitter,
+  Memento,
   ProgressLocation,
   scm,
   SecretStorage,
@@ -43,6 +45,13 @@ import { configuration } from "./helpers/configuration";
 import OperationsImpl from "./operationsImpl";
 import { PathNormalizer } from "./pathNormalizer";
 import { IRemoteRepository } from "./remoteRepository";
+import {
+  StatusSnapshotStore,
+  workingCopyIdentity,
+  selectStartupTargets,
+  mergeStartupStatus,
+  snapshotPathKey
+} from "./statusSnapshot";
 import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
 import { svnErrorCodes } from "./svn";
@@ -97,6 +106,18 @@ export class Repository implements IRemoteRepository {
   private _initialStatusPending = true;
   public readonly initialStatusSettled: Promise<void>;
   private disposed = false;
+  private statusSnapshot: IFileStatus[] | undefined;
+  private snapshotPreview = false;
+  private remotePollPending = false;
+  private remoteSchedule = 0;
+
+  public getStatusSnapshot(): IFileStatus[] | undefined {
+    return this.statusSnapshot?.map(status => ({ ...status }));
+  }
+  private snapshotStore?: StatusSnapshotStore;
+  private hasLiveStatus = false;
+  private readonly previewResources = new WeakSet<Resource>();
+  private readonly startupAbort = new AbortController();
 
   private _onDidDispose = new EventEmitter<void>();
   private readonly onDidDispose: Event<void> = this._onDidDispose.event;
@@ -210,8 +231,16 @@ export class Repository implements IRemoteRepository {
 
   constructor(
     public repository: BaseRepository,
-    private secrets: SecretStorage
+    private secrets: SecretStorage,
+    snapshotState?: Memento
   ) {
+    if (snapshotState) {
+      this.snapshotStore = new StatusSnapshotStore(
+        snapshotState,
+        repository.root,
+        repository.workspaceRoot
+      );
+    }
     repository.setInfoOwner(() => !this.disposed);
     this._fsWatcher = new RepositoryFilesWatcher(repository.root);
     this.disposables.push(this._fsWatcher);
@@ -262,6 +291,9 @@ export class Repository implements IRemoteRepository {
       "Unversioned"
     ) as ISvnResourceGroup;
 
+    this.changes.repository = this;
+    this.conflicts.repository = this;
+    this.unversioned.repository = this;
     this.changes.hideWhenEmpty = true;
     this.unversioned.hideWhenEmpty = true;
     this.conflicts.hideWhenEmpty = true;
@@ -298,21 +330,29 @@ export class Repository implements IRemoteRepository {
     this.disposables.push(quickDiffStatusListener);
 
     const remoteChangesEnabled =
-      configuration.get<number>("remoteChanges.checkFrequency", 300) > 0;
+      remoteIntervalSeconds(
+        configuration.get("remoteChanges.checkFrequency", 300)
+      ) > 0;
 
     this.createRemoteChangedInterval();
 
     // A remote status includes the local working-copy state as well, so use a
     // single initial scan instead of running local and remote status back-to-back.
-    const initialStatus = remoteChangesEnabled
-      ? this.run(Operation.StatusRemote)
-      : this.status();
+    const initialStatus = this.run(
+      remoteChangesEnabled ? Operation.StatusRemote : Operation.Status,
+      () => this.restoreStartupStatus(),
+      true
+    );
 
     this.initialStatusSettled = initialStatus
-      .then(
-        () => undefined,
-        () => undefined
-      )
+      .catch(error => {
+        if (!this.disposed) {
+          console.error("Unable to load initial SVN status", error);
+          window.showErrorMessage(
+            "Unable to refresh SVN status. See SVN output for details."
+          );
+        }
+      })
       .then(() => {
         this._initialStatusPending = false;
       });
@@ -327,7 +367,26 @@ export class Repository implements IRemoteRepository {
 
           this.createRemoteChangedInterval();
 
-          this.updateRemoteChangedFiles();
+          this.pollRemoteChanges();
+        }
+
+        if (
+          [
+            "svn.sourceControl.hideUnversioned",
+            "svn.sourceControl.countUnversioned",
+            "svn.sourceControl.ignore",
+            "svn.sourceControl.ignoreOnStatusCount",
+            "svn.diff.withHead",
+            "svn.sourceControl.changesLeftClick"
+          ].some(key => e.affectsConfiguration(key)) &&
+          this.statusSnapshot
+        ) {
+          this.applyStatus(
+            this.statusSnapshot,
+            true,
+            this.snapshotPreview,
+            false
+          );
         }
 
         if (
@@ -336,6 +395,20 @@ export class Repository implements IRemoteRepository {
           )
         ) {
           this.fullStatus();
+        }
+      })
+    );
+
+    // The SVN configuration helper intentionally filters out non-SVN events.
+    this.disposables.push(
+      workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration("files.exclude") && this.statusSnapshot) {
+          this.applyStatus(
+            this.statusSnapshot,
+            true,
+            this.snapshotPreview,
+            false
+          );
         }
       })
     );
@@ -361,18 +434,38 @@ export class Repository implements IRemoteRepository {
   }
 
   private createRemoteChangedInterval() {
-    const updateFreq = configuration.get<number>(
-      "remoteChanges.checkFrequency",
-      300
+    this.remoteSchedule++;
+    const updateFreq = remoteIntervalSeconds(
+      configuration.get("remoteChanges.checkFrequency", 300)
     );
+    if (!updateFreq) return;
+    this.remoteChangedUpdateInterval = setInterval(
+      () => this.pollRemoteChanges(),
+      1000 * updateFreq
+    );
+  }
 
-    if (!updateFreq) {
-      return;
+  private async pollRemoteChanges(): Promise<void> {
+    if (this.remotePollPending || this.disposed) return;
+    const schedule = this.remoteSchedule;
+    this.remotePollPending = true;
+    try {
+      await this.initialStatusSettled;
+      if (
+        !(await this.whenIdleAndFocused()) ||
+        schedule !== this.remoteSchedule ||
+        !remoteIntervalSeconds(
+          configuration.get("remoteChanges.checkFrequency", 300)
+        )
+      )
+        return;
+      await this.run(Operation.StatusRemote);
+    } catch (error) {
+      if (!this.disposed)
+        console.error("Unable to check remote SVN changes", error);
+    } finally {
+      this.remotePollPending = false;
     }
-
-    this.remoteChangedUpdateInterval = setInterval(() => {
-      this.updateRemoteChangedFiles();
-    }, 1000 * updateFreq);
   }
 
   /**
@@ -380,7 +473,7 @@ export class Repository implements IRemoteRepository {
    */
   @debounce(1000)
   private async actionForDeletedFiles() {
-    if (!this.deletedUris.length) {
+    if (!this.hasLiveStatus || this.disposed || !this.deletedUris.length) {
       return;
     }
 
@@ -441,22 +534,12 @@ export class Repository implements IRemoteRepository {
     return;
   }
 
-  @debounce(1000)
-  public async updateRemoteChangedFiles() {
-    const updateFreq = configuration.get<number>(
-      "remoteChanges.checkFrequency",
-      300
-    );
-
-    if (updateFreq) {
-      this.run(Operation.StatusRemote);
-    } else {
-      // Remove list of remote changes
-      if (this.remoteChanges) {
-        this.remoteChanges.dispose();
-        this.remoteChanges = undefined;
-      }
+  public async updateRemoteChangedFiles(): Promise<void> {
+    await this.initialStatusSettled;
+    while (!this.disposed && !this.operations.isIdle()) {
+      if (!(await this.waitForEventOrDispose(this.onDidRunOperation))) return;
     }
+    if (!this.disposed) await this.run(Operation.StatusRemote);
   }
 
   private onFSChange(_uri: Uri): void {
@@ -549,32 +632,71 @@ export class Repository implements IRemoteRepository {
     checkRemoteChanges: boolean,
     forceFullStatus: boolean
   ) {
-    const changes: any[] = [];
-    const unversioned: any[] = [];
-    const conflicts: any[] = [];
-    const changelists: Map<string, Resource[]> = new Map();
-    const remoteChanges: any[] = [];
-
-    this.statusExternal = [];
-    this.statusIgnored = [];
-    this.isIncomplete = false;
-    this.needCleanUp = false;
-
+    if (this.disposed) return;
     const combineExternal = configuration.get<boolean>(
       "sourceControl.combineExternalIfSameServer",
       false
     );
+    const statuses = await this.retryRun(() =>
+      this.repository.getStatus({
+        includeIgnored: true,
+        includeExternals: combineExternal,
+        checkRemoteChanges,
+        resolveExternalRepositoryUuid: combineExternal,
+        forceFull: forceFullStatus
+      })
+    );
+    if (this.disposed) return;
+    this.hasLiveStatus = true;
+    this.applyStatus(statuses, checkRemoteChanges);
+    await this.persistStatus(statuses);
+    if (this.disposed) return;
+    const branch = await this.getCurrentBranch();
+    if (!this.disposed) this.currentBranch = branch;
+  }
 
-    const statuses =
-      (await this.retryRun(async () => {
-        return this.repository.getStatus({
-          includeIgnored: true,
-          includeExternals: combineExternal,
-          checkRemoteChanges,
-          resolveExternalRepositoryUuid: combineExternal,
-          forceFull: forceFullStatus
-        });
-      })) || [];
+  /** Both restored and live data use the same projection, with no implicit mutations. */
+  private applyStatus(
+    statuses: IFileStatus[],
+    checkRemoteChanges: boolean,
+    preview = false,
+    publishStatus = true
+  ): void {
+    if (this.disposed) return;
+    if (!checkRemoteChanges && this.statusSnapshot) {
+      const byPath = new Map(
+        statuses.map(status => [
+          snapshotPathKey(status.path),
+          { ...status, reposStatus: undefined } as IFileStatus
+        ])
+      );
+      for (const previous of this.statusSnapshot) {
+        if (!previous.reposStatus) continue;
+        const key = snapshotPathKey(previous.path);
+        const local = byPath.get(key) ?? {
+          path: previous.path,
+          status: Status.NORMAL,
+          props: Status.NONE,
+          wcStatus: { locked: false, switched: false }
+        };
+        byPath.set(key, { ...local, reposStatus: previous.reposStatus });
+      }
+      statuses = [...byPath.values()];
+    }
+    this.statusSnapshot = statuses.map(status => ({ ...status }));
+    this.snapshotPreview = preview;
+    const changes: Resource[] = [];
+    const unversioned: Resource[] = [];
+    const conflicts: Resource[] = [];
+    const changelists: Map<string, Resource[]> = new Map();
+    const remoteChanges: Resource[] = [];
+    this.statusIgnored = [];
+    this.isIncomplete = false;
+    this.needCleanUp = false;
+    const combineExternal = configuration.get<boolean>(
+      "sourceControl.combineExternalIfSameServer",
+      false
+    );
 
     const fileConfig = workspace.getConfiguration("files", Uri.file(this.root));
 
@@ -593,7 +715,7 @@ export class Repository implements IRemoteRepository {
     );
 
     if (combineExternal && this.statusExternal.length) {
-      const repositoryUuid = await this.repository.getRepositoryUuid();
+      const repositoryUuid = this.repository.info.repository.uuid;
       this.statusExternal = this.statusExternal.filter(
         status => repositoryUuid !== status.repositoryUuid
       );
@@ -647,15 +769,15 @@ export class Repository implements IRemoteRepository {
         : undefined;
 
       if (status.reposStatus) {
-        remoteChanges.push(
-          new Resource(
-            uri,
-            status.reposStatus.item,
-            undefined,
-            status.reposStatus.props,
-            true
-          )
+        const remoteResource = new Resource(
+          uri,
+          status.reposStatus.item,
+          undefined,
+          status.reposStatus.props,
+          true
         );
+        if (preview) this.previewResources.add(remoteResource);
+        remoteChanges.push(remoteResource);
       }
 
       const resource = new Resource(
@@ -664,6 +786,7 @@ export class Repository implements IRemoteRepository {
         renameUri,
         status.props
       );
+      if (preview) this.previewResources.add(resource);
 
       if (
         (status.status === Status.NORMAL || status.status === Status.NONE) &&
@@ -738,6 +861,7 @@ export class Repository implements IRemoteRepository {
           `changelist-${changelist}`,
           `Changelist "${changelist}"`
         ) as ISvnResourceGroup;
+        group.repository = this;
         group.hideWhenEmpty = true;
         this.disposables.push(group);
 
@@ -760,6 +884,7 @@ export class Repository implements IRemoteRepository {
         "Unversioned"
       ) as ISvnResourceGroup;
 
+      this.unversioned.repository = this;
       this.unversioned.hideWhenEmpty = true;
     }
 
@@ -805,11 +930,82 @@ export class Repository implements IRemoteRepository {
       }
     }
 
-    this._onDidChangeStatus.fire();
+    if (preview) {
+      this.sourceControl.quickDiffProvider = this;
+    } else if (publishStatus) {
+      this._onDidChangeStatus.fire();
+    }
+  }
 
-    this.currentBranch = await this.getCurrentBranch();
+  private async getSnapshotIdentity(): Promise<string> {
+    const info = this.repository.info;
+    return workingCopyIdentity(
+      this.root,
+      this.workspaceRoot,
+      info.repository.uuid,
+      info.url,
+      getSvnDir()
+    );
+  }
 
-    return Promise.resolve();
+  private async restoreStartupStatus(): Promise<void> {
+    if (!this.snapshotStore || this.disposed) return;
+    try {
+      const identity = await this.getSnapshotIdentity();
+      if (this.disposed) return;
+      const saved = this.snapshotStore.read(identity);
+      if (!saved) return;
+      this.applyStatus(
+        saved,
+        remoteIntervalSeconds(
+          configuration.get("remoteChanges.checkFrequency", 300)
+        ) > 0,
+        true
+      );
+      const targets = await selectStartupTargets(this.workspaceRoot, saved);
+      if (this.disposed || !targets.length) return;
+      const updated = await this.repository.getStartupStatus(
+        targets,
+        this.startupAbort.signal
+      );
+      if (this.disposed || identity !== (await this.getSnapshotIdentity()))
+        return;
+      this.applyStatus(
+        mergeStartupStatus(saved, targets, updated),
+        remoteIntervalSeconds(
+          configuration.get("remoteChanges.checkFrequency", 300)
+        ) > 0,
+        true
+      );
+    } catch (error) {
+      // Optional acceleration must never prevent the authoritative full scan.
+      if (!this.disposed)
+        console.error("Unable to restore/validate saved SVN status", error);
+    }
+  }
+
+  private async persistStatus(statuses: IFileStatus[]): Promise<void> {
+    if (!this.snapshotStore || this.disposed) return;
+    try {
+      const identity = await this.getSnapshotIdentity();
+      if (this.disposed) return;
+      await this.snapshotStore.write(identity, this.statusSnapshot ?? statuses);
+    } catch (error) {
+      if (!this.disposed) console.error("Unable to save SVN status", error);
+    }
+  }
+
+  /** Called before building choices that depend on the complete SCM list. */
+  public async ensureStatus(): Promise<void> {
+    await this.initialStatusSettled;
+    if (this.disposed) throw new Error("Repository disposed");
+    if (!this.hasLiveStatus) await this.fullStatus();
+    if (!this.hasLiveStatus || this.disposed)
+      throw new Error("SVN status is unavailable");
+  }
+
+  public isPreviewResource(resource: Resource): boolean {
+    return this.previewResources.has(resource);
   }
 
   public getResourceFromFile(uri: string | Uri): Resource | undefined {
@@ -859,16 +1055,8 @@ export class Repository implements IRemoteRepository {
     return toSvnUri(uri, SvnUriAction.SHOW, {}, true);
   }
 
-  public async getBranches() {
-    try {
-      return await this.repository.getBranches();
-    } catch (_error) {
-      return [];
-    }
-  }
-
-  @throttle
   public async status() {
+    await this.initialStatusSettled;
     if (this.disposed) {
       return;
     }
@@ -1113,7 +1301,13 @@ export class Repository implements IRemoteRepository {
   }
 
   public async cleanup() {
-    return this.run(Operation.CleanUp, () => this.repository.cleanup());
+    return this.run(
+      Operation.CleanUp,
+      () => this.repository.cleanup(),
+      false,
+      undefined,
+      true
+    );
   }
 
   public async removeUnversioned() {
@@ -1293,6 +1487,7 @@ export class Repository implements IRemoteRepository {
   }
 
   public onDidSaveTextDocument(document: TextDocument) {
+    if (!this.hasLiveStatus || this.disposed) return;
     const uriString = document.uri.toString();
     const conflict = this.conflicts.resourceStates.find(
       resource => resource.resourceUri.toString() === uriString
@@ -1313,11 +1508,27 @@ export class Repository implements IRemoteRepository {
     operation: Operation,
     runOperation: () => Promise<T> = () => Promise.resolve<any>(null),
     forceFullStatus: boolean = false,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    allowStatusRecovery = false
   ): Promise<T> {
     if (this.disposed || this.state !== RepositoryState.Idle) {
       throw new Error("Repository not initialized");
     }
+
+    if (
+      !isReadOnly(operation) &&
+      operation !== Operation.Status &&
+      operation !== Operation.StatusRemote
+    ) {
+      if (operation === Operation.CleanUp && allowStatusRecovery) {
+        // Recovery must remain available when status itself cannot succeed.
+        // Let startup settle first so cleanup never races its status subprocess.
+        await this.initialStatusSettled;
+      } else {
+        await this.ensureStatus();
+      }
+    }
+    if (this.disposed) throw new Error("Repository disposed");
 
     const run = async () => {
       this._operations.start(operation);
@@ -1431,6 +1642,7 @@ export class Repository implements IRemoteRepository {
     }
 
     this.disposed = true;
+    this.startupAbort?.abort();
     this._onDidDispose.fire();
     this._onDidDispose.dispose();
     cancelDebounces(this);

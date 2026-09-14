@@ -60,6 +60,26 @@ suite("Encoding detection", () => {
     );
   });
 
+  test("invalid experimental priority lists safely fall back", async () => {
+    await configuration.update(
+      "experimental.detect_encoding",
+      true,
+      ConfigurationTarget.Global
+    );
+    for (const value of [null, [42], "UTF-8"]) {
+      await configuration.update(
+        "experimental.encoding_priority",
+        value,
+        ConfigurationTarget.Global
+      );
+      assert.strictEqual(detectEncoding(CP1251), null);
+      assert.strictEqual(
+        detectEncoding(Buffer.from([0xef, 0xbb, 0xbf, 65])),
+        "utf8"
+      );
+    }
+  });
+
   test("detects BOM encodings before statistical detection", () => {
     assert.strictEqual(
       detectEncoding(Buffer.from([0xfe, 0xff, 0, 65])),

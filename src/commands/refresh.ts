@@ -13,10 +13,10 @@ export class Refresh extends Command {
       false
     );
 
-    await repository.status();
-
     if (refreshRemoteChanges) {
       await repository.updateRemoteChangedFiles();
+    } else {
+      await repository.status();
     }
   }
 }

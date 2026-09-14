@@ -1184,11 +1184,11 @@
                     "default": "branches/([^/]+)(/.*)?"
                 },
                 "svn.layout.branchesRegexName": {
-                    "type": [
-                        "number"
-                    ],
+                    "type": "integer",
                     "description": "Regex group position for name of branch",
-                    "default": 1
+                    "default": 1,
+                    "minimum": 1,
+                    "maximum": 100
                 },
                 "svn.layout.showFullName": {
                     "type": [
@@ -1198,11 +1198,11 @@
                     "default": true
                 },
                 "svn.layout.tagRegexName": {
-                    "type": [
-                        "number"
-                    ],
+                    "type": "integer",
                     "description": "Regex group position for name of tag",
-                    "default": 1
+                    "default": 1,
+                    "minimum": 1,
+                    "maximum": 100
                 },
                 "svn.layout.tagsRegex": {
                     "type": [
@@ -1221,23 +1221,25 @@
                     "default": "(trunk)(/.*)?"
                 },
                 "svn.layout.trunkRegexName": {
-                    "type": [
-                        "number"
-                    ],
+                    "type": "integer",
                     "description": "Regex group position for name of trunk",
-                    "default": 1
+                    "default": 1,
+                    "minimum": 1,
+                    "maximum": 100
                 },
                 "svn.log.length": {
-                    "type": "number",
+                    "type": "integer",
                     "minimum": 1,
-                    "description": "Number of commit messages to log",
-                    "default": 50
+                    "description": "Maximum log entries per history page and previous-message list (1-1000; invalid values use 50)",
+                    "default": 50,
+                    "maximum": 1000
                 },
                 "svn.multipleFolders.depth": {
-                    "type": "number",
+                    "type": "integer",
                     "minimum": 0,
                     "description": "Maximum depth to find subfolders using SVN",
-                    "default": 4
+                    "default": 4,
+                    "maximum": 100
                 },
                 "svn.multipleFolders.enabled": {
                     "type": "boolean",
@@ -1271,7 +1273,7 @@
                         "string",
                         "null"
                     ],
-                    "description": "Only show previous commits for a given user. Requires svn >= 1.8",
+                    "description": "Exact, case-sensitive author for previous commit messages, searched within the latest 1000 log entries; returns at most svn.log.length messages. Requires svn >= 1.8",
                     "default": null
                 },
                 "svn.refresh.remoteChanges": {
@@ -1280,9 +1282,11 @@
                     "default": false
                 },
                 "svn.remoteChanges.checkFrequency": {
-                    "type": "number",
-                    "description": "Set the interval in seconds to check changed files on remote repository and show in statusbar. 0 to disable",
-                    "default": 300
+                    "type": "integer",
+                    "description": "Background remote-check interval in seconds. 0 disables polling, not manual remote refresh. Invalid values disable polling",
+                    "default": 300,
+                    "minimum": 0,
+                    "maximum": 2147483
                 },
                 "svn.showOutput": {
                     "type": "boolean",
@@ -1320,7 +1324,7 @@
                 },
                 "svn.sourceControl.ignore": {
                     "type": "array",
-                    "description": "Ignore unversioned files like .gitignore, Configuring this will overlook the default ignore rule",
+                    "description": "Minimatch patterns hiding unversioned files in SCM; does not set SVN ignore properties or implement .gitignore files",
                     "default": [],
                     "examples": [
                         [

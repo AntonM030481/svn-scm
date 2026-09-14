@@ -273,6 +273,9 @@ export function preserveRepositoryStateInSnapshot(
 }
 
 function snapshotStatuses(repository: Repository): IFileStatus[] {
+  const snapshot = repository.getStatusSnapshot?.();
+  if (snapshot)
+    return filterWorkspaceStatuses(repository.workspaceRoot, snapshot);
   const statuses: IFileStatus[] = filterWorkspaceStatuses(
     repository.workspaceRoot,
     [...repository.statusExternal, ...repository.statusIgnored]

@@ -8,6 +8,7 @@ async function main(): Promise<void> {
     color: true
   });
 
+  mocha.addFile(path.resolve(__dirname, "statusSnapshot.test.js"));
   mocha.addFile(path.resolve(__dirname, "globMatch.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnError.test.js"));
   mocha.addFile(path.resolve(__dirname, "svnProcess.test.js"));
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   mocha.addFile(path.resolve(__dirname, "stagingModel.test.js"));
 
   mocha.addFile(path.resolve(__dirname, "settingsDocumentation.test.js"));
+  mocha.addFile(path.resolve(__dirname, "settingValues.test.js"));
 
   const failures = await new Promise<number>(resolve => {
     mocha.run(resolve);
