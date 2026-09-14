@@ -1,4 +1,3 @@
-import { statSync } from "node:fs";
 import * as path from "path";
 import {
   Command,
@@ -44,14 +43,14 @@ export class Resource implements SourceControlResourceState {
       Unversioned: getIconUri("status-unversioned", "dark")
     }
   };
-  private _isDirectory?: boolean;
 
   constructor(
     private _resourceUri: Uri,
     private _type: string,
     private _renameResourceUri?: Uri,
     private _props?: string,
-    private _remote: boolean = false
+    private _remote: boolean = false,
+    private _isDirectory: boolean = false
   ) {}
 
   @memoize
@@ -72,6 +71,10 @@ export class Resource implements SourceControlResourceState {
 
   get remote(): boolean {
     return this._remote;
+  }
+
+  get isDirectory(): boolean {
+    return this.type === Status.UNVERSIONED && this._isDirectory;
   }
 
   get decorations(): SourceControlResourceDecorations {
@@ -123,24 +126,6 @@ export class Resource implements SourceControlResourceState {
       title: "Open Diff With Base",
       arguments: [this]
     };
-  }
-
-  private get isDirectory(): boolean {
-    if (this.type !== Status.UNVERSIONED) {
-      return false;
-    }
-
-    if (this._isDirectory !== undefined) {
-      return this._isDirectory;
-    }
-
-    try {
-      this._isDirectory = statSync(this.resourceUri.fsPath).isDirectory();
-    } catch {
-      this._isDirectory = false;
-    }
-
-    return this._isDirectory;
   }
 
   private getIconPath(theme: string): Uri | undefined {
