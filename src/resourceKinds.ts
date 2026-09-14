@@ -10,6 +10,10 @@ function key(file: string): string {
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
+function absolutePath(workspaceRoot: string, file: string): string {
+  return path.isAbsolute(file) ? file : path.join(workspaceRoot, file);
+}
+
 function clearWorkspace(workspaceRoot: string): void {
   const root = key(workspaceRoot);
   const prefix = root.endsWith(path.sep) ? root : root + path.sep;
@@ -25,12 +29,10 @@ export function isUnversionedDirectory(file: string): boolean {
   return directoryPaths.has(key(file));
 }
 
-export async function refreshUnversionedDirectoryKinds(
+export async function updateUnversionedDirectoryKinds(
   workspaceRoot: string,
   statuses: IFileStatus[]
 ): Promise<void> {
-  clearWorkspace(workspaceRoot);
-
   const unversioned = statuses.filter(
     status => status.status === Status.UNVERSIONED
   );
@@ -39,11 +41,13 @@ export async function refreshUnversionedDirectoryKinds(
   const worker = async () => {
     while (next < unversioned.length) {
       const status = unversioned[next++];
-      const file = path.join(workspaceRoot, status.path);
+      const file = absolutePath(workspaceRoot, status.path);
+      const fileKey = key(file);
+      directoryPaths.delete(fileKey);
 
       try {
         if ((await lstat(file)).isDirectory()) {
-          directoryPaths.add(key(file));
+          directoryPaths.add(fileKey);
         }
       } catch {
         // The path may disappear between `svn status` and the async stat.
@@ -57,4 +61,12 @@ export async function refreshUnversionedDirectoryKinds(
       () => worker()
     )
   );
+}
+
+export async function refreshUnversionedDirectoryKinds(
+  workspaceRoot: string,
+  statuses: IFileStatus[]
+): Promise<void> {
+  clearWorkspace(workspaceRoot);
+  await updateUnversionedDirectoryKinds(workspaceRoot, statuses);
 }
