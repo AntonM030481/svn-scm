@@ -4,10 +4,12 @@ import * as path from "path";
 import {
   commands,
   ConfigurationTarget,
+  Disposable,
   SecretStorage,
   Uri,
   workspace
 } from "vscode";
+import { enableIncrementalStatusRefresh } from "../incrementalStatus";
 import { Refresh } from "../commands/refresh";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -21,7 +23,9 @@ suite("Settings on an open working copy", () => {
     "sourceControl.hideUnversioned",
     "sourceControl.countUnversioned",
     "sourceControl.ignore",
-    "log.length"
+    "log.length",
+    "diff.withHead",
+    "sourceControl.changesLeftClick"
   ];
   const saved = new Map<string, unknown>();
   let manager: SourceControlManager;
@@ -114,6 +118,49 @@ suite("Settings on an open working copy", () => {
       assert.strictEqual(events, 0);
     } finally {
       listener.dispose();
+    }
+  });
+
+  test("hidden records survive an unrelated incremental operation", async () => {
+    const adapters: Disposable[] = [];
+    enableIncrementalStatusRefresh(
+      {
+        repositories: [repo],
+        onDidOpenRepository: () => ({ dispose() {} })
+      } as unknown as SourceControlManager,
+      adapters
+    );
+    try {
+      await set("sourceControl.hideUnversioned", true);
+      const other = path.join(repo.workspaceRoot, "other.txt");
+      await fs.writeFile(other, "add me\n");
+      await repo.addFiles([other]);
+      await set("sourceControl.hideUnversioned", false);
+      assert.ok(
+        repo.unversioned.resourceStates.some(
+          resource =>
+            resource.resourceUri.fsPath ===
+            path.join(repo.workspaceRoot, "visible.txt")
+        )
+      );
+      await set("sourceControl.changesLeftClick", "open");
+      assert.strictEqual(
+        repo.changes.resourceStates[0].command.command,
+        "svn.openFile"
+      );
+      await set("sourceControl.changesLeftClick", "open diff");
+      await set("diff.withHead", false);
+      assert.strictEqual(
+        repo.changes.resourceStates[0].command.command,
+        "svn.openResourceBase"
+      );
+      await set("diff.withHead", true);
+      assert.strictEqual(
+        repo.changes.resourceStates[0].command.command,
+        "svn.openResourceHead"
+      );
+    } finally {
+      for (const adapter of adapters) adapter.dispose();
     }
   });
 
