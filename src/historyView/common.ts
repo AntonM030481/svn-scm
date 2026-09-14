@@ -176,7 +176,12 @@ export async function fetchMore(cached: ICachedLog) {
   let moreCommits: ISvnLogEntry[] = [];
   const limit = getLimit();
   try {
-    moreCommits = await cached.repo.log(rfrom, "1", limit, cached.svnTarget);
+    moreCommits = await cached.repo.log(
+      rfrom,
+      "1",
+      limit,
+      cached.svnTarget.toString(true)
+    );
   } catch {
     // Item didn't exist
   }

@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import * as path from "path";
+import { Uri } from "vscode";
 import {
   ConstructorPolicy,
   ICpOptions,
@@ -103,6 +104,40 @@ suite("Svn Repository Tests", () => {
     assert.deepEqual(calls, [
       ["cat", "-r", "42", `${info.url}/nested/file.txt`],
       ["cat", "-r", "42", `${info.url}/nested/file.txt`]
+    ]);
+  });
+
+  test("log preserves explicit working-copy paths and repository URLs", async () => {
+    svn = new Svn(options);
+    const workspaceRoot = path.resolve("log-target");
+    const repository = await new Repository(
+      svn,
+      workspaceRoot,
+      workspaceRoot,
+      ConstructorPolicy.LateInit
+    );
+    const calls: string[][] = [];
+    repository.exec = async args => {
+      calls.push(args);
+      return { exitCode: 0, stderr: "", stdout: "<log></log>" };
+    };
+
+    const file = Uri.file(path.join(workspaceRoot, "user@host.txt"));
+    const remote = Uri.parse("file:///svn/project/file.txt");
+    await repository.log("HEAD", "0", 10, file.fsPath);
+    await repository.log("HEAD", "0", 10, remote.toString(true));
+
+    assert.deepEqual(calls, [
+      ["log", "-r", "HEAD:0", "--limit=10", "--xml", "-v", `${file.fsPath}@`],
+      [
+        "log",
+        "-r",
+        "HEAD:0",
+        "--limit=10",
+        "--xml",
+        "-v",
+        remote.toString(true)
+      ]
     ]);
   });
 

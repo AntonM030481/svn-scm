@@ -274,7 +274,12 @@ export class RepoLogProvider
       .parse(commit._).remoteFullPath;
     let prevRev: ISvnLogEntry;
 
-    const revs = await item.repo.log(parent.revision, "1", 2, remotePath);
+    const revs = await item.repo.log(
+      parent.revision,
+      "1",
+      2,
+      remotePath.toString(true)
+    );
 
     if (revs.length === 2) {
       prevRev = revs[1];
