@@ -122,3 +122,8 @@ Cleanup recovery coverage injects failing status until real SVN cleanup runs,
 then verifies that its post-operation scan restores readiness. The same
 regression verifies remove-unversioned cannot run before recovery and can run
 after validated cleanup.
+
+Startup file-event regressions gate a real SVN full scan and inject watcher
+events through the incremental adapter. They verify early preview publication,
+clean-result reconciliation, protection against an older full result, repeated
+edit invalidation, local failure fallback and disposal during a local check.

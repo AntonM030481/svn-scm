@@ -260,3 +260,21 @@ so hiding a file cannot erase it from a later targeted refresh. Local results
 retain previous remote evidence by path until the next remote scan. Persisted
 startup previews keep their preview safeguards when reprojected. See
 [settings behavior](settings.md) for manual and scheduled remote semantics.
+
+
+### File edits during the initial scan
+
+With auto-refresh enabled, ordinary file events also feed a debounced local
+startup queue while the initial full scan runs. It admits at most 50 distinct
+paths per startup and reuses the 10 MiB/file and 50 MiB/batch limits. One shallow
+local status request runs at a time; directories, missing paths, known external
+descendants and rename pairs stay in the normal reconciliation queue.
+
+Accepted results use the existing preview projection and do not enable mutation
+readiness or automatic actions. A new event invalidates an in-flight batch;
+those targets are rechecked instead of publishing the obsolete result. The
+initial full result incorporates accepted newer local records by exact path,
+including explicit clean records, while keeping its remote evidence. All file
+events also remain in the ordinary incremental queue, which reconciles skipped,
+failed or still-pending checks after startup. Disposal cancels local startup
+requests and prevents late publication.

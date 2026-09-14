@@ -4,6 +4,7 @@ import * as path from "path";
 import {
   commands,
   Disposable,
+  EventEmitter,
   TextDocument,
   Memento,
   SecretStorage,
@@ -136,6 +137,171 @@ suite("Persisted startup status integration", () => {
     assert.equal(data.size, 1);
     initial.dispose();
     return { root, base, data, state, open };
+  }
+
+  test("file events publish during initial scan and survive its older result", async () => {
+    const f = await fixture();
+    const base = await manager.svn.open(f.root, f.root);
+    const entered = gate();
+    const release = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      const old = await getStatus(params);
+      entered.resolve();
+      await release.promise;
+      return old;
+    };
+    const repo = f.open(base);
+    const events = new EventEmitter<Uri>();
+    const adapters: Disposable[] = [];
+    let publications = 0;
+    const listener = repo.onDidChangeStatus(() => publications++);
+    try {
+      await entered.promise;
+      repo.fsWatcher.onDidWorkspaceChange = events.event;
+      enableIncrementalStatusRefresh(
+        {
+          repositories: [repo],
+          onDidOpenRepository: () => ({ dispose() {} })
+        } as unknown as SourceControlManager,
+        adapters
+      );
+      await workspace
+        .getConfiguration("svn")
+        .update("autorefresh", true, ConfigurationTarget.Global);
+      const changed = path.join(f.root, "new.txt");
+      await fs.appendFile(changed, "during startup\n");
+      events.fire(Uri.file(changed));
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.isInitialStatusPending, true);
+      assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
+      assert.ok(repo.isPreviewResource(repo.getResourceFromFile(changed)!));
+      assert.equal(publications, 0);
+      // A clean verbose result must also survive the old full scan's modified row.
+      const reverted = path.join(f.root, "clean.txt");
+      await base.exec(["revert", reverted]);
+      repo.validateStartupFile(reverted);
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.getResourceFromFile(reverted), undefined);
+      release.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
+      assert.equal(repo.getResourceFromFile(reverted), undefined);
+      assert.equal(publications, 1);
+      const snapshot = f.data.get([...f.data.keys()][0]) as any;
+      assert.equal(
+        snapshot.statuses.find((s: any) => s.path === "new.txt").status,
+        Status.MODIFIED
+      );
+    } finally {
+      release.resolve();
+      listener.dispose();
+      adapters.forEach(d => d.dispose());
+      events.dispose();
+      repo.dispose();
+      await workspace
+        .getConfiguration("svn")
+        .update("autorefresh", false, ConfigurationTarget.Global);
+    }
+  });
+
+  test("a repeated edit invalidates in-flight startup validation", async () => {
+    const f = await fixture();
+    const base = await manager.svn.open(f.root, f.root);
+    const fullEntered = gate();
+    const fullRelease = gate();
+    const getStatus = base.getStatus.bind(base);
+    base.getStatus = async params => {
+      const old = await getStatus(params);
+      fullEntered.resolve();
+      await fullRelease.promise;
+      return old;
+    };
+    const repo = f.open(base);
+    const localEntered = gate();
+    const localRelease = gate();
+    let pending: Promise<void> | undefined;
+    try {
+      await fullEntered.promise;
+      const file = path.join(f.root, "new.txt");
+      const local = base.getStartupStatus.bind(base);
+      base.getStartupStatus = async (targets, signal) => {
+        const old = await local(targets, signal);
+        localEntered.resolve();
+        await localRelease.promise;
+        return old;
+      };
+      await fs.appendFile(file, "transient edit\n");
+      repo.validateStartupFile(file);
+      pending = (repo as any).scanStartupFiles();
+      await localEntered.promise;
+      await base.exec(["revert", file]);
+      repo.validateStartupFile(file);
+      localRelease.resolve();
+      await pending;
+      assert.equal(
+        repo.getResourceFromFile(file),
+        undefined,
+        "obsolete modified result must not publish"
+      );
+      await (repo as any).scanStartupFiles();
+      assert.equal(repo.getResourceFromFile(file), undefined);
+      fullRelease.resolve();
+      await repo.initialStatusSettled;
+      assert.equal(repo.getResourceFromFile(file), undefined);
+    } finally {
+      localRelease.resolve();
+      fullRelease.resolve();
+      await pending;
+    }
+  });
+
+  for (const disposeDuringCheck of [false, true]) {
+    test(`startup file validation handles failure/disposal (dispose=${disposeDuringCheck})`, async () => {
+      const f = await fixture();
+      const before = JSON.stringify([...f.data]);
+      const base = await manager.svn.open(f.root, f.root);
+      const fullEntered = gate();
+      const fullRelease = gate();
+      const getStatus = base.getStatus.bind(base);
+      base.getStatus = async params => {
+        fullEntered.resolve();
+        await fullRelease.promise;
+        return getStatus(params);
+      };
+      const repo = f.open(base);
+      const localEntered = gate();
+      const localRelease = gate();
+      let pending: Promise<void> | undefined;
+      try {
+        await fullEntered.promise;
+        base.getStartupStatus = async (_targets, signal) => {
+          localEntered.resolve();
+          await localRelease.promise;
+          if (disposeDuringCheck) assert.equal(signal!.aborted, true);
+          throw new Error("injected local failure");
+        };
+        const file = path.join(f.root, "new.txt");
+        await fs.appendFile(file, "new work\n");
+        repo.validateStartupFile(file);
+        pending = (repo as any).scanStartupFiles();
+        await localEntered.promise;
+        if (disposeDuringCheck) repo.dispose();
+        localRelease.resolve();
+        await pending;
+        assert.equal(JSON.stringify([...f.data]), before);
+        fullRelease.resolve();
+        await repo.initialStatusSettled;
+        if (!disposeDuringCheck)
+          assert.equal(repo.getResourceFromFile(file)!.type, Status.MODIFIED);
+        else assert.equal(JSON.stringify([...f.data]), before);
+      } finally {
+        localRelease.resolve();
+        fullRelease.resolve();
+        await pending;
+      }
+    });
   }
 
   test("retains remote-only and overlapping changes across local refreshes and reopening", async () => {

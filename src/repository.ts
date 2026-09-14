@@ -50,7 +50,9 @@ import {
   workingCopyIdentity,
   selectStartupTargets,
   mergeStartupStatus,
-  snapshotPathKey
+  snapshotPathKey,
+  isSnapshotPath,
+  STARTUP_MAX_FILES
 } from "./statusSnapshot";
 import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
@@ -116,6 +118,12 @@ export class Repository implements IRemoteRepository {
   private hasLiveStatus = false;
   private readonly previewResources = new WeakSet<Resource>();
   private readonly startupAbort = new AbortController();
+  private startupPreviewReady = false;
+  private startupFileVersion = 0;
+  private startupFileScanRunning = false;
+  private readonly startupFileTargets = new Map<string, string>();
+  private readonly startupFileResults = new Map<string, IFileStatus>();
+  private readonly startupFilesSeen = new Set<string>();
 
   private _onDidDispose = new EventEmitter<void>();
   private readonly onDidDispose: Event<void> = this._onDidDispose.event;
@@ -334,7 +342,11 @@ export class Repository implements IRemoteRepository {
     // single initial scan instead of running local and remote status back-to-back.
     const initialStatus = this.run(
       remoteChangesEnabled ? Operation.StatusRemote : Operation.Status,
-      () => this.restoreStartupStatus(),
+      async () => {
+        await this.restoreStartupStatus();
+        this.startupPreviewReady = true;
+        if (this.startupFileTargets.size) this.scheduleStartupFileScan();
+      },
       true
     );
 
@@ -349,6 +361,9 @@ export class Repository implements IRemoteRepository {
       })
       .then(() => {
         this._initialStatusPending = false;
+        this.startupFileTargets.clear();
+        this.startupFileResults.clear();
+        this.startupFilesSeen.clear();
       });
 
     // On change config, dispose current interval and create a new.
@@ -631,7 +646,7 @@ export class Repository implements IRemoteRepository {
       "sourceControl.combineExternalIfSameServer",
       false
     );
-    const statuses = await this.retryRun(() =>
+    let statuses = await this.retryRun(() =>
       this.repository.getStatus({
         includeIgnored: true,
         includeExternals: combineExternal,
@@ -641,6 +656,15 @@ export class Repository implements IRemoteRepository {
       })
     );
     if (this.disposed) return;
+    if (!this.hasLiveStatus && this.isInitialStatusPending) {
+      // The full scan may have read these paths before their newer local checks.
+      const updates = [...this.startupFileResults.values()];
+      statuses = mergeStartupStatus(
+        statuses,
+        updates.map(s => s.path),
+        updates
+      );
+    }
     this.hasLiveStatus = true;
     this.applyStatus(statuses, checkRemoteChanges);
     await this.persistStatus(statuses);
@@ -928,6 +952,117 @@ export class Repository implements IRemoteRepository {
       this.sourceControl.quickDiffProvider = this;
     } else if (publishStatus) {
       this._onDidChangeStatus.fire();
+    }
+  }
+
+  /** File events remain queued in the normal adapter for eventual reconciliation. */
+  public validateStartupFile(absolutePath: string): void {
+    if (this.disposed || this.hasLiveStatus || !this.isInitialStatusPending)
+      return;
+    const relative = path.relative(this.workspaceRoot, absolutePath);
+    if (!isSnapshotPath(relative) || relative === ".") return;
+    const key = snapshotPathKey(relative);
+    this.startupFileVersion++;
+    // New evidence is needed after every event, even if an earlier check succeeded.
+    this.startupFileResults.delete(key);
+    if (
+      !this.startupFilesSeen.has(key) &&
+      this.startupFilesSeen.size >= STARTUP_MAX_FILES
+    )
+      return;
+    this.startupFilesSeen.add(key);
+    this.startupFileTargets.set(key, relative);
+    this.scheduleStartupFileScan();
+  }
+
+  @debounce(200)
+  private scheduleStartupFileScan(): void {
+    void this.scanStartupFiles();
+  }
+
+  private async scanStartupFiles(): Promise<void> {
+    if (
+      this.disposed ||
+      this.hasLiveStatus ||
+      !this.isInitialStatusPending ||
+      !this.startupPreviewReady ||
+      this.startupFileScanRunning ||
+      !this.startupFileTargets.size
+    )
+      return;
+    this.startupFileScanRunning = true;
+    const version = this.startupFileVersion;
+    const requested = [...this.startupFileTargets.values()];
+    this.startupFileTargets.clear();
+    try {
+      const identity = await this.getSnapshotIdentity();
+      const saved = this.statusSnapshot ?? [];
+      const byPath = new Map(saved.map(s => [snapshotPathKey(s.path), s]));
+      const candidates = requested.map(file => ({
+        ...(byPath.get(snapshotPathKey(file)) ?? {
+          path: file,
+          props: Status.NONE,
+          wcStatus: { locked: false, switched: false }
+        }),
+        // Even a previously clean path now needs validation.
+        status: Status.MODIFIED
+      }));
+      const targets = await selectStartupTargets(this.workspaceRoot, [
+        ...candidates,
+        ...saved.filter(s => s.status === Status.EXTERNAL)
+      ]);
+      if (
+        this.disposed ||
+        this.hasLiveStatus ||
+        !this.isInitialStatusPending ||
+        !targets.length
+      )
+        return;
+      const updated = await this.repository.getStartupStatus(
+        targets,
+        this.startupAbort.signal
+      );
+      const currentIdentity = await this.getSnapshotIdentity();
+      if (
+        this.disposed ||
+        this.hasLiveStatus ||
+        !this.isInitialStatusPending ||
+        identity !== currentIdentity
+      )
+        return;
+      if (version !== this.startupFileVersion) {
+        for (const target of requested)
+          this.startupFileTargets.set(snapshotPathKey(target), target);
+        return;
+      }
+      const merged = mergeStartupStatus(
+        this.statusSnapshot ?? [],
+        targets,
+        updated
+      );
+      const selected = new Set(targets.map(snapshotPathKey));
+      const returned = new Set(updated.map(s => snapshotPathKey(s.path)));
+      for (const status of merged) {
+        const key = snapshotPathKey(status.path);
+        if (selected.has(key) && returned.has(key))
+          this.startupFileResults.set(key, status);
+      }
+      this.applyStatus(merged, false, true);
+    } catch (error) {
+      if (!this.disposed)
+        console.error(
+          "Unable to validate file during initial SVN status",
+          error
+        );
+    } finally {
+      this.startupFileScanRunning = false;
+      if (
+        !this.disposed &&
+        !this.hasLiveStatus &&
+        this.isInitialStatusPending &&
+        this.startupFileTargets.size
+      )
+        this.scheduleStartupFileScan();
     }
   }
 
