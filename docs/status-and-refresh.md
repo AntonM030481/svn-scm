@@ -155,15 +155,15 @@ window. With auto-refresh enabled, the next eligible unsuppressed metadata event
 reconciles status-derived SCM groups. Any later operation that actually takes
 the full-status path provides the same status-derived guarantee even when
 auto-refresh is disabled; examples include automatic remote-status polling and
-a full-status fallback. This does not refresh cached `svn info` fields: an
-external switch, for example, still requires repository-info refresh before the
-current branch is guaranteed to match. The user-visible Refresh command is not
-itself a full-status guarantee because queued file targets can turn it into a
-targeted scan. A working-file event or later targeted operation reconciles only
-the paths it covers, so unrelated activity does not guarantee recovery of the
-hidden change. Running an unconditional delayed full status after every
-targeted mutation would remove the optimization and is not part of the current
-contract.
+a full-status fallback. This does not refresh cached `svn info` fields. After an
+external switch, the displayed current branch is guaranteed to match only when
+repository-info refresh happens before a subsequent model update; either step
+alone is insufficient. The user-visible Refresh command is not itself a
+full-status guarantee because queued file targets can turn it into a targeted
+scan. A working-file event or later targeted operation reconciles only the paths
+it covers, so unrelated activity does not guarantee recovery of the hidden
+change. Running an unconditional delayed full status after every targeted
+mutation would remove the optimization and is not part of the current contract.
 
 ## Concurrency and publication
 

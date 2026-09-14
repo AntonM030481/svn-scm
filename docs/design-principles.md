@@ -39,10 +39,11 @@ metadata event when auto-refresh is enabled, any later operation that actually
 takes the full-status path (including remote-status polling and full-status
 fallback), or targeted activity that covers the externally changed path;
 unrelated targeted activity is not sufficient. Cached `svn info` fields, such
-as the current branch after an external switch, require a separate repository
-info refresh. Avoid restoring unconditional delayed full status after every
-mutation, because that would erase the targeted-refresh benefit for the normal
-case.
+as the current branch after an external switch, require repository-info refresh
+followed by a model update; either action alone does not guarantee that the
+displayed branch changes. Avoid restoring unconditional delayed full status
+after every mutation, because that would erase the targeted-refresh benefit for
+the normal case.
 
 ### Local work should remain local
 
