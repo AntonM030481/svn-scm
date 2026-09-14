@@ -581,6 +581,74 @@ suite("Staging Tests", () => {
     );
   });
 
+  test("stage and unstage refresh overlapping projections in one WC", async () => {
+    const checkout = await createCheckoutWithFiles();
+    const childRoot = path.join(checkout.fsPath, "one");
+    const file = path.join(childRoot, "a.txt");
+
+    await sourceControlManager.tryOpenRepository(childRoot);
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+
+    const childRepository = sourceControlManager.repositories.find(
+      candidate =>
+        path.resolve(candidate.workspaceRoot) === path.resolve(childRoot)
+    );
+    const parentRepository = sourceControlManager.repositories.find(
+      candidate =>
+        path.resolve(candidate.workspaceRoot) === path.resolve(checkout.fsPath)
+    );
+    assert.ok(childRepository);
+    assert.ok(parentRepository);
+    assert.notStrictEqual(childRepository, parentRepository);
+    opened.push(childRepository, parentRepository);
+
+    fs.writeFileSync(file, "overlap edit\n");
+    await childRepository.fullStatus();
+    await parentRepository.fullStatus();
+
+    const parentResource = parentRepository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(parentResource);
+
+    await commands.executeCommand("svn.stage", parentResource);
+    for (const repository of [childRepository, parentRepository]) {
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        true
+      );
+      assert.equal(
+        repository.changes.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        false
+      );
+    }
+
+    const parentStaged = parentRepository.staged?.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(parentStaged);
+    await commands.executeCommand("svn.unstage", parentStaged);
+
+    for (const repository of [childRepository, parentRepository]) {
+      assert.equal(
+        repository.staged?.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        false
+      );
+      assert.equal(
+        repository.changes.resourceStates.some(
+          item => item.resourceUri.fsPath === file
+        ),
+        true
+      );
+    }
+  });
+
   test("one staged commit spans sibling workspace folders in the same WC", async () => {
     const checkout = await createCheckoutWithFiles();
     const one = path.join(checkout.fsPath, "one");

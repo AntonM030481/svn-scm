@@ -221,6 +221,17 @@ export class StagingCoordinator implements Disposable {
     return uniqueResources(validated);
   }
 
+  private async refreshProjectionsContainingPaths(
+    repository: Repository,
+    resources: Resource[]
+  ): Promise<void> {
+    const filePaths = resources.map(resource => resource.resourceUri.fsPath);
+    const peers = this.repositoriesForWorkingCopy(repository).filter(peer =>
+      filePaths.some(filePath => isPathInside(peer.workspaceRoot, filePath))
+    );
+    await Promise.all(peers.map(peer => peer.fullStatus()));
+  }
+
   public async stage(resources: Resource[]): Promise<void> {
     const byRepository = new Map<Repository, Resource[]>();
     for (const resource of uniqueResources(resources)) {
@@ -235,6 +246,7 @@ export class StagingCoordinator implements Disposable {
 
     for (const [repository, selected] of byRepository) {
       await this.stageInRepository(repository, selected);
+      await this.refreshProjectionsContainingPaths(repository, selected);
     }
   }
 
@@ -273,6 +285,7 @@ export class StagingCoordinator implements Disposable {
         if (!metadata) continue;
         await this.restoreDestination(repository, resources, metadata);
       }
+      await this.refreshProjectionsContainingPaths(repository, selected);
     }
   }
 
