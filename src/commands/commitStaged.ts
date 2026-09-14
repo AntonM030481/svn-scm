@@ -62,7 +62,7 @@ async function validatedStagedEntries(
   repository: Repository
 ): Promise<CommitEntry[]> {
   const peers = staging.repositoriesForWorkingCopy(repository);
-  await Promise.all(peers.map(peer => peer.initialStatusSettled));
+  await Promise.all(peers.map(peer => peer.ensureStatus()));
 
   const candidates = staging.stagedEntriesForWorkingCopy(repository);
   if (!candidates.length) {
@@ -115,12 +115,13 @@ function isAddedSnapshotPath(
 async function refreshPeerProjections(
   staging: StagingCoordinator,
   anchor: Repository,
-  paths: string[]
+  paths: string[],
+  includeAnchor: boolean
 ): Promise<void> {
   await Promise.allSettled(
     staging
       .repositoriesForWorkingCopy(anchor)
-      .filter(peer => peer !== anchor)
+      .filter(peer => includeAnchor || peer !== anchor)
       .map(peer => {
         const targets = paths.filter(filePath =>
           isPathInside(peer.workspaceRoot, filePath)
@@ -179,7 +180,12 @@ async function commitEntries(
   try {
     const result = await anchor.commitFiles(message, commitPaths);
     await staging.finalizeCommitted(entries);
-    await refreshPeerProjections(staging, anchor, commitPaths);
+    await refreshPeerProjections(
+      staging,
+      anchor,
+      commitPaths,
+      entries.some(entry => entry.repository !== anchor)
+    );
     window.showInformationMessage(result);
     staging.clearInputBoxes(anchor);
   } catch (error) {
