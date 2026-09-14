@@ -10,6 +10,7 @@ import {
   createStagingChangelist,
   parseStagingChangelist
 } from "../stagingModel";
+import { normalizePath } from "../util";
 import * as testUtil from "./testUtil";
 
 function svn(args: string[], cwd: string): string {
@@ -287,7 +288,7 @@ suite("Staging Tests", () => {
     const relativeRoot = path.relative(repository.root, directory);
     assert.equal(
       parseStagingChangelist(
-        repository.stagedChangelists.get(path.resolve(second)) ?? ""
+        repository.stagedChangelists.get(normalizePath(second)) ?? ""
       )?.createdDirectoryRelativeRoot,
       relativeRoot
     );
