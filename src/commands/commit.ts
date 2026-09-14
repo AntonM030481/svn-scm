@@ -26,6 +26,18 @@ export class Commit extends Command {
         return;
       }
 
+      const stagedUris = new Set(
+        repository.staged?.resourceStates.map(resource =>
+          resource.resourceUri.toString()
+        ) ?? []
+      );
+      if (resources.some(resource => stagedUris.has(resource.toString()))) {
+        void window.showWarningMessage(
+          "Staged changes must be committed with Commit Staged."
+        );
+        return;
+      }
+
       const paths = resources.map(resource => resource.fsPath);
 
       for (const resource of resources) {
