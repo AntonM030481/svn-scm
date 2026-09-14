@@ -152,10 +152,12 @@ target-specific because a watcher event for `wc.db` or similar administration
 files does not identify the working path that caused it. A concurrent external
 SVN process can therefore have its metadata event hidden during this bounded
 window. With auto-refresh enabled, the next eligible unsuppressed metadata event
-reconciles status-derived SCM groups. Any later operation that actually takes
-the full-status path provides the same status-derived guarantee even when
+reconciles local status-derived SCM groups. Any later operation that actually
+takes the full-status path provides the same local-state guarantee even when
 auto-refresh is disabled; examples include automatic remote-status polling and
-a full-status fallback. This does not refresh cached `svn info` fields. After an
+a full-status fallback. A local full status deliberately retains existing
+`remoteChanges`; only a successful authoritative remote-status scan reconciles
+that group. These status paths do not refresh cached `svn info` fields. After an
 external switch, the displayed current branch is guaranteed to match only when
 repository-info refresh happens before a subsequent model update; either step
 alone is insufficient. The user-visible Refresh command is not itself a
