@@ -108,6 +108,24 @@ suite("Validated repository routing", () => {
     }
   });
 
+  test("rejects unsupported routing hints", () => {
+    const f = fixture();
+    f.add(root);
+    try {
+      for (const hint of [
+        0,
+        true,
+        Symbol("repository"),
+        {},
+        Object.create(null)
+      ]) {
+        assert.strictEqual(f.manager.getRepository(hint), null);
+      }
+    } finally {
+      f.dispose();
+    }
+  });
+
   test("mixed changelist selection rejects an unknown unversioned file before prompting or mutation", async () => {
     const f = fixture();
     const owner = f.add(root);

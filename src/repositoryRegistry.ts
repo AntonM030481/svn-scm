@@ -49,7 +49,7 @@ export class RepositoryRegistry {
     return this.sortedEntries;
   }
 
-  public resolveHint(hint: any): IOpenRepository | undefined {
+  public resolveHint(hint: unknown): IOpenRepository | undefined {
     if (!hint) {
       return undefined;
     }
@@ -58,10 +58,14 @@ export class RepositoryRegistry {
       return this.entries.find(entry => entry.repository === hint);
     }
 
-    if ((hint as any).repository instanceof Repository) {
-      return this.entries.find(
-        entry => entry.repository === (hint as any).repository
-      );
+    if (
+      typeof hint === "object" &&
+      hint !== null &&
+      "repository" in hint &&
+      hint.repository instanceof Repository
+    ) {
+      const repository = hint.repository;
+      return this.entries.find(entry => entry.repository === repository);
     }
 
     if (typeof hint === "string") {
@@ -88,9 +92,12 @@ export class RepositoryRegistry {
 
   private isExcluded(entry: IOpenRepository, filePath: string): boolean {
     const { repository } = entry;
-    return [...repository.statusExternal, ...repository.statusIgnored].some(
-      status =>
-        isDescendant(path.join(repository.workspaceRoot, status.path), filePath)
+    const containsPath = (status: { path: string }) =>
+      isDescendant(path.join(repository.workspaceRoot, status.path), filePath);
+
+    return (
+      repository.statusExternal.some(containsPath) ||
+      repository.statusIgnored.some(containsPath)
     );
   }
 
