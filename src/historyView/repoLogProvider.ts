@@ -5,6 +5,7 @@ import {
   Disposable,
   Event,
   EventEmitter,
+  InputBox,
   ThemeIcon,
   TreeDataProvider,
   TreeItem,
@@ -75,6 +76,8 @@ export class RepoLogProvider
   // TODO on-disk cache?
   private readonly logCache: Map<string, ICachedLog> = new Map();
   private _dispose: Disposable[] = [];
+  private readonly inputBoxes = new Set<InputBox>();
+  private disposed = false;
 
   private getCached(maybeItem?: ILogTreeItem): ICachedLog {
     const item = unwrap(maybeItem);
@@ -137,7 +140,32 @@ export class RepoLogProvider
   }
 
   public dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    for (const inputBox of this.inputBoxes) {
+      inputBox.dispose();
+    }
+    this.inputBoxes.clear();
     dispose(this._dispose);
+    this.logCache.clear();
+    this._onDidChangeTreeData.dispose();
+  }
+
+  private createInputBox(): InputBox {
+    const inputBox = window.createInputBox();
+    this.inputBoxes.add(inputBox);
+    inputBox.onDidHide(() => {
+      this.inputBoxes.delete(inputBox);
+      inputBox.dispose();
+    });
+    return inputBox;
+  }
+
+  private closeInputBox(inputBox: InputBox): void {
+    this.inputBoxes.delete(inputBox);
+    inputBox.dispose();
   }
 
   public removeRepo(element: ILogTreeItem) {
@@ -146,6 +174,9 @@ export class RepoLogProvider
   }
 
   private async addRepolike(repoLike: string, rev: string) {
+    if (this.disposed) {
+      return;
+    }
     // TODO save user's custom repositories
     const item: ICachedLog = {
       entries: [],
@@ -203,6 +234,10 @@ export class RepoLogProvider
       }
     }
 
+    if (this.disposed) {
+      return;
+    }
+
     const repoName = item.svnTarget.toString(true);
     if (this.logCache.has(repoName)) {
       window.showWarningMessage("Repository with this name already exists");
@@ -213,7 +248,10 @@ export class RepoLogProvider
   }
 
   public addRepolikeGui() {
-    const box = window.createInputBox();
+    if (this.disposed) {
+      return;
+    }
+    const box = this.createInputBox();
     box.prompt = "Enter SVN URL or local path";
     box.onDidAccept(async () => {
       let repoLike = box.value;
@@ -231,12 +269,18 @@ export class RepoLogProvider
           }
         }
       }
-      box.dispose();
-      const box2 = window.createInputBox();
+      this.closeInputBox(box);
+      if (this.disposed) {
+        return;
+      }
+      const box2 = this.createInputBox();
       box2.prompt = "Enter starting revision (optional)";
       box2.onDidAccept(async () => {
         const rev = box2.value;
-        box2.dispose();
+        this.closeInputBox(box2);
+        if (this.disposed) {
+          return;
+        }
         return this.addRepolike(repoLike, rev || "HEAD");
       }, undefined);
       box2.show();

@@ -326,7 +326,11 @@ suite("Activation transaction", () => {
       }
       const repositoryHistory = views.get("repolog");
       const fileHistory = views.get("itemlog");
-      assert.ok(repositoryHistory.logCache.has(branchRoot.toString(true)));
+      if (failAfterDiscovery) {
+        assert.equal(repositoryHistory.logCache.size, 0);
+      } else {
+        assert.ok(repositoryHistory.logCache.has(branchRoot.toString(true)));
+      }
       assert.strictEqual(fileHistory.sourceControlManager, initializedManager);
       if (!failAfterDiscovery) {
         assert.equal(fileHistory.sourceControlManager.repositories.length, 1);
