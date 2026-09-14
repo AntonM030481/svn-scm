@@ -35,6 +35,7 @@ suite("Staging Live Validation Tests", () => {
     );
     fs.mkdirSync(path.join(checkout.fsPath, "one"));
     fs.writeFileSync(path.join(checkout.fsPath, "one", "a.txt"), "a0\n");
+    fs.writeFileSync(path.join(checkout.fsPath, "one", "b.txt"), "b0\n");
     svn(["add", "one"], checkout.fsPath);
     svn(["commit", "-m", "initial"], checkout.fsPath);
     return checkout;
@@ -88,26 +89,36 @@ suite("Staging Live Validation Tests", () => {
     ) as Repository;
     opened.push(repository);
 
-    const file = path.join(checkout.fsPath, "one", "a.txt");
-    fs.writeFileSync(file, "a1\n");
+    const staleFile = path.join(checkout.fsPath, "one", "a.txt");
+    const stagedFile = path.join(checkout.fsPath, "one", "b.txt");
+    fs.writeFileSync(staleFile, "a1\n");
+    fs.writeFileSync(stagedFile, "b1\n");
     await repository.status();
-    const changed = repository.changes.resourceStates.find(
-      resource => resource.resourceUri.fsPath === file
+    const staleChanged = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === staleFile
     );
-    assert.ok(changed);
+    const stagedChanged = repository.changes.resourceStates.find(
+      resource => resource.resourceUri.fsPath === stagedFile
+    );
+    assert.ok(staleChanged);
+    assert.ok(stagedChanged);
 
-    await commands.executeCommand("svn.stage", changed);
-    assert.equal(repository.staged?.resourceStates.length, 1);
+    await commands.executeCommand("svn.stage", staleChanged);
+    await commands.executeCommand("svn.stage", stagedChanged);
+    assert.equal(repository.staged?.resourceStates.length, 2);
 
-    svn(["changelist", "--remove", path.join("one", "a.txt")], checkout.fsPath);
-    fs.writeFileSync(file, "external edit\n");
+    svn(
+      ["changelist", "--remove", path.join("one", "a.txt")],
+      checkout.fsPath
+    );
+    fs.writeFileSync(staleFile, "external edit\n");
 
     const originalEnsureStatus = repository.ensureStatus.bind(repository);
     (repository as any).ensureStatus = async () => {
       await repository.status();
     };
     try {
-      repository.inputBox.value = "must not commit stale selection";
+      repository.inputBox.value = "commit only still-staged file";
       await commands.executeCommand(
         "svn.commitStaged",
         repository.sourceControl
@@ -116,7 +127,12 @@ suite("Staging Live Validation Tests", () => {
       (repository as any).ensureStatus = originalEnsureStatus;
     }
 
-    assert.equal(fs.readFileSync(file, "utf8"), "external edit\n");
-    assert.match(svn(["status"], checkout.fsPath), /^M\s+one[\\/]a\.txt$/m);
+    assert.equal(fs.readFileSync(staleFile, "utf8"), "external edit\n");
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^M\s+one[\\/]a\.txt$/m);
+    assert.doesNotMatch(status, /one[\\/]b\.txt/);
+    const log = svn(["log", "-r", "HEAD", "-v"], checkout.fsPath);
+    assert.match(log, /one[\\/]b\.txt/);
+    assert.doesNotMatch(log, /one[\\/]a\.txt/);
   });
 });
