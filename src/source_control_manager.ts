@@ -47,6 +47,7 @@ interface DiscoveryOptions {
   allowNested?: boolean;
   recursive?: boolean;
   lifecycleGeneration?: number;
+  workspaceFolderGeneration?: number;
 }
 
 export function getSvnRepositoryPathFromMetadata(
@@ -96,6 +97,7 @@ export class SourceControlManager implements IDisposable {
   private enabled = false;
   private disposed = false;
   private lifecycleGeneration = 0;
+  private workspaceFolderGeneration = 0;
   private enableTask: Promise<void> = Promise.resolve();
   private initialization?: Promise<void>;
   private routingValidations = new WeakMap<
@@ -452,6 +454,7 @@ export class SourceControlManager implements IDisposable {
     added,
     removed
   }: WorkspaceFoldersChangeEvent) {
+    const workspaceFolderGeneration = ++this.workspaceFolderGeneration;
     const survivingFolders =
       this.disposeRepositoriesUncoveredByWorkspaceRemoval(removed);
     const seen = new Set<string>();
@@ -468,7 +471,7 @@ export class SourceControlManager implements IDisposable {
     );
 
     possibleRepositoryFolders.forEach(p =>
-      this.tryOpenRepository(p.uri.fsPath)
+      this.tryOpenRepository(p.uri.fsPath, 0, { workspaceFolderGeneration })
     );
   }
 
@@ -528,17 +531,32 @@ export class SourceControlManager implements IDisposable {
     return this.hasExactRepository(path);
   }
 
+  private isDiscoveryRequestActive(
+    lifecycleGeneration: number,
+    workspaceFolderGeneration?: number
+  ): boolean {
+    return (
+      this.isDiscoveryActive(lifecycleGeneration) &&
+      (workspaceFolderGeneration === undefined ||
+        workspaceFolderGeneration === this.workspaceFolderGeneration)
+    );
+  }
+
   public async tryOpenRepository(
     path: string,
     level = 0,
     {
       allowNested = false,
       recursive = true,
-      lifecycleGeneration = this.lifecycleGeneration
+      lifecycleGeneration = this.lifecycleGeneration,
+      workspaceFolderGeneration
     }: DiscoveryOptions = {}
   ): Promise<void> {
     if (
-      !this.isDiscoveryActive(lifecycleGeneration) ||
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      ) ||
       this.isDiscoveryCandidateOwned(path, allowNested)
     ) {
       return;
@@ -547,7 +565,12 @@ export class SourceControlManager implements IDisposable {
     const checkParent = level === 0;
 
     const svnFolder = await isSvnFolder(path, checkParent);
-    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
       return;
     }
 
@@ -566,13 +589,21 @@ export class SourceControlManager implements IDisposable {
 
       try {
         const repositoryRoot = await this.svn.getRepositoryRoot(path);
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
         const baseRepository = await this.svn.open(repositoryRoot, path);
         if (
-          !this.isDiscoveryActive(lifecycleGeneration) ||
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          ) ||
           this.isDiscoveryCandidateOwned(path, allowNested)
         ) {
           return;
@@ -587,10 +618,17 @@ export class SourceControlManager implements IDisposable {
         this.registerDiscoveredRepository(
           repository,
           lifecycleGeneration,
-          allowNested
+          allowNested,
+          undefined,
+          workspaceFolderGeneration
         );
       } catch (err) {
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
@@ -615,7 +653,12 @@ export class SourceControlManager implements IDisposable {
         return;
       }
 
-      if (!this.isDiscoveryActive(lifecycleGeneration)) {
+      if (
+        !this.isDiscoveryRequestActive(
+          lifecycleGeneration,
+          workspaceFolderGeneration
+        )
+      ) {
         return;
       }
 
@@ -629,7 +672,12 @@ export class SourceControlManager implements IDisposable {
           continue;
         }
 
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           return;
         }
 
@@ -637,7 +685,10 @@ export class SourceControlManager implements IDisposable {
           stats.isDirectory() &&
           !matchAll(dir, this.ignoreList, { dot: true })
         ) {
-          await this.tryOpenRepository(dir, newLevel, { lifecycleGeneration });
+          await this.tryOpenRepository(dir, newLevel, {
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          });
         }
       }
     }
@@ -647,9 +698,15 @@ export class SourceControlManager implements IDisposable {
     repository: Repository,
     lifecycleGeneration: number,
     allowNested: boolean,
-    workspaceFolders = workspace.workspaceFolders || []
+    workspaceFolders = workspace.workspaceFolders || [],
+    workspaceFolderGeneration?: number
   ): void {
-    if (!this.isDiscoveryActive(lifecycleGeneration)) {
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
       repository.dispose();
       return;
     }
@@ -676,7 +733,12 @@ export class SourceControlManager implements IDisposable {
       for (const child of children) {
         // Closing publishes an event; its listeners may disable the manager
         // or close another child synchronously.
-        if (!this.isDiscoveryActive(lifecycleGeneration)) {
+        if (
+          !this.isDiscoveryRequestActive(
+            lifecycleGeneration,
+            workspaceFolderGeneration
+          )
+        ) {
           break;
         }
         if (this.openRepositories.includes(child)) {
@@ -685,6 +747,15 @@ export class SourceControlManager implements IDisposable {
       }
     }
 
+    if (
+      !this.isDiscoveryRequestActive(
+        lifecycleGeneration,
+        workspaceFolderGeneration
+      )
+    ) {
+      repository.dispose();
+      return;
+    }
     this.open(repository, lifecycleGeneration);
   }
 

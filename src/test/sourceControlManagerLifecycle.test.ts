@@ -320,6 +320,53 @@ suite("Source control manager lifecycle", () => {
     assert.deepStrictEqual(scanned, [surviving.uri.fsPath]);
   });
 
+  test("a later workspace event invalidates unfinished rediscovery", async () => {
+    const surviving = {
+      uri: Uri.file("/workspace/wc/sub")
+    } as WorkspaceFolder;
+    const requests: any[] = [];
+    let events = 0;
+    (manager as any).enabled = true;
+    (manager as any).disposeRepositoriesUncoveredByWorkspaceRemoval = () =>
+      events++ === 0 ? [surviving] : [];
+    (manager as any).getOpenRepository = () => undefined;
+    (manager as any).tryOpenRepository = (
+      _root: string,
+      _level: number,
+      options: unknown
+    ) => requests.push(options);
+
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: []
+    });
+    await (manager as any).onDidChangeWorkspaceFolders({
+      added: [],
+      removed: [surviving]
+    });
+
+    assert.equal(requests.length, 1);
+    assert.equal(
+      (manager as any).isDiscoveryRequestActive(
+        (manager as any).lifecycleGeneration,
+        requests[0].workspaceFolderGeneration
+      ),
+      false
+    );
+
+    let disposed = 0;
+    const staleRepository = { dispose: () => disposed++ } as any;
+    (manager as any).registerDiscoveredRepository(
+      staleRepository,
+      (manager as any).lifecycleGeneration,
+      false,
+      [],
+      requests[0].workspaceFolderGeneration
+    );
+    assert.equal(disposed, 1);
+    assert.equal(manager.openRepositories.length, 0);
+  });
+
   test("workspace removal skips projections closed by reentrant callbacks", () => {
     const folder = (root: string) =>
       ({ uri: Uri.file(root) }) as WorkspaceFolder;
