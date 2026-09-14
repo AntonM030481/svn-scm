@@ -2,8 +2,13 @@ import * as path from "path";
 import { IFileStatus, Status } from "./common/types";
 import { lstat } from "./fs";
 
-const directoryPaths = new Set<string>();
 const MAX_STAT_CONCURRENCY = 16;
+const projections = new Set<UnversionedDirectoryProjection>();
+
+export interface UnversionedDirectoryProjection {
+  directoryPaths: Set<string>;
+  dispose(): void;
+}
 
 function key(file: string): string {
   const resolved = path.resolve(file);
@@ -14,22 +19,30 @@ function absolutePath(workspaceRoot: string, file: string): string {
   return path.isAbsolute(file) ? file : path.join(workspaceRoot, file);
 }
 
-function clearWorkspace(workspaceRoot: string): void {
-  const root = key(workspaceRoot);
-  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-
-  for (const file of directoryPaths) {
-    if (file === root || file.startsWith(prefix)) {
-      directoryPaths.delete(file);
+export function createUnversionedDirectoryProjection(): UnversionedDirectoryProjection {
+  const projection: UnversionedDirectoryProjection = {
+    directoryPaths: new Set<string>(),
+    dispose: () => {
+      projections.delete(projection);
+      projection.directoryPaths.clear();
     }
-  }
+  };
+  projections.add(projection);
+  return projection;
 }
 
 export function isUnversionedDirectory(file: string): boolean {
-  return directoryPaths.has(key(file));
+  const fileKey = key(file);
+  for (const projection of projections) {
+    if (projection.directoryPaths.has(fileKey)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function updateUnversionedDirectoryKinds(
+  projection: UnversionedDirectoryProjection,
   workspaceRoot: string,
   statuses: IFileStatus[]
 ): Promise<void> {
@@ -43,11 +56,11 @@ export async function updateUnversionedDirectoryKinds(
       const status = unversioned[next++];
       const file = absolutePath(workspaceRoot, status.path);
       const fileKey = key(file);
-      directoryPaths.delete(fileKey);
+      projection.directoryPaths.delete(fileKey);
 
       try {
         if ((await lstat(file)).isDirectory()) {
-          directoryPaths.add(fileKey);
+          projection.directoryPaths.add(fileKey);
         }
       } catch {
         // The path may disappear between `svn status` and the async stat.
@@ -64,9 +77,10 @@ export async function updateUnversionedDirectoryKinds(
 }
 
 export async function refreshUnversionedDirectoryKinds(
+  projection: UnversionedDirectoryProjection,
   workspaceRoot: string,
   statuses: IFileStatus[]
 ): Promise<void> {
-  clearWorkspace(workspaceRoot);
-  await updateUnversionedDirectoryKinds(workspaceRoot, statuses);
+  projection.directoryPaths.clear();
+  await updateUnversionedDirectoryKinds(projection, workspaceRoot, statuses);
 }
