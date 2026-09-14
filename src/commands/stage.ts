@@ -1,9 +1,25 @@
-import { commands, SourceControlResourceState, Uri } from "vscode";
+import * as path from "path";
+import {
+  commands,
+  SourceControlResourceGroup,
+  SourceControlResourceState,
+  Uri
+} from "vscode";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { StagingCoordinator } from "../stagingCoordinator";
 import { Command } from "./command";
+
+function isPathInside(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
 
 function resourceUriFromScmArgument(value: unknown): Uri | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -11,9 +27,9 @@ function resourceUriFromScmArgument(value: unknown): Uri | undefined {
   const direct = (value as { resourceUri?: unknown }).resourceUri;
   if (direct instanceof Uri) return direct;
 
-  // In SCM tree view VS Code sets the inline action context to an
-  // IResourceNode wrapper. The actual SourceControlResourceState is stored in
-  // `element`, while list view passes the resource directly.
+  // In SCM tree view a file leaf is wrapped in an IResourceNode. The actual
+  // SourceControlResourceState is stored in `element`, while list view passes
+  // the resource directly.
   const element = (value as { element?: unknown }).element;
   if (element && typeof element === "object") {
     const nested = (element as { resourceUri?: unknown }).resourceUri;
@@ -21,6 +37,22 @@ function resourceUriFromScmArgument(value: unknown): Uri | undefined {
   }
 
   return undefined;
+}
+
+function resourceFolderFromScmArgument(
+  value: unknown
+): { uri: Uri; group: SourceControlResourceGroup } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const uri = (value as { uri?: unknown }).uri;
+  const context = (value as { context?: unknown }).context;
+  if (!(uri instanceof Uri) || !context || typeof context !== "object") {
+    return undefined;
+  }
+
+  const group = context as SourceControlResourceGroup;
+  if (!Array.isArray(group.resourceStates)) return undefined;
+  return { uri, group };
 }
 
 abstract class BaseStagingCommand extends Command {
@@ -46,11 +78,27 @@ abstract class BaseStagingCommand extends Command {
 
     for (const resourceState of resourceStates as unknown[]) {
       const uri = resourceUriFromScmArgument(resourceState);
-      if (!uri) continue;
+      if (uri) {
+        const repository = sourceControlManager.getRepository(uri);
+        const resource = repository?.getResourceFromFile(uri);
+        if (resource) resources.push(resource);
+        continue;
+      }
 
-      const repository = sourceControlManager.getRepository(uri);
-      const resource = repository?.getResourceFromFile(uri);
-      if (resource) resources.push(resource);
+      // SCM tree folders are IResourceNode objects. Their `context` is the
+      // owning SCM resource group, so expanding that group's descendants keeps
+      // Stage/Unstage scoped to the group the user actually clicked.
+      const folder = resourceFolderFromScmArgument(resourceState);
+      if (!folder) continue;
+
+      for (const candidate of folder.group.resourceStates) {
+        const candidateUri = candidate.resourceUri;
+        if (!isPathInside(folder.uri.fsPath, candidateUri.fsPath)) continue;
+
+        const repository = sourceControlManager.getRepository(candidateUri);
+        const resource = repository?.getResourceFromFile(candidateUri);
+        if (resource) resources.push(resource);
+      }
     }
 
     return resources;
