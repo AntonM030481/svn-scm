@@ -7,7 +7,7 @@ import { inputCommitMessage, noChangesToCommit } from "../messages";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { StagingCoordinator } from "../stagingCoordinator";
-import SvnError, { getErrorMessage } from "../svnError";
+import { getDisplayErrorMessage } from "../svnError";
 import { normalizePath } from "../util";
 import { withWorkingCopyMutationLock } from "../workingCopyMutationLock";
 import { Command } from "./command";
@@ -193,9 +193,7 @@ async function commitEntries(
     staging.clearInputBoxes(anchor);
   } catch (error) {
     console.error(error);
-    window.showErrorMessage(
-      error instanceof SvnError ? error.displayMessage : getErrorMessage(error)
-    );
+    window.showErrorMessage(getDisplayErrorMessage(error));
   }
 }
 

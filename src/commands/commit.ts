@@ -4,7 +4,7 @@ import { Status } from "../common/types";
 import { refreshStatusTargets } from "../incrementalStatus";
 import { inputCommitMessage } from "../messages";
 import { isStagingChangelist } from "../stagingModel";
-import SvnError, { getErrorMessage } from "../svnError";
+import { getDisplayErrorMessage } from "../svnError";
 import { normalizePath } from "../util";
 import { Command } from "./command";
 
@@ -93,11 +93,7 @@ export class Commit extends Command {
         repository.inputBox.value = "";
       } catch (error) {
         console.error(error);
-        window.showErrorMessage(
-          error instanceof SvnError
-            ? error.displayMessage
-            : getErrorMessage(error)
-        );
+        window.showErrorMessage(getDisplayErrorMessage(error));
       }
     });
   }

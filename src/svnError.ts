@@ -8,6 +8,12 @@ export function getErrorMessage(error: unknown): string {
   return typeof error === "string" ? error : String(error);
 }
 
+export function getDisplayErrorMessage(error: unknown): string {
+  return error instanceof SvnError
+    ? error.displayMessage
+    : getErrorMessage(error);
+}
+
 export default class SvnError extends Error {
   public error?: Error;
   public stdout?: string;
