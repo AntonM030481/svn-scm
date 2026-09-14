@@ -34,11 +34,25 @@ suite("Staging Model", () => {
     });
   });
 
+  test("persists staging-created directory roots", () => {
+    const root = "/tmp/work tree/каталог";
+    const name = createStagingChangelist(undefined, true, root);
+    assert.equal(isStagingChangelist(name), true);
+    assert.deepEqual(parseStagingChangelist(name), {
+      wasUnversioned: true,
+      createdDirectoryRoot: root
+    });
+  });
+
   test("does not claim malformed or user changelists", () => {
     assert.equal(isStagingChangelist("feature-a"), false);
     assert.equal(parseStagingChangelist("feature-a"), undefined);
     assert.equal(
       parseStagingChangelist(`${STAGING_CHANGELIST_PREFIX}:c:not-hex`),
+      undefined
+    );
+    assert.equal(
+      parseStagingChangelist(`${STAGING_CHANGELIST_PREFIX}:u:d:not-hex`),
       undefined
     );
   });

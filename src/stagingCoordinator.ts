@@ -469,7 +469,7 @@ export class StagingCoordinator implements Disposable {
         if (fileDescendants.length) {
           await repository.addChangelist(
             fileDescendants,
-            createStagingChangelist(undefined, true)
+            createStagingChangelist(undefined, true, directory)
           );
         } else {
           await repository.revert([directory], "infinity");
@@ -592,8 +592,13 @@ export class StagingCoordinator implements Disposable {
 
   private addedAncestorDirectoriesForUnstage(
     repository: Repository,
-    paths: string[]
+    paths: string[],
+    createdDirectoryRoot: string
   ): string[] {
+    if (!isPathInside(repository.root, createdDirectoryRoot)) {
+      return [];
+    }
+
     const selected = new Set(paths.map(normalizePath));
     const candidates = new Set<string>();
 
@@ -601,16 +606,19 @@ export class StagingCoordinator implements Disposable {
       let directory = path.dirname(filePath);
       while (
         directory !== path.dirname(directory) &&
-        normalizePath(directory) !== normalizePath(repository.root)
+        isPathInside(createdDirectoryRoot, directory)
       ) {
         if (this.findResource(repository, directory)?.type === Status.ADDED) {
           candidates.add(normalizePath(directory));
+        }
+        if (samePath(directory, createdDirectoryRoot)) {
+          break;
         }
         directory = path.dirname(directory);
       }
     }
 
-    const added = this.resourcesUnderPath(repository, repository.workspaceRoot)
+    const added = this.resourcesUnderPath(repository, createdDirectoryRoot)
       .filter(resource => resource.type === Status.ADDED)
       .map(resource => normalizePath(resource.resourceUri.fsPath));
 
@@ -638,9 +646,14 @@ export class StagingCoordinator implements Disposable {
       return;
     }
 
-    const addedDirectories = metadata.wasUnversioned
-      ? this.addedAncestorDirectoriesForUnstage(repository, paths)
-      : [];
+    const addedDirectories =
+      metadata.wasUnversioned && metadata.createdDirectoryRoot
+        ? this.addedAncestorDirectoriesForUnstage(
+            repository,
+            paths,
+            metadata.createdDirectoryRoot
+          )
+        : [];
 
     await repository.removeChangelist(paths);
     if (metadata.wasUnversioned) {

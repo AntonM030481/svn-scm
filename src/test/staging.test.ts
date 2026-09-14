@@ -181,6 +181,34 @@ suite("Staging Tests", () => {
     );
   });
 
+  test("unstage preserves pre-existing added ancestor directories", async () => {
+    const checkout = await createCheckoutWithFiles();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "pre-added");
+    fs.mkdirSync(directory);
+    svn(["add", "--depth", "empty", "pre-added"], checkout.fsPath);
+    const file = path.join(directory, "child.txt");
+    fs.writeFileSync(file, "child\n");
+    await repository.status();
+
+    const resource = repository.unversioned.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    await commands.executeCommand("svn.stage", resource);
+    await commands.executeCommand("svn.unstage", resource);
+
+    const status = svn(["status"], checkout.fsPath);
+    assert.match(status, /^A\s+pre-added$/m);
+    assert.match(status, /^\?\s+pre-added[\\/]child\.txt$/m);
+  });
+
   test("unstaging an unversioned folder restores its scheduled additions", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
