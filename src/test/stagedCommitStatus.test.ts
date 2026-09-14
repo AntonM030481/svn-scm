@@ -85,4 +85,47 @@ suite("Staged Commit Status Tests", () => {
     assert.equal(fullLocalStatusCalls, 0);
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
   });
+
+  test("refreshes parent projection for a dot-prefixed child folder", async () => {
+    const checkout = await createCheckout();
+    const childRoot = path.join(checkout.fsPath, "..child");
+    fs.mkdirSync(childRoot);
+    const file = path.join(childRoot, "nested.txt");
+    fs.writeFileSync(file, "before\n");
+    svn(["add", "..child"], checkout.fsPath);
+    svn(["commit", "-m", "add dot child"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    await sourceControlManager.tryOpenRepository(childRoot);
+    const parentRepository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    const childRepository = sourceControlManager.getRepository(
+      Uri.file(file)
+    ) as Repository;
+    opened.push(parentRepository, childRepository);
+
+    fs.writeFileSync(file, "after\n");
+    await parentRepository.status();
+    await childRepository.status();
+    const resource = childRepository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+    await commands.executeCommand("svn.stage", resource);
+
+    parentRepository.inputBox.value = "commit dot child";
+    await commands.executeCommand(
+      "svn.commitStaged",
+      parentRepository.sourceControl
+    );
+
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+    assert.equal(
+      parentRepository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === file
+      ),
+      false
+    );
+  });
 });
