@@ -13,6 +13,7 @@ import { Command } from "./command";
 interface CommitEntry {
   repository: Repository;
   resource: Resource;
+  changelist?: string;
 }
 
 function uniquePaths(paths: string[]): string[] {
@@ -135,9 +136,10 @@ export class CommitStaged extends Command {
           .get(owner)
           ?.has(normalizePath(resource.resourceUri.fsPath))
       )
-      .map(({ repository: owner, resource }) => ({
+      .map(({ repository: owner, resource, changelist }) => ({
         repository: owner,
-        resource
+        resource,
+        changelist
       }));
     await commitEntries(repository, entries, this.staging);
   }

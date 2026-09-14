@@ -1,5 +1,5 @@
 import * as path from "path";
-import { Disposable, SourceControlResourceGroup, window } from "vscode";
+import { Disposable, SourceControlResourceGroup, Uri, window } from "vscode";
 import { ISvnResourceGroup, Status } from "./common/types";
 import { lstat } from "./fs";
 import { configuration } from "./helpers/configuration";
@@ -85,16 +85,43 @@ export class StagingCoordinator implements Disposable {
 
   public stagedEntriesForWorkingCopy(repository: Repository): StagedEntry[] {
     const entries: StagedEntry[] = [];
-    for (const peer of this.repositoriesForWorkingCopy(repository)) {
-      const state = this.states.get(peer);
-      if (!state) continue;
-      for (const resource of state.group.resourceStates) {
-        const changelist = state.metadataByPath.get(
-          normalizePath(resource.resourceUri.fsPath)
-        );
-        if (changelist) {
-          entries.push({ repository: peer, resource, changelist });
+    const seen = new Set<string>();
+    const peers = [...this.repositoriesForWorkingCopy(repository)].sort(
+      (left, right) => right.workspaceRoot.length - left.workspaceRoot.length
+    );
+
+    for (const peer of peers) {
+      for (const status of peer.getStatusSnapshot() ?? []) {
+        if (!status.changelist || !isStagingChangelist(status.changelist)) {
+          continue;
         }
+
+        const filePath = path.isAbsolute(status.path)
+          ? status.path
+          : path.resolve(peer.workspaceRoot, status.path);
+        if (!isPathInside(peer.workspaceRoot, filePath)) continue;
+
+        const key = normalizePath(filePath);
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const renameResourceUri = status.rename
+          ? Uri.file(
+              path.isAbsolute(status.rename)
+                ? status.rename
+                : path.resolve(peer.workspaceRoot, status.rename)
+            )
+          : undefined;
+        entries.push({
+          repository: peer,
+          resource: new Resource(
+            Uri.file(filePath),
+            status.status,
+            renameResourceUri,
+            status.props
+          ),
+          changelist: status.changelist
+        });
       }
     }
     return entries;
@@ -290,9 +317,27 @@ export class StagingCoordinator implements Disposable {
   }
 
   public async unstageAll(repository: Repository): Promise<void> {
-    await this.unstage(
-      this.stagedEntriesForWorkingCopy(repository).map(entry => entry.resource)
-    );
+    const byRepository = new Map<Repository, Map<string, Resource[]>>();
+    for (const entry of this.stagedEntriesForWorkingCopy(repository)) {
+      const byChangelist = byRepository.get(entry.repository) ?? new Map();
+      const resources = byChangelist.get(entry.changelist) ?? [];
+      resources.push(entry.resource);
+      byChangelist.set(entry.changelist, resources);
+      byRepository.set(entry.repository, byChangelist);
+    }
+
+    for (const [owner, byChangelist] of byRepository) {
+      const refreshed: Resource[] = [];
+      for (const [stagingChangelist, resources] of byChangelist) {
+        const metadata = parseStagingChangelist(stagingChangelist);
+        if (!metadata) continue;
+        await this.restoreDestination(owner, resources, metadata);
+        refreshed.push(...resources);
+      }
+      if (refreshed.length) {
+        await this.refreshProjectionsContainingPaths(owner, refreshed);
+      }
+    }
   }
 
   public findResource(
@@ -329,11 +374,15 @@ export class StagingCoordinator implements Disposable {
   }
 
   public async finalizeCommitted(
-    entries: Array<{ repository: Repository; resource: Resource }>
+    entries: Array<{
+      repository: Repository;
+      resource: Resource;
+      changelist?: string;
+    }>
   ): Promise<void> {
     const grouped = new Map<Repository, Map<string | undefined, string[]>>();
 
-    for (const { repository, resource } of entries) {
+    for (const { repository, resource, changelist } of entries) {
       // A successfully committed deletion has no working-copy node whose
       // changelist can be restored. A sibling projection may still expose its
       // pre-commit metadata until that projection refreshes.
@@ -341,6 +390,7 @@ export class StagingCoordinator implements Disposable {
 
       const key = normalizePath(resource.resourceUri.fsPath);
       const stagingChangelist =
+        changelist ??
         this.states.get(repository)?.metadataByPath.get(key) ??
         repository.stagedChangelists.get(key);
       if (!stagingChangelist || !isStagingChangelist(stagingChangelist)) {
