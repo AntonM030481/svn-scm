@@ -6,6 +6,7 @@ import { commands, Uri } from "vscode";
 import { isPathInside } from "../commands/commitStaged";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
+import { withWorkingCopyMutationLock } from "../workingCopyMutationLock";
 import * as testUtil from "./testUtil";
 
 function svn(args: string[], cwd: string): string {
@@ -84,6 +85,54 @@ suite("Staged Commit Status Tests", () => {
     }
 
     assert.equal(fullLocalStatusCalls, 0);
+    assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+  });
+
+  test("commit staged waits for an in-flight staging mutation", async () => {
+    const checkout = await createCheckout();
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const file = path.join(checkout.fsPath, "tracked.txt");
+    fs.writeFileSync(file, "after concurrent stage\n");
+    await repository.status();
+    const resource = repository.changes.resourceStates.find(
+      item => item.resourceUri.fsPath === file
+    );
+    assert.ok(resource);
+
+    let release!: () => void;
+    let entered!: () => void;
+    const enteredPromise = new Promise<void>(resolve => {
+      entered = resolve;
+    });
+    const blocked = new Promise<void>(resolve => {
+      release = resolve;
+    });
+
+    const stagingMutation = withWorkingCopyMutationLock(
+      repository.root,
+      async () => {
+        entered();
+        await blocked;
+        await commands.executeCommand("svn.stage", resource);
+      }
+    );
+    await enteredPromise;
+
+    repository.inputBox.value = "commit after concurrent stage";
+    const commit = commands.executeCommand(
+      "svn.commitStaged",
+      repository.sourceControl
+    );
+
+    release();
+    await stagingMutation;
+    await commit;
+
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
   });
 
