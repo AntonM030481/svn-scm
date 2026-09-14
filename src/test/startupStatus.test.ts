@@ -141,6 +141,17 @@ suite("Persisted startup status integration", () => {
 
   test("file events publish during initial scan and survive its older result", async () => {
     const f = await fixture();
+    const directory = path.join(f.root, "transient-directory");
+    await fs.mkdir(directory);
+    const descendant = path.join(directory, "child.txt");
+    await fs.writeFile(descendant, "base child");
+    await f.base.exec(["add", directory]);
+    await f.base.exec([
+      "commit",
+      directory,
+      "-m",
+      "tracked descendant fixture"
+    ]);
     const base = await manager.svn.open(f.root, f.root);
     const entered = gate();
     const release = gate();
@@ -197,17 +208,11 @@ suite("Persisted startup status integration", () => {
         repo.getResourceFromFile(transient)!.type,
         Status.UNVERSIONED
       );
-      const directory = path.join(f.root, "transient-directory");
-      await fs.mkdir(directory);
-      const descendant = path.join(directory, "child.txt");
-      await fs.writeFile(descendant, "temporary child");
+      await fs.appendFile(descendant, "modified child");
       events.fire(Uri.file(descendant));
       await new Promise<void>(resolve => setImmediate(resolve));
       await (repo as any).scanStartupFiles();
-      assert.equal(
-        repo.getResourceFromFile(descendant)!.type,
-        Status.UNVERSIONED
-      );
+      assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MODIFIED);
       await fs.rm(directory, { recursive: true });
       // A recursive delete may emit only the directory URI.
       deletions.fire(Uri.file(directory));
