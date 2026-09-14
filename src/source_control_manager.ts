@@ -94,6 +94,7 @@ export class SourceControlManager implements IDisposable {
     this._onDidChangeStatusRepository.event;
 
   public openRepositories: IOpenRepository[] = [];
+  private sortedOpenRepositories?: IOpenRepository[];
   private disposables: Disposable[] = [];
   private enabled = false;
   private disposed = false;
@@ -220,10 +221,16 @@ export class SourceControlManager implements IDisposable {
   }
 
   public openRepositoriesSorted(): IOpenRepository[] {
-    return this.openRepositories.sort(
-      (a, b) =>
-        b.repository.workspaceRoot.length - a.repository.workspaceRoot.length
-    );
+    if (
+      !this.sortedOpenRepositories ||
+      this.sortedOpenRepositories.length !== this.openRepositories.length
+    ) {
+      this.sortedOpenRepositories = [...this.openRepositories].sort(
+        (a, b) =>
+          b.repository.workspaceRoot.length - a.repository.workspaceRoot.length
+      );
+    }
+    return this.sortedOpenRepositories;
   }
 
   private onDidChangeConfiguration(event: ConfigurationChangeEvent): void {
@@ -448,6 +455,7 @@ export class SourceControlManager implements IDisposable {
     const repositories = this.openRepositories;
     const disposables = this.disposables;
     this.openRepositories = [];
+    this.sortedOpenRepositories = undefined;
     this.disposables = [];
     this.possibleSvnRepositoryPaths.clear();
     this.pendingWorkspaceFolderDiscoveries.clear();
@@ -1008,11 +1016,13 @@ export class SourceControlManager implements IDisposable {
       this.openRepositories = this.openRepositories.filter(
         e => e !== openRepository
       );
+      this.sortedOpenRepositories = undefined;
       this._onDidCloseRepository.fire(repository);
     };
 
     const openRepository = { repository, dispose };
     this.openRepositories.push(openRepository);
+    this.sortedOpenRepositories = undefined;
     this._onDidOpenRepository.fire(repository);
   }
 

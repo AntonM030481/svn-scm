@@ -192,6 +192,34 @@ suite("Validated repository routing", () => {
     }
   });
 
+  test("caches routing order without reordering the repository registry", () => {
+    const f = fixture();
+    const ancestor = f.add(root);
+    const nested = f.add(path.join(root, "nested"));
+    try {
+      assert.strictEqual(
+        f.manager.getRepository(
+          Uri.file(path.join(root, "nested", "file.txt"))
+        ),
+        nested.repository
+      );
+      assert.deepStrictEqual(
+        f.manager.openRepositories.map(entry => entry.repository),
+        [ancestor.repository, nested.repository]
+      );
+
+      const deepest = f.add(path.join(root, "nested", "deepest"));
+      assert.strictEqual(
+        f.manager.getRepository(
+          Uri.file(path.join(root, "nested", "deepest", "file.txt"))
+        ),
+        deepest.repository
+      );
+    } finally {
+      f.dispose();
+    }
+  });
+
   for (const boundary of ["statusExternal", "statusIgnored"]) {
     test(`${boundary} cannot fall through a nested owner to its ancestor`, async () => {
       const f = fixture();
