@@ -35,11 +35,11 @@ caused the write. During a targeted mutation and its short grace period, the
 extension therefore suppresses metadata echoes for the whole physical working
 copy. A concurrent external SVN process can be hidden during that bounded
 window. State is reconciled by the next eligible unsuppressed metadata event
-when auto-refresh is enabled, an explicit full refresh, or targeted activity
-that covers the externally changed path; unrelated targeted activity is not
-sufficient. Avoid restoring unconditional delayed full status after every
-mutation, because that would erase the targeted-refresh benefit for the normal
-case.
+when auto-refresh is enabled, any later full-status path (including explicit
+refresh and remote-status polling), or targeted activity that covers the
+externally changed path; unrelated targeted activity is not sufficient. Avoid
+restoring unconditional delayed full status after every mutation, because that
+would erase the targeted-refresh benefit for the normal case.
 
 ### Local work should remain local
 
