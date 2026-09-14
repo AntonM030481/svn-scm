@@ -345,6 +345,24 @@ suite("Configured SVN streaming executor", () => {
     );
   });
 
+  test("classifies warning-form property-not-found before its generic error", async () => {
+    const svn = new Svn({ svnPath: process.execPath, version: "1.14.0" });
+    await assert.rejects(
+      svn.exec(
+        process.cwd(),
+        [
+          "-e",
+          'process.stderr.write("svn: warning: W200017: Property svn:ignore not found\\nsvn: E200000: A problem occurred");process.exitCode=1',
+          "--"
+        ],
+        { env: environment, log: false, onStdout: () => {} }
+      ),
+      error =>
+        error instanceof SvnError &&
+        error.svnErrorCode === svnErrorCodes.PropertyNotFound
+    );
+  });
+
   test("log search keeps query as one argument and applies repository credentials", async () => {
     let capturedArgs: string[] = [];
     let capturedOptions: ICpOptions = {};

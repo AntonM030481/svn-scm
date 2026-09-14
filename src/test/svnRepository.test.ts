@@ -8,7 +8,8 @@ import {
   ISvnOptions
 } from "../common/types";
 import { parseStatusXml } from "../parser/statusParser";
-import { Svn } from "../svn";
+import { Svn, svnErrorCodes } from "../svn";
+import SvnError from "../svnError";
 import { Repository } from "../svnRepository";
 
 suite("Svn Repository Tests", () => {
@@ -139,6 +140,67 @@ suite("Svn Repository Tests", () => {
         remote.toString(true)
       ]
     ]);
+  });
+
+  test("reads svn:ignore through XML without trimming patterns", async () => {
+    svn = new Svn(options);
+    const repository = await new Repository(
+      svn,
+      "/tmp",
+      "/tmp",
+      ConstructorPolicy.LateInit
+    );
+    repository.exec = async args => {
+      assert.deepStrictEqual(args, [
+        "propget",
+        "svn:ignore",
+        "--xml",
+        "folder"
+      ]);
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout:
+          '<properties><target path="folder"><property name="svn:ignore">  spaced pattern  \na&amp;b</property></target></properties>'
+      };
+    };
+
+    assert.deepStrictEqual(await repository.getCurrentIgnore("/tmp/folder"), [
+      "  spaced pattern  ",
+      "a&b"
+    ]);
+  });
+
+  test("returns no ignores only when the property is absent", async () => {
+    svn = new Svn(options);
+    const repository = await new Repository(
+      svn,
+      "/tmp",
+      "/tmp",
+      ConstructorPolicy.LateInit
+    );
+    repository.exec = async () => {
+      throw new SvnError({ svnErrorCode: svnErrorCodes.PropertyNotFound });
+    };
+
+    assert.deepStrictEqual(await repository.getCurrentIgnore("/tmp"), []);
+  });
+
+  test("propagates svn:ignore parse failures", async () => {
+    svn = new Svn(options);
+    const repository = await new Repository(
+      svn,
+      "/tmp",
+      "/tmp",
+      ConstructorPolicy.LateInit
+    );
+    repository.exec = async () => ({
+      exitCode: 0,
+      stderr: "",
+      stdout: "<malformed"
+    });
+
+    await assert.rejects(repository.getCurrentIgnore("/tmp"));
   });
 
   test("Resolves external repository UUID only when requested", async () => {

@@ -24,9 +24,11 @@ import { logLimit } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
 import { parseInfoXml } from "./parser/infoParser";
 import { parseSvnList } from "./parser/listParser";
+import { parseSvnPropertyValue } from "./parser/propertyParser";
 import { parseSvnLog } from "./parser/logParser";
 import { parseStatusXml } from "./parser/statusParser";
-import { Svn, BufferResult } from "./svn";
+import { Svn, BufferResult, svnErrorCodes } from "./svn";
+import SvnError from "./svnError";
 import {
   fixPathSeparator,
   fixPegRevision,
@@ -883,25 +885,23 @@ export class Repository {
   public async getCurrentIgnore(directory: string) {
     directory = this.removeAbsolutePath(directory);
 
-    let currentIgnore = "";
-
     try {
-      const args = ["propget", "svn:ignore"];
-
-      if (directory) {
-        args.push(directory);
-      }
+      const args = ["propget", "svn:ignore", "--xml", directory || "."];
 
       const currentIgnoreResult = await this.exec(args);
-
-      currentIgnore = currentIgnoreResult.stdout.trim();
+      const currentIgnore = await parseSvnPropertyValue(
+        currentIgnoreResult.stdout
+      );
+      return currentIgnore.split(/[\r\n]+/);
     } catch (error) {
-      console.error(error);
+      if (
+        error instanceof SvnError &&
+        error.svnErrorCode === svnErrorCodes.PropertyNotFound
+      ) {
+        return [];
+      }
+      throw error;
     }
-
-    const ignores = currentIgnore.split(/[\r\n]+/);
-
-    return ignores;
   }
 
   public async addToIgnore(
