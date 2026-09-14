@@ -6,6 +6,7 @@ import { configuration } from "./helpers/configuration";
 import { parseStatusXml } from "./parser/statusParser";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
+import { updateUnversionedDirectoryKinds } from "./resourceKinds";
 import { SourceControlManager } from "./source_control_manager";
 import { Repository as SvnRepository } from "./svnRepository";
 import { dispose, isDescendant, normalizePath, toDisposable } from "./util";
@@ -370,6 +371,7 @@ async function getTargetedStatus(
 
   const result = await repository.exec(args);
   const statuses = await parseStatusXml(result.stdout);
+  await updateUnversionedDirectoryKinds(repository.workspaceRoot, statuses);
 
   for (const status of statuses) {
     if (
