@@ -1,6 +1,7 @@
 import * as path from "path";
 import { window } from "vscode";
 import { Status } from "../common/types";
+import { lstat } from "../fs";
 import { refreshStatusTargets } from "../incrementalStatus";
 import { inputCommitMessage, noChangesToCommit } from "../messages";
 import { Repository } from "../repository";
@@ -43,6 +44,19 @@ async function ensureWorkingCopyLiveStatus(
   );
 }
 
+async function needsFullStatus(resources: Resource[]): Promise<boolean> {
+  for (const resource of resources) {
+    try {
+      if ((await lstat(resource.resourceUri.fsPath)).isSymbolicLink()) {
+        return true;
+      }
+    } catch {
+      // Missing paths are validated by SVN status itself.
+    }
+  }
+  return false;
+}
+
 async function validatedStagedEntries(
   staging: StagingCoordinator,
   repository: Repository
@@ -52,20 +66,29 @@ async function validatedStagedEntries(
     return [];
   }
 
-  const validated = await staging.validateUnstageSelection(
-    candidates.map(({ resource }) => resource)
-  );
-  const validatedPaths = new Set(
-    validated.map(resource => normalizePath(resource.resourceUri.fsPath))
+  const byRepository = new Map<Repository, Resource[]>();
+  for (const { repository: owner, resource } of candidates) {
+    const resources = byRepository.get(owner) ?? [];
+    resources.push(resource);
+    byRepository.set(owner, resources);
+  }
+
+  await Promise.all(
+    [...byRepository].map(async ([owner, resources]) => {
+      if (await needsFullStatus(resources)) {
+        await owner.fullStatus();
+      } else {
+        await refreshStatusTargets(
+          owner,
+          resources.map(resource => resource.resourceUri.fsPath)
+        );
+      }
+    })
   );
 
   return staging
     .stagedEntriesForWorkingCopy(repository)
-    .filter(
-      ({ resource }) =>
-        resource.type !== Status.CONFLICTED &&
-        validatedPaths.has(normalizePath(resource.resourceUri.fsPath))
-    )
+    .filter(({ resource }) => resource.type !== Status.CONFLICTED)
     .map(({ repository: owner, resource, changelist }) => ({
       repository: owner,
       resource,
