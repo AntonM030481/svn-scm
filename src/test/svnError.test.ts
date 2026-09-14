@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import SvnError, { getErrorMessage } from "../svnError";
+import SvnError, { getDisplayErrorMessage, getErrorMessage } from "../svnError";
 
 suite("SvnError", () => {
   test("is a native Error", () => {
@@ -41,5 +41,22 @@ suite("SvnError", () => {
     assert.strictEqual(getErrorMessage(new Error("boom")), "boom");
     assert.strictEqual(getErrorMessage("boom"), "boom");
     assert.strictEqual(getErrorMessage(null), "null");
+  });
+
+  test("uses SVN output for user-facing errors", () => {
+    assert.strictEqual(
+      getDisplayErrorMessage(
+        new SvnError({
+          message: "SVN failed",
+          stderr: "raw stderr",
+          stderrFormated: "formatted stderr"
+        })
+      ),
+      "formatted stderr"
+    );
+    assert.strictEqual(
+      getDisplayErrorMessage(new Error("ordinary failure")),
+      "ordinary failure"
+    );
   });
 });

@@ -2,7 +2,7 @@ import { Command } from "./command";
 import { window, Uri, commands, ProgressLocation, workspace } from "vscode";
 import { Repository } from "../repository";
 import { tempSvnFs } from "../temp_svn_fs";
-import SvnError, { getErrorMessage } from "../svnError";
+import { getDisplayErrorMessage } from "../svnError";
 import { SvnCancellationError } from "../svnProcess";
 
 export class SearchLogByText extends Command {
@@ -69,7 +69,7 @@ export class SearchLogByText extends Command {
     } catch (error) {
       if (!(error instanceof SvnCancellationError)) {
         await window.showErrorMessage(
-          `Unable to search SVN log: ${error instanceof SvnError ? error.displayMessage : getErrorMessage(error)}`
+          `Unable to search SVN log: ${getDisplayErrorMessage(error)}`
         );
       }
     } finally {
