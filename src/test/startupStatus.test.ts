@@ -153,11 +153,15 @@ suite("Persisted startup status integration", () => {
       "-m",
       "tracked descendant fixture"
     ]);
+    // The initial full result already includes this modification before deletion.
+    await fs.appendFile(descendant, "captured before initial scan");
     const base = await manager.svn.open(f.root, f.root);
     const entered = gate();
     const release = gate();
     const getStatus = base.getStatus.bind(base);
+    let fullScans = 0;
     base.getStatus = async params => {
+      if (fullScans++ > 0) assert.equal(params.checkRemoteChanges, false);
       const old = await getStatus(params);
       entered.resolve();
       await release.promise;
@@ -230,6 +234,11 @@ suite("Persisted startup status integration", () => {
       assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
       assert.equal(repo.getResourceFromFile(reverted), undefined);
       assert.equal(publications, 1);
+      assert.equal(
+        fullScans,
+        2,
+        "deletion must reconcile before live publication"
+      );
       assert.equal(repo.getResourceFromFile(transient), undefined);
       assert.equal(repo.getResourceFromFile(descendant), undefined);
       const snapshot = f.data.get([...f.data.keys()][0]) as any;

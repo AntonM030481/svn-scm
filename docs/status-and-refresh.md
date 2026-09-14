@@ -279,7 +279,10 @@ Accepted results use the existing preview projection and do not enable mutation
 readiness or automatic actions. A new event invalidates an in-flight batch;
 those targets are rechecked instead of publishing the obsolete result. Directory
 events invalidate accepted evidence for all descendants as well as the exact
-path, so recursive deletes cannot resurrect previously checked files. The
+path, so recursive deletes cannot resurrect previously checked files. Deletion
+events also require a local full reconciliation before accepting the initial
+result: the earlier scan may already contain a now-deleted descendant. This
+rare fallback preserves remote evidence and makes no extra server request. The
 initial full result incorporates accepted newer local records by exact path,
 including explicit clean records, while keeping its remote evidence. All file
 events also remain in the ordinary incremental queue, which reconciles skipped,

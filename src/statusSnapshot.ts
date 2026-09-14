@@ -264,3 +264,28 @@ export function mergeStartupStatus(
   }
   return [...byPath.values()];
 }
+
+/** Replace local evidence while retaining only the independently acquired remote fields. */
+export function retainRemoteStatus(
+  localStatuses: IFileStatus[],
+  remoteStatuses: IFileStatus[]
+): IFileStatus[] {
+  const byPath = new Map(
+    localStatuses.map(status => [
+      snapshotPathKey(status.path),
+      { ...status, reposStatus: undefined } as IFileStatus
+    ])
+  );
+  for (const previous of remoteStatuses) {
+    if (!previous.reposStatus) continue;
+    const key = snapshotPathKey(previous.path);
+    const local = byPath.get(key) ?? {
+      path: previous.path,
+      status: Status.NORMAL,
+      props: Status.NONE,
+      wcStatus: { locked: false, switched: false }
+    };
+    byPath.set(key, { ...local, reposStatus: previous.reposStatus });
+  }
+  return [...byPath.values()];
+}

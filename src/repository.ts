@@ -52,7 +52,8 @@ import {
   mergeStartupStatus,
   snapshotPathKey,
   isSnapshotPath,
-  STARTUP_MAX_FILES
+  STARTUP_MAX_FILES,
+  retainRemoteStatus
 } from "./statusSnapshot";
 import { Resource } from "./resource";
 import { StatusBarCommands } from "./statusbar/statusBarCommands";
@@ -120,6 +121,7 @@ export class Repository implements IRemoteRepository {
   private readonly startupAbort = new AbortController();
   private startupPreviewReady = false;
   private startupFileVersion = 0;
+  private startupDeletionPending = false;
   private startupFileScanRunning = false;
   private readonly startupFileTargets = new Map<string, string>();
   private readonly startupFileResults = new Map<string, IFileStatus>();
@@ -657,6 +659,22 @@ export class Repository implements IRemoteRepository {
     );
     if (this.disposed) return;
     if (!this.hasLiveStatus && this.isInitialStatusPending) {
+      // A missing directory cannot prove descendant status through a shallow
+      // check. Reconcile locally before accepting a full result read before deletion.
+      while (this.startupDeletionPending) {
+        this.startupDeletionPending = false;
+        const local = await this.retryRun(() =>
+          this.repository.getStatus({
+            includeIgnored: true,
+            includeExternals: combineExternal,
+            checkRemoteChanges: false,
+            resolveExternalRepositoryUuid: combineExternal,
+            forceFull: true
+          })
+        );
+        if (this.disposed) return;
+        statuses = retainRemoteStatus(local, statuses);
+      }
       // The full scan may have read these paths before their newer local checks.
       const updates = [...this.startupFileResults.values()];
       statuses = mergeStartupStatus(
@@ -682,24 +700,7 @@ export class Repository implements IRemoteRepository {
   ): void {
     if (this.disposed) return;
     if (!checkRemoteChanges && this.statusSnapshot) {
-      const byPath = new Map(
-        statuses.map(status => [
-          snapshotPathKey(status.path),
-          { ...status, reposStatus: undefined } as IFileStatus
-        ])
-      );
-      for (const previous of this.statusSnapshot) {
-        if (!previous.reposStatus) continue;
-        const key = snapshotPathKey(previous.path);
-        const local = byPath.get(key) ?? {
-          path: previous.path,
-          status: Status.NORMAL,
-          props: Status.NONE,
-          wcStatus: { locked: false, switched: false }
-        };
-        byPath.set(key, { ...local, reposStatus: previous.reposStatus });
-      }
-      statuses = [...byPath.values()];
+      statuses = retainRemoteStatus(statuses, this.statusSnapshot);
     }
     this.statusSnapshot = statuses.map(status => ({ ...status }));
     this.snapshotPreview = preview;
@@ -956,12 +957,13 @@ export class Repository implements IRemoteRepository {
   }
 
   /** File events remain queued in the normal adapter for eventual reconciliation. */
-  public validateStartupFile(absolutePath: string): void {
+  public validateStartupFile(absolutePath: string, deleted = false): void {
     if (this.disposed || this.hasLiveStatus || !this.isInitialStatusPending)
       return;
     const relative = path.relative(this.workspaceRoot, absolutePath);
     if (!isSnapshotPath(relative) || relative === ".") return;
     const key = snapshotPathKey(relative);
+    if (deleted) this.startupDeletionPending = true;
     this.startupFileVersion++;
     // New evidence is needed after every event, even if an earlier check succeeded.
     for (const cached of this.startupFileResults.keys()) {

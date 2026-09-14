@@ -612,7 +612,8 @@ function patchRepository(repository: Repository): Disposable {
 
   const collectFsTarget = async (
     target: string,
-    eventTarget: string = target
+    eventTarget: string = target,
+    deleted = false
   ) => {
     const autorefresh = configuration.get<boolean>("autorefresh");
     if (!autorefresh) {
@@ -640,7 +641,7 @@ function patchRepository(repository: Repository): Disposable {
 
     state.fsTargets.add(target);
     if (repository.isInitialStatusPending)
-      repository.validateStartupFile(eventTarget);
+      repository.validateStartupFile(eventTarget, deleted);
     (repository as any).eventuallyUpdateWhenIdleAndWait();
   };
 
@@ -666,7 +667,7 @@ function patchRepository(repository: Repository): Disposable {
       void collectFsTarget(uri.fsPath);
     }),
     repository.fsWatcher.onDidWorkspaceDelete(uri => {
-      void collectFsTarget(path.dirname(uri.fsPath), uri.fsPath);
+      void collectFsTarget(path.dirname(uri.fsPath), uri.fsPath, true);
     }),
     repository.fsWatcher.onDidSvnAny(collectSvnChange)
   );
