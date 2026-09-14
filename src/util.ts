@@ -2,17 +2,19 @@ import * as path from "path";
 import { Event, commands } from "vscode";
 import { Operation } from "./common/types";
 import { exists, lstat, readdir, rmdir, unlink } from "./fs";
-import { disposeResources, registerResources } from "./lifecycle";
+import {
+  DisposableResource,
+  disposeResources,
+  registerResources
+} from "./lifecycle";
 
-export interface IDisposable {
-  dispose(): void;
-}
+export type IDisposable = DisposableResource;
 
 export function done<T>(promise: Promise<T>): Promise<void> {
   return promise.then<void>(() => void 0);
 }
 
-export function dispose(disposables: any[]): any[] {
+export function dispose<T extends IDisposable>(disposables: T[]): T[] {
   disposables.forEach(disposable => disposable.dispose());
 
   return [];
