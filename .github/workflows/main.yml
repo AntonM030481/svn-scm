@@ -87,6 +87,13 @@ jobs:
         with:
           node-version: 24
 
+      - name: Cache minimum VS Code test runtime
+        if: matrix.vscode-version != 'stable'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ runner.arch }}-${{ matrix.vscode-version }}-v1
+
       - name: Enable Corepack
         run: corepack enable
 
