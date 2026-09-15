@@ -108,7 +108,7 @@ export class RepositoryRegistry {
 
   private isExcluded(entry: IOpenRepository, filePath: string): boolean {
     const roots = this.exclusions.get(entry.repository);
-    let candidate = normalizePath(path.resolve(filePath));
+    let candidate = normalizePath(path.resolve(normalizePath(filePath)));
     while (true) {
       if (roots?.has(candidate)) {
         return true;

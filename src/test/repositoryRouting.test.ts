@@ -326,6 +326,16 @@ suite("Validated repository routing", () => {
         f.manager.getRepository(path.join(root, "external") + path.sep),
         null
       );
+      const alternateSeparator = path.sep === "/" ? "\\" : "/";
+      assert.strictEqual(
+        f.manager.getRepository(
+          path
+            .join(root, "external", "file.txt")
+            .split(path.sep)
+            .join(alternateSeparator)
+        ),
+        null
+      );
       assert.strictEqual(
         f.manager.getRepository(Uri.file(path.join(root, "external-sibling"))),
         owner.repository
