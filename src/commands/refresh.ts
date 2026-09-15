@@ -1,6 +1,7 @@
 import { configuration } from "../helpers/configuration";
 import { Repository } from "../repository";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 export class Refresh extends Command {
   constructor() {
@@ -13,10 +14,12 @@ export class Refresh extends Command {
       false
     );
 
-    if (refreshRemoteChanges) {
-      await repository.updateRemoteChangedFiles();
-    } else {
-      await repository.status();
+    for (const scope of await workingCopyScopes(repository)) {
+      if (refreshRemoteChanges) {
+        await scope.updateRemoteChangedFiles();
+      } else {
+        await scope.status();
+      }
     }
   }
 }

@@ -28,7 +28,7 @@ export class OpenRepositoryCount implements IDisposable {
     return Promise.resolve(
       setVscodeContext(
         "svnOpenRepositoryCount",
-        this.sourceControlManager.repositories.length
+        this.sourceControlManager.workingCopies.length
       )
     );
   }

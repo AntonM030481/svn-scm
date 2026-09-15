@@ -1,5 +1,6 @@
 import { Repository } from "../repository";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 export class RefreshRemoteChanges extends Command {
   constructor() {
@@ -7,6 +8,8 @@ export class RefreshRemoteChanges extends Command {
   }
 
   public async execute(repository: Repository) {
-    await repository.updateRemoteChangedFiles();
+    for (const scope of await workingCopyScopes(repository)) {
+      await scope.updateRemoteChangedFiles();
+    }
   }
 }

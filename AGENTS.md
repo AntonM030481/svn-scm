@@ -22,9 +22,9 @@ truth when a command or version in prose disagrees with configuration.
 - The local SVN CLI is the authority for working-copy state.
 - VS Code SCM groups are projections of SVN status, not a second state model.
 - `SourceControlManager` owns repository discovery and routing.
-- One `Repository` owns one opened workspace projection and its VS Code SCM
-  instance. Sibling workspace folders may project the same physical working
-  copy separately; physical-root features must coordinate those projections.
+- One VS Code SCM provider represents one physical working copy. Each opened
+  workspace folder retains its own status and routing scope; the provider
+  aggregates only those opened scopes.
 - File-system events schedule validation; they do not prove an SVN transition.
 - Targeted and incremental status are optimizations with a full-status fallback.
 - SVN metadata echoes are suppressed for the physical working copy during a

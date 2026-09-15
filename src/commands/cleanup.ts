@@ -1,5 +1,6 @@
 import { Repository } from "../repository";
 import { Command } from "./command";
+import { runWorkingCopyOperation } from "./workingCopyScopes";
 
 export class Cleanup extends Command {
   constructor() {
@@ -7,6 +8,6 @@ export class Cleanup extends Command {
   }
 
   public async execute(repository: Repository) {
-    await repository.cleanup();
+    await runWorkingCopyOperation(repository, scope => scope.cleanup());
   }
 }

@@ -804,224 +804,224 @@
                 {
                     "command": "svn.commitStaged",
                     "group": "navigation",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.commitAll",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.refresh",
                     "group": "navigation",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.pickCommitMessage",
                     "group": "navigation",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.switchBranch",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.merge",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.update",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.patchAll",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.resolveAll",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.log",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.cleanup",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
                     "command": "svn.removeUnversioned",
-                    "when": "config.svn.enabled && scmProvider == svn && isSvn19orGreater"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && isSvn19orGreater"
                 },
                 {
                     "command": "svn.patchChangeList",
-                    "when": "config.svn.enabled && scmProvider == svn"
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 }
             ],
             "scm/sourceControl": [
                 {
                     "command": "svn.close",
                     "group": "navigation",
-                    "when": "scmProvider == svn"
+                    "when": "scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 }
             ],
             "scm/resourceGroup/context": [
                 {
                     "command": "svn.refreshRemoteChanges",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "inline"
                 },
                 {
                     "command": "svn.refreshRemoteChanges",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.update",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "inline"
                 },
                 {
                     "command": "svn.update",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.stageAll",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
                     "group": "inline"
                 },
                 {
                     "command": "svn.unstageAll",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == staged",
                     "group": "inline"
                 },
                 {
                     "command": "svn.revertAll",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == changes",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.revertAll",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == changes",
                     "group": "inline"
                 }
             ],
             "scm/resourceFolder/context": [
                 {
                     "command": "svn.stage",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
                     "group": "inline"
                 },
                 {
                     "command": "svn.unstage",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == staged",
                     "group": "inline"
                 },
                 {
                     "command": "svn.revert",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == changes",
                     "group": "2_modification"
                 },
                 {
                     "command": "svn.revert",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == changes",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == changes",
                     "group": "inline"
                 }
             ],
             "scm/resourceState/context": [
                 {
                     "command": "svn.stage",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != conflicts && scmResourceGroup != remotechanges && scmResourceGroup != external",
                     "group": "inline"
                 },
                 {
                     "command": "svn.unstage",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == staged",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == staged",
                     "group": "inline"
                 },
                 {
                     "command": "svn.add",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == unversioned",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == unversioned",
                     "group": "1_modification"
                 },
                 {
                     "command": "svn.openFile",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != external",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.openHEADFile",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != unversioned && scmResourceGroup != external",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.openChangeBase",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != unversioned && scmResourceGroup != external",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.openChangeHead",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != unversioned && scmResourceGroup != external",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.patch",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "navigation"
                 },
                 {
                     "command": "svn.openMergeEditor",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == conflicts",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == conflicts",
                     "group": "inline"
                 },
                 {
                     "command": "svn.resolve",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == conflicts",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == conflicts",
                     "group": "1_modification"
                 },
                 {
                     "command": "svn.changelist",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "1_modification"
                 },
                 {
                     "command": "svn.commit",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "1_modification"
                 },
                 {
                     "command": "svn.revert",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "2_modification"
                 },
                 {
                     "command": "svn.revert",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "inline"
                 },
                 {
                     "command": "svn.remove",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "2_modification"
                 },
                 {
                     "command": "svn.deleteUnversioned",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == unversioned",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == unversioned",
                     "group": "2_modification"
                 },
                 {
                     "command": "svn.addToIgnoreSCM",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == unversioned",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == unversioned",
                     "group": "1_modification"
                 },
                 {
                     "command": "svn.treeview.pullIncomingChange",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "inline"
                 },
                 {
                     "command": "svn.treeview.pullIncomingChange",
-                    "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == remotechanges",
+                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup == remotechanges",
                     "group": "3_modification"
                 }
             ],

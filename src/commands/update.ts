@@ -2,6 +2,7 @@ import { window } from "vscode";
 import { configuration } from "../helpers/configuration";
 import { Repository } from "../repository";
 import { Command } from "./command";
+import { runWorkingCopyOperation } from "./workingCopyScopes";
 
 export class Update extends Command {
   constructor() {
@@ -19,10 +20,12 @@ export class Update extends Command {
         true
       );
 
-      const result = await repository.updateRevision(ignoreExternals);
+      const results = await runWorkingCopyOperation(repository, scope =>
+        scope.updateRevision(ignoreExternals)
+      );
 
       if (showUpdateMessage) {
-        window.showInformationMessage(result);
+        window.showInformationMessage(results.join("\n"));
       }
     } catch (error) {
       console.error(error);

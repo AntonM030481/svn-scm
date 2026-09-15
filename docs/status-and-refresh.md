@@ -5,7 +5,7 @@ which correctness guarantees must survive performance changes.
 
 ## State ownership
 
-`Repository` owns the visible state of one working copy:
+`Repository` owns the accepted status state of one opened workspace scope:
 
 - `changes`, `conflicts`, `unversioned`, and changelist resource groups;
 - the optional `remoteChanges` group;
@@ -14,7 +14,8 @@ which correctness guarantees must survive performance changes.
 - current branch and aggregate SCM count.
 
 These values are projections of the most recent accepted SVN status snapshot.
-They are not an independent database of the working copy.
+The physical-working-copy SCM provider publishes their deduplicated union for
+currently opened scopes; neither layer is an independent SVN state database.
 
 ## Full status path
 

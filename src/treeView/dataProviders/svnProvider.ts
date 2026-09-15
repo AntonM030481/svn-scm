@@ -53,10 +53,8 @@ export default class SvnProvider
       return element.getChildren();
     }
 
-    const repositories = this.sourceControlManager.openRepositories.map(
-      repository => {
-        return new RepositoryNode(repository.repository, this);
-      }
+    const repositories = this.sourceControlManager.workingCopies.map(
+      workingCopy => new RepositoryNode(workingCopy.scopes[0], this)
     );
 
     return repositories;

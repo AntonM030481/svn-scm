@@ -58,13 +58,14 @@ documented polling setting.
 
 This distinction keeps the editor responsive on slow or unavailable networks.
 
-### One model per opened working-copy projection
+### One provider per physical working copy
 
-Each opened workspace projection of a detected working copy is represented by
-one `Repository`, which owns its VS Code SCM instance and derived UI state.
-Sibling workspace folders inside one physical working copy may therefore have
-separate projections sharing the same canonical root. Features whose semantics
-belong to that physical root must coordinate those projections explicitly.
+Each opened workspace projection retains a `Repository` for status, operations,
+watchers, snapshots, and path routing. Sibling projections sharing a canonical
+working-copy root are presented through one VS Code SCM provider whose groups
+contain the deduplicated union of those opened scopes. Workspace folders are a
+visibility boundary: unopened parts of a larger working copy are not projected
+or implicitly included in provider-level commands.
 `SourceControlManager` owns discovery and routing across repositories; commands
 and views should ask it for the repository rather than reimplementing path
 discovery.
@@ -122,7 +123,7 @@ observable behavior over silent heuristics that are difficult to debug.
 | Decision | Why | Guardrail |
 | --- | --- | --- |
 | Use the local `svn` CLI | Respects the user's SVN ecosystem and avoids maintaining a protocol client | Do not add a bundled SVN binary or a second SVN implementation without an explicit architecture review |
-| One `Repository` per opened workspace projection | Gives each SCM projection a lifecycle owner while preserving multi-root scope | Coordinate physical-root features across sibling projections; views and commands must not maintain competing repository state |
+| One SCM provider per physical working copy | Matches SVN ownership while allowing workspace folders to limit visible paths | Keep status/routing scopes independent and aggregate only currently opened scopes |
 | Register virtual file systems before SVN discovery completes | VS Code may restore diff editors immediately during startup | Initialization failure must resolve restored reads with a useful error, never a permanently pending promise |
 | Use `svn:` for repository-backed read-only content | Integrates BASE, HEAD, and revision content with native editors and diffs | Keep the provider read-only and avoid remote or expensive metadata calls from `stat()` |
 | Use `tempsvnfs:` for ephemeral history files | Some comparisons need materialized content with a stable document URI | Delete content when documents close and clear buffered events on disposal |

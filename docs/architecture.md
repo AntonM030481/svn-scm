@@ -13,7 +13,8 @@ boundaries exist and define the guardrails for changing them.
 flowchart TD
     VS[VS Code extension host] --> EXT[extension.ts]
     EXT --> SCM[SourceControlManager]
-    SCM --> REPO[Repository per working copy]
+    SCM --> WC[SCM provider per physical working copy]
+    WC --> REPO[Repository per opened workspace scope]
     REPO --> OPS[Operations and commands]
     OPS --> SVN[Svn process wrapper]
     SVN --> CLI[Local svn executable]
@@ -86,8 +87,9 @@ from the cancelled prompt cannot overwrite credentials.
 ### `SourceControlManager`
 
 `src/source_control_manager.ts` discovers SVN working copies in workspace
-folders, opens and closes repositories, routes file events to the appropriate
-repository, and publishes repository lifecycle events.
+folders, opens and closes repository scopes, owns one SCM provider per physical
+working copy, routes file events to the appropriate scope, and publishes
+repository lifecycle events.
 `src/repositoryRegistry.ts` is its in-memory collection and synchronous hint
 resolver; discovery and lifecycle ownership remain in `SourceControlManager`.
 
@@ -100,11 +102,11 @@ multi-root workspaces.
 
 ### `Repository`
 
-`src/repository.ts` represents one opened workspace projection of a working copy
-in the VS Code Source Control API. It owns resource groups, status refreshes,
-operations, authentication, watchers, remote-change polling, and
-projection-specific UI state. Several sibling workspace folders may share one
-physical SVN root while retaining separate SCM projections.
+`src/repository.ts` represents one opened workspace scope of a working copy. It
+owns status refreshes, operations, authentication, watchers, remote polling and
+scope-specific snapshots. `src/workingCopySourceControl.ts` owns the single VS
+Code SCM provider for a physical root and projects the deduplicated union of its
+currently opened scopes into shared resource groups.
 
 Incremental mutation tracking associates `.svn` metadata suppression with the
 physical working-copy root because administration-file watcher events cannot be
@@ -163,11 +165,11 @@ has only partially completed.
 ## Architectural boundaries
 
 - `Svn` executes and normalizes commands; it does not own VS Code UI state.
-- `SourceControlManager` discovers and routes repositories; it does not own the
-  detailed status model of an individual workspace projection.
-- `Repository` owns one opened workspace projection; features scoped to the
-  physical working-copy root coordinate sibling projections explicitly, and
-  views do not keep a competing copy of that state.
+- `SourceControlManager` discovers and routes repository scopes and owns their
+  physical-working-copy SCM presentations; it does not own scope status.
+- `Repository` owns one opened workspace scope. The working-copy presentation
+  aggregates accepted scope projections and never becomes a second SVN state
+  authority.
 - Commands coordinate user actions through the repository instead of spawning
   SVN processes directly.
 - Parsers convert SVN output into typed data and should remain independent of UI

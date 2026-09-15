@@ -129,7 +129,12 @@ suite("Repository Tests", () => {
       releaseStatus();
       await statusChanged;
 
-      assert.equal(repository.sourceControl.quickDiffProvider, repository);
+      assert.equal(
+        repository.sourceControl.quickDiffProvider,
+        sourceControlManager.workingCopies.find(
+          workingCopy => workingCopy.sourceControl === repository.sourceControl
+        )
+      );
       assert.equal(
         repository.provideOriginalResource(Uri.file(unversionedFile)),
         undefined

@@ -10,7 +10,8 @@ how later commands and virtual documents are routed back to the correct one.
 - scans initial and newly added workspace folders;
 - detects new SVN metadata created after activation;
 - optionally searches below workspace roots;
-- opens one `Repository` per workspace projection of a working copy;
+- opens one `Repository` status/routing scope per workspace projection;
+- groups scopes with the same canonical root under one VS Code SCM provider;
 - discovers configured externals and ignored nested repositories;
 - closes repositories that disappear or leave the workspace;
 - resolves paths and VS Code SCM objects to an open repository.
@@ -201,8 +202,8 @@ file-system error instead of leaving the document pending indefinitely.
 
 ## Invariants for changes
 
-- There is at most one live `Repository` object for an opened workspace
-  projection. Sibling projections may share a canonical working-copy root.
+- There is at most one live `Repository` object for an opened workspace scope
+  and one SCM provider for its canonical working-copy root.
 - The most specific valid working-copy root owns a path.
 - Parent repositories do not claim separately detected externals or ignored
   nested working copies.

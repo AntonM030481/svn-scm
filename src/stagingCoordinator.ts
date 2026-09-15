@@ -11,7 +11,6 @@ import { SourceControlManager } from "./source_control_manager";
 import {
   createStagingChangelist,
   isStagingChangelist,
-  normalizeWorkingCopyRoot,
   parseStagingChangelist,
   StagingChangelistMetadata
 } from "./stagingModel";
@@ -21,7 +20,6 @@ interface RepositoryStagingState {
   group: ISvnResourceGroup;
   metadataByPath: Map<string, string>;
   disposables: Disposable[];
-  previousAcceptInputCommand: unknown;
 }
 
 interface StagedEntry {
@@ -79,10 +77,7 @@ export class StagingCoordinator implements Disposable {
   }
 
   public repositoriesForWorkingCopy(repository: Repository): Repository[] {
-    const key = normalizeWorkingCopyRoot(repository.root);
-    return this.sourceControlManager.repositories.filter(
-      candidate => normalizeWorkingCopyRoot(candidate.root) === key
-    );
+    return this.sourceControlManager.repositoriesForWorkingCopy(repository);
   }
 
   public stagedEntriesForWorkingCopy(repository: Repository): StagedEntry[] {
@@ -479,8 +474,7 @@ export class StagingCoordinator implements Disposable {
     const state: RepositoryStagingState = {
       group,
       metadataByPath: new Map(),
-      disposables: [],
-      previousAcceptInputCommand: repository.sourceControl.acceptInputCommand
+      disposables: []
     };
     this.states.set(repository, state);
 
@@ -499,12 +493,6 @@ export class StagingCoordinator implements Disposable {
   private detach(repository: Repository): void {
     const state = this.states.get(repository);
     if (!state) return;
-
-    const currentCommand = repository.sourceControl.acceptInputCommand;
-    if (currentCommand?.command === "svn.commitStaged") {
-      repository.sourceControl.acceptInputCommand =
-        state.previousAcceptInputCommand as typeof currentCommand;
-    }
 
     while (state.disposables.length) {
       state.disposables.pop()?.dispose();

@@ -14,6 +14,10 @@ export class Close extends Command {
       ""
     )) as SourceControlManager;
 
-    sourceControlManager.close(repository);
+    for (const scope of sourceControlManager.repositoriesForWorkingCopy(
+      repository
+    )) {
+      sourceControlManager.close(scope);
+    }
   }
 }

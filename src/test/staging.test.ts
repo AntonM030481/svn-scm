@@ -881,6 +881,16 @@ suite("Staging Tests", () => {
       path.resolve(repositoryOne.root),
       path.resolve(repositoryTwo.root)
     );
+    assert.strictEqual(
+      repositoryOne.sourceControl,
+      repositoryTwo.sourceControl
+    );
+    assert.equal(
+      sourceControlManager.workingCopies.filter(
+        workingCopy => workingCopy.sourceControl === repositoryOne.sourceControl
+      ).length,
+      1
+    );
 
     const fileOne = path.join(one, "a.txt");
     const fileTwo = path.join(two, "b.txt");
@@ -902,7 +912,19 @@ suite("Staging Tests", () => {
     await commands.executeCommand("svn.stage", resourceOne);
     await commands.executeCommand("svn.stage", resourceTwo);
 
-    repositoryOne.inputBox.value = "shared staged commit";
+    const workingCopy = sourceControlManager.workingCopies.find(
+      candidate => candidate.sourceControl === repositoryOne.sourceControl
+    );
+    assert.ok(workingCopy);
+    workingCopy.refresh();
+    assert.deepEqual(
+      workingCopy.staged.resourceStates
+        .map(resource => resource.resourceUri.fsPath)
+        .sort(),
+      [fileOne, fileTwo].sort()
+    );
+
+    workingCopy.sourceControl.inputBox.value = "shared staged commit";
     await commands.executeCommand(
       "svn.commitStaged",
       repositoryOne.sourceControl

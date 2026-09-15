@@ -14,13 +14,13 @@ Whole-file staged state is stored in reserved SVN changelist names. This keeps s
 
 The `__svn_scm_staged__` changelist namespace is reserved for extension-owned staging metadata. The reserved name also encodes whether a file came from a user changelist. Unstage can therefore restore the original changelist even after a reload. Files that were unversioned before staging are marked separately so unstage can return them to an uncommitted state. When staging creates ancestor directories for an unversioned folder, the reserved metadata also records that staging-created directory root relative to the physical working-copy root so the state survives working-copy moves; unstage can then remove only additions introduced by staging and preserve pre-existing user-added directories. After a successful staged commit, reserved membership is removed (or the original user changelist is restored) before refresh so later edits never become staged implicitly.
 
-Reserved staging changelists are implementation details and are presented as one `Staged Changes` SCM group rather than as ordinary user changelists. Each completed SVN status refresh is authoritative: the staging coordinator projects the reserved changelist entries into `Staged Changes` once per refreshed model rather than maintaining an independent second copy of SVN state.
+Reserved staging changelists are implementation details and are presented as one `Staged Changes` SCM group per physical working copy rather than as ordinary user changelists. Each completed SVN status refresh is authoritative: the staging coordinator projects the reserved changelist entries into the scope model, and the working-copy provider publishes their deduplicated union rather than maintaining an independent second copy of SVN state.
 
 ## Shared working copies
 
 The staging scope is the normalized physical SVN working-copy root (`repository.root`), not an individual VS Code workspace folder (`repository.workspaceRoot`).
 
-This matters when one large SVN working copy is opened as several sibling folders in a multi-root VS Code workspace. Each folder may have its own SCM provider for presentation and path routing, but providers with the same physical working-copy root share one logical staging scope:
+This matters when one large SVN working copy is opened as several sibling folders in a multi-root VS Code workspace. Each folder keeps an independent status and path-routing scope, while all scopes with the same physical root appear in one SCM provider and share one staging group:
 
 - Stage All and Unstage All aggregate the opened folders in that working copy.
 - Commit Staged gathers staged paths from every opened folder in that working copy and submits one SVN commit.

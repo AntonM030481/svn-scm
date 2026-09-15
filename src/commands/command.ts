@@ -57,8 +57,8 @@ export abstract class Command implements Disposable {
         )) as SourceControlManager;
         const repository =
           sourceControlManager.getRepository(args[0]) ||
-          (sourceControlManager.repositories.length === 1
-            ? sourceControlManager.repositories[0]
+          (sourceControlManager.workingCopies.length === 1
+            ? sourceControlManager.workingCopies[0].scopes[0]
             : await sourceControlManager.pickRepository());
 
         if (!repository) {

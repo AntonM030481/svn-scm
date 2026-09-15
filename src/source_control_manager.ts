@@ -42,6 +42,8 @@ import {
 import { matchAll } from "./util/globMatch";
 import { disposeResources } from "./lifecycle";
 import { RepositoryRegistry } from "./repositoryRegistry";
+import { normalizeWorkingCopyRoot } from "./stagingModel";
+import { WorkingCopySourceControl } from "./workingCopySourceControl";
 
 type State = "uninitialized" | "initialized" | "disposed";
 
@@ -111,6 +113,10 @@ export class SourceControlManager implements IDisposable {
     Map<string, Promise<boolean>>
   >();
   private possibleSvnRepositoryPaths = new Map<string, boolean>();
+  private readonly workingCopySourceControls = new Map<
+    string,
+    WorkingCopySourceControl
+  >();
   private provisionalLegacyRepositories = new WeakSet<Repository>();
   private ignoreList: string[] = [];
   private maxDepth: number = 0;
@@ -149,6 +155,18 @@ export class SourceControlManager implements IDisposable {
 
   get repositories(): Repository[] {
     return this.repositoryRegistry.repositories;
+  }
+
+  get workingCopies(): WorkingCopySourceControl[] {
+    return [...(this.workingCopySourceControls?.values() ?? [])];
+  }
+
+  public repositoriesForWorkingCopy(repository: Repository): Repository[] {
+    return (
+      this.workingCopySourceControls?.get(
+        normalizeWorkingCopyRoot(repository.root)
+      )?.scopes ?? [repository]
+    );
   }
 
   public get openRepositories(): IOpenRepository[] {
@@ -624,8 +642,9 @@ export class SourceControlManager implements IDisposable {
         return;
       }
 
+      let repositoryRoot: string | undefined;
       try {
-        const repositoryRoot = await this.svn.getRepositoryRoot(path);
+        repositoryRoot = await this.svn.getRepositoryRoot(path);
         if (
           !this.isDiscoveryRequestActive(
             lifecycleGeneration,
@@ -646,10 +665,14 @@ export class SourceControlManager implements IDisposable {
           return;
         }
 
+        const workingCopy = this.getOrCreateWorkingCopySourceControl(
+          baseRepository.root
+        );
         const repository = new Repository(
           baseRepository,
           this.extensionContact.secrets,
-          this.extensionContact.workspaceState
+          this.extensionContact.workspaceState,
+          workingCopy.sourceControl
         );
 
         this.registerDiscoveredRepository(
@@ -659,7 +682,11 @@ export class SourceControlManager implements IDisposable {
           undefined,
           workspaceFolderGeneration
         );
+        this.disposeEmptyWorkingCopySourceControl(baseRepository.root);
       } catch (err) {
+        if (repositoryRoot) {
+          this.disposeEmptyWorkingCopySourceControl(repositoryRoot);
+        }
         if (
           !this.isDiscoveryRequestActive(
             lifecycleGeneration,
@@ -798,6 +825,29 @@ export class SourceControlManager implements IDisposable {
 
   public async getRemoteRepository(uri: Uri): Promise<RemoteRepository> {
     return RemoteRepository.open(this.svn, uri);
+  }
+
+  private getOrCreateWorkingCopySourceControl(
+    root: string
+  ): WorkingCopySourceControl {
+    const key = normalizeWorkingCopyRoot(root);
+    let workingCopy = this.workingCopySourceControls.get(key);
+    if (!workingCopy) {
+      workingCopy = new WorkingCopySourceControl(root, uri =>
+        this.getRepository(uri)
+      );
+      this.workingCopySourceControls.set(key, workingCopy);
+    }
+    return workingCopy;
+  }
+
+  private disposeEmptyWorkingCopySourceControl(root: string): void {
+    const key = normalizeWorkingCopyRoot(root);
+    const workingCopy = this.workingCopySourceControls.get(key);
+    if (workingCopy && workingCopy.scopes.length === 0) {
+      workingCopy.dispose();
+      this.workingCopySourceControls.delete(key);
+    }
   }
 
   public getRepository(hint: unknown): Repository | null {
@@ -948,14 +998,26 @@ export class SourceControlManager implements IDisposable {
       changeStatus.dispose();
       projectionListener.dispose();
       statusListener.dispose();
+      const workingCopyKey = normalizeWorkingCopyRoot(repository.root);
+      const workingCopy = this.workingCopySourceControls?.get(workingCopyKey);
+      workingCopy?.removeScope(repository);
       repository.dispose();
 
       this.repositoryRegistry.remove(openRepository);
+      if (workingCopy && workingCopy.scopes.length === 0) {
+        workingCopy.dispose();
+        this.workingCopySourceControls?.delete(workingCopyKey);
+      } else {
+        workingCopy?.refresh();
+      }
       this._onDidCloseRepository.fire(repository);
     };
 
     const openRepository = { repository, dispose };
     this.repositoryRegistry.add(openRepository);
+    this.workingCopySourceControls
+      ?.get(normalizeWorkingCopyRoot(repository.root))
+      ?.addScope(repository);
     this._onDidOpenRepository.fire(repository);
   }
 
@@ -974,10 +1036,10 @@ export class SourceControlManager implements IDisposable {
       throw new Error("There are no available repositories");
     }
 
-    const picks: any[] = this.repositories.map(repository => {
+    const picks: any[] = this.workingCopies.map(workingCopy => {
       return {
-        label: path.basename(repository.root),
-        repository
+        label: path.basename(workingCopy.root),
+        repository: workingCopy.scopes[0]
       };
     });
     const placeHolder = "Choose a repository";

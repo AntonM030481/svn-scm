@@ -77,8 +77,22 @@ import { match, matchAll } from "./util/globMatch";
 import { RepositoryFilesWatcher } from "./watchers/repositoryFilesWatcher";
 import { withWorkingCopyMutationLock } from "./workingCopyMutationLock";
 
+function createDetachedResourceGroup(
+  id: string,
+  label: string
+): ISvnResourceGroup {
+  return {
+    id,
+    label,
+    hideWhenEmpty: true,
+    resourceStates: [],
+    dispose: () => undefined
+  } as ISvnResourceGroup;
+}
+
 export class Repository implements IRemoteRepository {
   public sourceControl: SourceControl;
+  private readonly ownsSourceControl: boolean;
   public statusBar: StatusBarCommands;
   public changes: ISvnResourceGroup;
   public unversioned: ISvnResourceGroup;
@@ -237,7 +251,8 @@ export class Repository implements IRemoteRepository {
   constructor(
     public repository: BaseRepository,
     private secrets: SecretStorage,
-    snapshotState?: Memento
+    snapshotState?: Memento,
+    sharedSourceControl?: SourceControl
   ) {
     if (snapshotState) {
       this.snapshotStore = new StatusSnapshotStore(
@@ -259,11 +274,11 @@ export class Repository implements IRemoteRepository {
       this.disposables
     );
 
-    this.sourceControl = scm.createSourceControl(
-      "svn",
-      "SVN",
-      Uri.file(repository.workspaceRoot)
-    );
+    this.sourceControl =
+      sharedSourceControl ??
+      scm.createSourceControl("svn", "SVN", Uri.file(repository.workspaceRoot));
+    const ownsSourceControl = sharedSourceControl === undefined;
+    this.ownsSourceControl = ownsSourceControl;
 
     this.sourceControl.count = 0;
     this.sourceControl.inputBox.placeholder =
@@ -273,35 +288,29 @@ export class Repository implements IRemoteRepository {
       title: "commit",
       arguments: [this.sourceControl]
     };
-    this.disposables.push(this.sourceControl);
+    if (ownsSourceControl) {
+      this.disposables.push(this.sourceControl);
+    }
 
     this.statusBar = new StatusBarCommands(this);
     this.disposables.push(this.statusBar);
-    this.statusBar.onDidChange(
-      () => (this.sourceControl.statusBarCommands = this.statusBar.commands),
-      null,
-      this.disposables
-    );
+    if (ownsSourceControl) {
+      this.statusBar.onDidChange(
+        () => (this.sourceControl.statusBarCommands = this.statusBar.commands),
+        null,
+        this.disposables
+      );
+    }
 
     // VS Code renders SCM resource groups in creation order. Keep the Git-like
     // staging group above Changes by creating it first; StagingCoordinator only
     // owns its contents and staging metadata, not the group's lifetime.
-    this.staged = this.sourceControl.createResourceGroup(
-      "staged",
-      "Staged Changes"
-    ) as ISvnResourceGroup;
-    this.changes = this.sourceControl.createResourceGroup(
-      "changes",
-      "Changes"
-    ) as ISvnResourceGroup;
-    this.conflicts = this.sourceControl.createResourceGroup(
-      "conflicts",
-      "Conflicts"
-    ) as ISvnResourceGroup;
-    this.unversioned = this.sourceControl.createResourceGroup(
-      "unversioned",
-      "Unversioned"
-    ) as ISvnResourceGroup;
+    const createGroup = (id: string, label: string) =>
+      this.createResourceGroup(id, label);
+    this.staged = createGroup("staged", "Staged Changes");
+    this.changes = createGroup("changes", "Changes");
+    this.conflicts = createGroup("conflicts", "Conflicts");
+    this.unversioned = createGroup("unversioned", "Unversioned");
 
     this.staged.repository = this;
     this.changes.repository = this;
@@ -339,6 +348,10 @@ export class Repository implements IRemoteRepository {
     this.onDidChangeStatus(this.actionForDeletedFiles, this, this.disposables);
 
     const quickDiffStatusListener: Disposable = this.onDidChangeStatus(() => {
+      if (!this.ownsSourceControl) {
+        quickDiffStatusListener.dispose();
+        return;
+      }
       this.sourceControl.quickDiffProvider = this;
       quickDiffStatusListener.dispose();
     });
@@ -440,6 +453,12 @@ export class Repository implements IRemoteRepository {
         this.onDidSaveTextDocument(document);
       })
     );
+  }
+
+  private createResourceGroup(id: string, label: string): ISvnResourceGroup {
+    return this.ownsSourceControl
+      ? (this.sourceControl.createResourceGroup(id, label) as ISvnResourceGroup)
+      : createDetachedResourceGroup(id, label);
   }
 
   @debounce(1000)
@@ -898,10 +917,10 @@ export class Repository implements IRemoteRepository {
       let group = this.changelists.get(changelist);
       if (!group) {
         // Prefix 'changelist-' to prevent double id with 'change' or 'external'
-        group = this.sourceControl.createResourceGroup(
+        group = this.createResourceGroup(
           `changelist-${changelist}`,
           `Changelist "${changelist}"`
-        ) as ISvnResourceGroup;
+        );
         group.repository = this;
         group.hideWhenEmpty = true;
         this.disposables.push(group);
@@ -920,10 +939,7 @@ export class Repository implements IRemoteRepository {
     if (prevChangelistsSize !== this.changelists.size) {
       this.unversioned.dispose();
 
-      this.unversioned = this.sourceControl.createResourceGroup(
-        "unversioned",
-        "Unversioned"
-      ) as ISvnResourceGroup;
+      this.unversioned = this.createResourceGroup("unversioned", "Unversioned");
 
       this.unversioned.repository = this;
       this.unversioned.hideWhenEmpty = true;
@@ -951,10 +967,10 @@ export class Repository implements IRemoteRepository {
         this.remoteChanges.dispose();
       }
 
-      this.remoteChanges = this.sourceControl.createResourceGroup(
+      this.remoteChanges = this.createResourceGroup(
         "remotechanges",
         "Remote Changes"
-      ) as ISvnResourceGroup;
+      );
 
       this.remoteChanges.repository = this;
       this.remoteChanges.hideWhenEmpty = true;
@@ -973,7 +989,7 @@ export class Repository implements IRemoteRepository {
 
     this._onDidRebuildStatusProjection.fire();
 
-    if (preview) {
+    if (preview && this.ownsSourceControl) {
       this.sourceControl.quickDiffProvider = this;
     } else if (publishStatus) {
       this._onDidChangeStatus.fire();

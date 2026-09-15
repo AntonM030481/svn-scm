@@ -4,6 +4,7 @@ import { isTrunk, selectBranch } from "../helpers/branch";
 import { Repository } from "../repository";
 import SvnError from "../svnError";
 import { Command } from "./command";
+import { selectWorkingCopyScope } from "./workingCopyScopes";
 
 export class Merge extends Command {
   constructor() {
@@ -11,6 +12,12 @@ export class Merge extends Command {
   }
 
   public async execute(repository: Repository) {
+    const scope = await selectWorkingCopyScope(
+      repository,
+      "Choose an opened folder to merge"
+    );
+    if (!scope) return;
+    repository = scope;
     const branch = await selectBranch(repository);
 
     if (!branch) {
