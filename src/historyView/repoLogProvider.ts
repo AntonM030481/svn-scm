@@ -1,10 +1,11 @@
-import { registerResources } from "../lifecycle";
+import { disposeResources, registerResources } from "../lifecycle";
 import * as path from "path";
 import {
   commands,
   Disposable,
   Event,
   EventEmitter,
+  InputBox,
   ThemeIcon,
   TreeDataProvider,
   TreeItem,
@@ -22,7 +23,7 @@ import { exists } from "../fs";
 import { SourceControlManager } from "../source_control_manager";
 import { IRemoteRepository } from "../remoteRepository";
 import { Repository } from "../repository";
-import { dispose, unwrap } from "../util";
+import { unwrap } from "../util";
 import {
   checkIfFile,
   copyCommitToClipboard,
@@ -75,6 +76,8 @@ export class RepoLogProvider
   // TODO on-disk cache?
   private readonly logCache: Map<string, ICachedLog> = new Map();
   private _dispose: Disposable[] = [];
+  private readonly inputBoxes = new Set<InputBox>();
+  private disposed = false;
 
   private getCached(maybeItem?: ILogTreeItem): ICachedLog {
     const item = unwrap(maybeItem);
@@ -137,7 +140,34 @@ export class RepoLogProvider
   }
 
   public dispose() {
-    dispose(this._dispose);
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    const resources = [
+      { dispose: () => this._onDidChangeTreeData.dispose() },
+      { dispose: () => this.logCache.clear() },
+      ...this._dispose,
+      ...this.inputBoxes
+    ];
+    this.inputBoxes.clear();
+    this._dispose = [];
+    disposeResources(resources);
+  }
+
+  private createInputBox(): InputBox {
+    const inputBox = window.createInputBox();
+    this.inputBoxes.add(inputBox);
+    inputBox.onDidHide(() => {
+      this.inputBoxes.delete(inputBox);
+      inputBox.dispose();
+    });
+    return inputBox;
+  }
+
+  private closeInputBox(inputBox: InputBox): void {
+    this.inputBoxes.delete(inputBox);
+    inputBox.dispose();
   }
 
   public removeRepo(element: ILogTreeItem) {
@@ -146,6 +176,9 @@ export class RepoLogProvider
   }
 
   private async addRepolike(repoLike: string, rev: string) {
+    if (this.disposed) {
+      return;
+    }
     // TODO save user's custom repositories
     const item: ICachedLog = {
       entries: [],
@@ -174,6 +207,9 @@ export class RepoLogProvider
             throw new Error("No repository in workspace root");
           }
           const info = await wsrepo.getInfo(repoLike);
+          if (this.disposed) {
+            return;
+          }
           uri = Uri.parse(info.url);
         } else {
           uri = Uri.parse(repoLike);
@@ -186,6 +222,9 @@ export class RepoLogProvider
         item.repo = remRepo;
         item.svnTarget = uri;
       } catch (e) {
+        if (this.disposed) {
+          return;
+        }
         window.showWarningMessage(
           "Failed to add repo: " + (e instanceof Error ? e.message : "")
         );
@@ -198,9 +237,16 @@ export class RepoLogProvider
         item.svnTarget = Uri.parse(svninfo.url);
         item.persisted.baseRevision = parseInt(svninfo.revision, 10);
       } catch (_error) {
+        if (this.disposed) {
+          return;
+        }
         window.showErrorMessage("Failed to resolve svn path");
         return;
       }
+    }
+
+    if (this.disposed) {
+      return;
     }
 
     const repoName = item.svnTarget.toString(true);
@@ -213,7 +259,10 @@ export class RepoLogProvider
   }
 
   public addRepolikeGui() {
-    const box = window.createInputBox();
+    if (this.disposed) {
+      return;
+    }
+    const box = this.createInputBox();
     box.prompt = "Enter SVN URL or local path";
     box.onDidAccept(async () => {
       let repoLike = box.value;
@@ -231,12 +280,18 @@ export class RepoLogProvider
           }
         }
       }
-      box.dispose();
-      const box2 = window.createInputBox();
+      this.closeInputBox(box);
+      if (this.disposed) {
+        return;
+      }
+      const box2 = this.createInputBox();
       box2.prompt = "Enter starting revision (optional)";
       box2.onDidAccept(async () => {
         const rev = box2.value;
-        box2.dispose();
+        this.closeInputBox(box2);
+        if (this.disposed) {
+          return;
+        }
         return this.addRepolike(repoLike, rev || "HEAD");
       }, undefined);
       box2.show();
