@@ -2,6 +2,8 @@ import * as path from "path";
 import {
   Command,
   Disposable,
+  Event,
+  EventEmitter,
   ProviderResult,
   QuickDiffProvider,
   scm,
@@ -34,6 +36,8 @@ function sourceControlId(root: string): string {
 
 /** The single VS Code SCM projection for one physical SVN working copy. */
 export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
+  private readonly changeEmitter = new EventEmitter<void>();
+  public readonly onDidChange: Event<void> = this.changeEmitter.event;
   public readonly label: string;
   public readonly sourceControl: SourceControl;
   public readonly staged: ISvnResourceGroup;
@@ -80,6 +84,7 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
     this.scopes.sort(
       (left, right) => right.workspaceRoot.length - left.workspaceRoot.length
     );
+    this.changeEmitter.fire();
     const disposables: Disposable[] = [];
     repository.onDidChangeStatus(
       () => {
@@ -105,6 +110,7 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
     this.scopes.splice(index, 1);
     this.scopeDisposables.get(repository)?.forEach(item => item.dispose());
     this.scopeDisposables.delete(repository);
+    this.changeEmitter.fire();
     this.queueRefresh();
   }
 
@@ -176,6 +182,7 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
       arguments: [this.sourceControl]
     };
     this.sourceControl.statusBarCommands = this.statusBarCommands();
+    this.changeEmitter.fire();
   }
 
   public provideOriginalResource(uri: Uri): ProviderResult<Uri> {
@@ -196,6 +203,7 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
     this.conflicts.dispose();
     this.unversioned.dispose();
     this.sourceControl.dispose();
+    this.changeEmitter.dispose();
   }
 
   private createGroup(id: string, label: string): ISvnResourceGroup {

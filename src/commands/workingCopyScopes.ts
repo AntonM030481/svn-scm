@@ -1,6 +1,7 @@
 import * as path from "path";
 import { commands, window } from "vscode";
 import { Repository } from "../repository";
+import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
 import { isDescendant, normalizePath } from "../util";
 
@@ -51,6 +52,25 @@ export async function runWorkingCopyOperation<T>(
     throw error;
   }
   return results;
+}
+
+export function uniqueScopeResources(
+  scopes: Repository[],
+  select: (scope: Repository) => Resource[]
+): Array<{ scope: Repository; resource: Resource }> {
+  const resources = new Map<
+    string,
+    { scope: Repository; resource: Resource }
+  >();
+  for (const scope of [...scopes].sort(
+    (left, right) => right.workspaceRoot.length - left.workspaceRoot.length
+  )) {
+    for (const resource of select(scope)) {
+      const key = normalizePath(resource.resourceUri.fsPath);
+      if (!resources.has(key)) resources.set(key, { scope, resource });
+    }
+  }
+  return [...resources.values()];
 }
 
 export async function selectWorkingCopyScope(

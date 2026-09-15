@@ -12,6 +12,7 @@ import BaseNode from "../nodes/baseNode";
 import RepositoryNode from "../nodes/repositoryNode";
 import { dispose } from "../../util";
 import { registerResources } from "../../lifecycle";
+import { WorkingCopySourceControl } from "../../workingCopySourceControl";
 
 export default class SvnProvider
   implements TreeDataProvider<BaseNode>, Disposable
@@ -19,6 +20,10 @@ export default class SvnProvider
   private _onDidChangeTreeData: EventEmitter<BaseNode | undefined> =
     new EventEmitter<BaseNode | undefined>();
   private _dispose: Disposable[] = [];
+  private workingCopySubscriptions = new Map<
+    WorkingCopySourceControl,
+    Disposable
+  >();
   public onDidChangeTreeData: Event<BaseNode | undefined> =
     this._onDidChangeTreeData.event;
 
@@ -53,8 +58,24 @@ export default class SvnProvider
       return element.getChildren();
     }
 
-    const repositories = this.sourceControlManager.workingCopies.map(
-      workingCopy => new RepositoryNode(workingCopy.scopes, this)
+    const workingCopies = this.sourceControlManager.workingCopies;
+    for (const [workingCopy, subscription] of this.workingCopySubscriptions) {
+      if (!workingCopies.includes(workingCopy)) {
+        subscription.dispose();
+        this.workingCopySubscriptions.delete(workingCopy);
+      }
+    }
+    for (const workingCopy of workingCopies) {
+      if (!this.workingCopySubscriptions.has(workingCopy)) {
+        this.workingCopySubscriptions.set(
+          workingCopy,
+          workingCopy.onDidChange(() => this.refresh())
+        );
+      }
+    }
+
+    const repositories = workingCopies.map(
+      workingCopy => new RepositoryNode(workingCopy)
     );
 
     return repositories;
@@ -65,6 +86,10 @@ export default class SvnProvider
   }
 
   public dispose() {
+    this.workingCopySubscriptions.forEach(subscription =>
+      subscription.dispose()
+    );
+    this.workingCopySubscriptions.clear();
     dispose(this._dispose);
   }
 }

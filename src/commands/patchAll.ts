@@ -1,6 +1,6 @@
 import { Repository } from "../repository";
 import { Command } from "./command";
-import { workingCopyScopes } from "./workingCopyScopes";
+import { uniqueScopeResources, workingCopyScopes } from "./workingCopyScopes";
 
 export class PatchAll extends Command {
   constructor() {
@@ -10,21 +10,16 @@ export class PatchAll extends Command {
   public async execute(repository: Repository) {
     const scopes = await workingCopyScopes(repository);
     const contents: string[] = [];
+    const resources = uniqueScopeResources(scopes, scope => [
+      ...scope.changes.resourceStates,
+      ...scope.conflicts.resourceStates,
+      ...[...scope.changelists.values()].flatMap(group => group.resourceStates)
+    ]);
     for (const scope of scopes) {
-      const resources = [
-        ...scope.changes.resourceStates,
-        ...scope.conflicts.resourceStates,
-        ...[...scope.changelists.values()].flatMap(
-          group => group.resourceStates
-        )
-      ];
-      if (resources.length) {
-        contents.push(
-          await scope.patch(
-            resources.map(resource => resource.resourceUri.fsPath)
-          )
-        );
-      }
+      const paths = resources
+        .filter(item => item.scope === scope)
+        .map(item => item.resource.resourceUri.fsPath);
+      if (paths.length) contents.push(await scope.patch(paths));
     }
     const content = contents.join("\n");
     if (!content) return;

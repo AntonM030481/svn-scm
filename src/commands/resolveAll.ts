@@ -3,7 +3,7 @@ import { getConflictPickOptions } from "../conflictItems";
 import { Repository } from "../repository";
 import { getDisplayErrorMessage } from "../svnError";
 import { Command } from "./command";
-import { workingCopyScopes } from "./workingCopyScopes";
+import { uniqueScopeResources, workingCopyScopes } from "./workingCopyScopes";
 
 export class ResolveAll extends Command {
   constructor() {
@@ -13,13 +13,16 @@ export class ResolveAll extends Command {
   public async execute(repository: Repository) {
     const scopes = await workingCopyScopes(repository);
     await Promise.all(scopes.map(scope => scope.ensureStatus()));
-    const conflicts = scopes.flatMap(scope => scope.conflicts.resourceStates);
+    const conflicts = uniqueScopeResources(
+      scopes,
+      scope => scope.conflicts.resourceStates
+    );
 
     if (!conflicts.length) {
       window.showInformationMessage("No Conflicts");
     }
 
-    for (const conflict of conflicts) {
+    for (const { scope, resource: conflict } of conflicts) {
       const placeHolder = `Select conflict option for ${conflict.resourceUri.path}`;
       const picks = getConflictPickOptions();
 
@@ -30,11 +33,7 @@ export class ResolveAll extends Command {
       }
 
       try {
-        const owner = scopes.find(scope =>
-          scope.conflicts.resourceStates.includes(conflict)
-        );
-        if (!owner) continue;
-        const response = await owner.resolve(
+        const response = await scope.resolve(
           [conflict.resourceUri.path],
           choice.label
         );

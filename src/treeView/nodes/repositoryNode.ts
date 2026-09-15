@@ -1,23 +1,15 @@
 import * as path from "path";
 import { TreeItem, TreeItemCollapsibleState } from "vscode";
-import { Repository } from "../../repository";
+import { WorkingCopySourceControl } from "../../workingCopySourceControl";
 import { getIconUri } from "../../uri";
-import SvnProvider from "../dataProviders/svnProvider";
 import BaseNode from "./baseNode";
 import IncomingChangesNode from "./incomingChangesNode";
 
 export default class RepositoryNode implements BaseNode {
-  constructor(
-    private repositories: Repository[],
-    private svnProvider: SvnProvider
-  ) {
-    repositories.forEach(repository =>
-      repository.onDidChangeStatus(() => this.svnProvider.update(this))
-    );
-  }
+  constructor(private workingCopy: WorkingCopySourceControl) {}
 
   get label() {
-    return path.basename(this.repositories[0].root);
+    return path.basename(this.workingCopy.root);
   }
 
   public getTreeItem(): TreeItem {
@@ -31,6 +23,6 @@ export default class RepositoryNode implements BaseNode {
   }
 
   public async getChildren(): Promise<BaseNode[]> {
-    return [new IncomingChangesNode(this.repositories)];
+    return [new IncomingChangesNode(this.workingCopy)];
   }
 }

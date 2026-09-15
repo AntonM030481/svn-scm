@@ -1,12 +1,12 @@
 import { TreeItem, TreeItemCollapsibleState } from "vscode";
-import { Repository } from "../../repository";
+import { WorkingCopySourceControl } from "../../workingCopySourceControl";
 import { getIconUri } from "../../uri";
 import BaseNode from "./baseNode";
 import IncomingChangeNode from "./incomingChangeNode";
 import NoIncomingChangesNode from "./noIncomingChangesNode";
 
 export default class IncomingChangesNode implements BaseNode {
-  constructor(private repositories: Repository[]) {}
+  constructor(private workingCopy: WorkingCopySourceControl) {}
 
   public getTreeItem(): TreeItem {
     const item = new TreeItem(
@@ -23,7 +23,7 @@ export default class IncomingChangesNode implements BaseNode {
 
   public async getChildren(): Promise<BaseNode[]> {
     const seen = new Set<string>();
-    const changes = this.repositories.flatMap(repository =>
+    const changes = this.workingCopy.scopes.flatMap(repository =>
       (repository.remoteChanges?.resourceStates ?? []).flatMap(remoteChange => {
         const key = remoteChange.resourceUri.toString();
         if (seen.has(key)) return [];
