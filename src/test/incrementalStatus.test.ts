@@ -1,5 +1,11 @@
 import * as assert from "assert";
-import { Disposable, EventEmitter, Uri } from "vscode";
+import {
+  ConfigurationTarget,
+  Disposable,
+  EventEmitter,
+  Uri,
+  workspace
+} from "vscode";
 import {
   ConstructorPolicy,
   IFileStatus,
@@ -370,10 +376,18 @@ suite("Incremental Status Tests", () => {
     }
   });
   test("keeps explicit targets when watcher work is already queued", async () => {
+    const svnConfiguration = workspace.getConfiguration("svn");
+    const previousAutorefresh =
+      svnConfiguration.inspect<boolean>("autorefresh")?.globalValue;
+    await svnConfiguration.update(
+      "autorefresh",
+      true,
+      ConfigurationTarget.Global
+    );
     const fixture = await mutationFixture("/repo");
     try {
       fixture.emitWorkspaceChange("/repo/watcher.ts");
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise(resolve => setImmediate(resolve));
       fixture.events.length = 0;
       fixture.targetedStatusArgs.length = 0;
 
@@ -386,6 +400,11 @@ suite("Incremental Status Tests", () => {
       assert.equal(fixture.events.includes("full-status"), false);
     } finally {
       fixture.dispose();
+      await svnConfiguration.update(
+        "autorefresh",
+        previousAutorefresh,
+        ConfigurationTarget.Global
+      );
     }
   });
 
