@@ -2,7 +2,10 @@ import { window } from "vscode";
 import { configuration } from "../helpers/configuration";
 import { Repository } from "../repository";
 import { Command } from "./command";
-import { runWorkingCopyOperation } from "./workingCopyScopes";
+import {
+  workingCopyOperationScopes,
+  workingCopyScopes
+} from "./workingCopyScopes";
 
 export class Update extends Command {
   constructor() {
@@ -20,12 +23,30 @@ export class Update extends Command {
         true
       );
 
-      const results = await runWorkingCopyOperation(repository, scope =>
-        scope.updateRevision(ignoreExternals)
-      );
+      const allScopes = await workingCopyScopes(repository);
+      const operationScopes = await workingCopyOperationScopes(repository);
+      const owner = operationScopes[0];
+      let result: string;
+      try {
+        result = await owner.updateRevision(
+          ignoreExternals,
+          operationScopes.map(scope => scope.workspaceRoot)
+        );
+        await Promise.all(
+          allScopes
+            .filter(scope => scope !== owner)
+            .map(async scope => {
+              await scope.status();
+              void scope.updateRemoteChangedFiles();
+            })
+        );
+      } catch (error) {
+        await Promise.allSettled(allScopes.map(scope => scope.status()));
+        throw error;
+      }
 
       if (showUpdateMessage) {
-        window.showInformationMessage(results.join("\n"));
+        window.showInformationMessage(result);
       }
     } catch (error) {
       console.error(error);

@@ -672,12 +672,17 @@ export class Repository {
     return result.stdout;
   }
 
-  public async update(ignoreExternals: boolean = true): Promise<string> {
+  public async update(
+    ignoreExternals: boolean = true,
+    targets: string[] = []
+  ): Promise<string> {
     const args = ["update"];
 
     if (ignoreExternals) {
       args.push("--ignore-externals");
     }
+
+    args.push(...targets);
 
     const result = await this.exec(args);
 

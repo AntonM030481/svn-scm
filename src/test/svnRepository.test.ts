@@ -266,6 +266,32 @@ suite("Svn Repository Tests", () => {
     assert.equal(status[1].path, "second.cpp");
   });
 
+  test("Update accepts multiple explicit working-copy targets", async () => {
+    svn = new Svn(options);
+    const workspaceRoot = path.resolve("update-targets");
+    const repository = await new Repository(
+      svn,
+      workspaceRoot,
+      workspaceRoot,
+      ConstructorPolicy.LateInit
+    );
+    const targets = [
+      path.join(workspaceRoot, "one"),
+      path.join(workspaceRoot, "two")
+    ];
+    let args: string[] = [];
+    repository.exec = async commandArgs => {
+      args = commandArgs;
+      return { exitCode: 0, stderr: "", stdout: "Updated to revision 42.\n" };
+    };
+
+    assert.equal(
+      await repository.update(true, targets),
+      "Updated to revision 42."
+    );
+    assert.deepEqual(args, ["update", "--ignore-externals", ...targets]);
+  });
+
   test("Reuses repository root info when opening", async () => {
     svn = new Svn(options);
     let execCalls = 0;

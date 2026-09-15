@@ -1322,10 +1322,11 @@ export class Repository implements IRemoteRepository {
   }
 
   public async updateRevision(
-    ignoreExternals: boolean = false
+    ignoreExternals: boolean = false,
+    targets: string[] = []
   ): Promise<string> {
     return this.run<string>(Operation.Update, async () => {
-      const response = await this.repository.update(ignoreExternals);
+      const response = await this.repository.update(ignoreExternals, targets);
       this.updateRemoteChangedFiles();
       return response;
     });
