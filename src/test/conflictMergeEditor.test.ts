@@ -58,7 +58,10 @@ suite("Conflict merge editor", () => {
       },
       output,
       {
-        getCommands: async () => ["_open.mergeEditor"],
+        getCommands: async filterInternal => {
+          assert.notStrictEqual(filterInternal, true);
+          return ["_open.mergeEditor"];
+        },
         executeCommand: async (command, argument) => {
           calls.push({ command, argument });
           return undefined;
@@ -68,7 +71,10 @@ suite("Conflict merge editor", () => {
 
     assert.strictEqual(opened, true);
     assert.strictEqual(calls[0].command, "_open.mergeEditor");
-    assert.strictEqual(calls[0].argument.base.fsPath, "c:\\wc\\file.txt.r1");
+    assert.strictEqual(
+      calls[0].argument.base.toString(),
+      Uri.file("C:/wc/file.txt.r1").toString()
+    );
     assert.strictEqual(calls[0].argument.input1.title, "Incoming");
     assert.strictEqual(calls[0].argument.input2.title, "Current");
     assert.strictEqual(calls[0].argument.output, output);

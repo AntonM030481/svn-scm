@@ -7,8 +7,11 @@ export class OpenMergeEditor extends Command {
     super("svn.openMergeEditor");
   }
 
-  public async execute(resourceState: SourceControlResourceState) {
-    const selection = await this.getResourceStates([resourceState], true);
+  public async execute(resourceState?: SourceControlResourceState) {
+    const selection = await this.getResourceStates(
+      resourceState ? [resourceState] : [],
+      true
+    );
     const resource = selection[0];
     if (!resource) return;
 

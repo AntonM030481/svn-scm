@@ -13,7 +13,7 @@ export async function openMergeEditor(
   output: Uri,
   commandApi: CommandApi = commands
 ): Promise<boolean> {
-  const available = await commandApi.getCommands(true);
+  const available = await commandApi.getCommands();
   if (!available.includes(openMergeEditorCommand)) {
     return false;
   }
