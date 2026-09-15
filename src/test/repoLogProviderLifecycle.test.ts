@@ -284,7 +284,10 @@ suite("Repository history lifecycle", () => {
     const state = provider as any;
     const branchRoot = Uri.parse("https://example.test/svn/shared");
     const closed = { branchRoot };
-    const survivor = { branchRoot };
+    const survivor = {
+      branchRoot,
+      repository: { info: { revision: "45" } }
+    };
     const cached = {
       entries: [{ revision: "42" }],
       isComplete: true,
@@ -303,7 +306,8 @@ suite("Repository history lifecycle", () => {
     assert.strictEqual(state.logCache.get(branchRoot.toString(true)), cached);
     assert.strictEqual(cached.repo, survivor);
     assert.deepStrictEqual(cached.entries, [{ revision: "42" }]);
-    assert.equal(refreshes, 0);
+    assert.equal(cached.persisted.baseRevision, 45);
+    assert.equal(refreshes, 1);
   });
 
   test("automatic caching preserves a user-added entry for the same URL", () => {
@@ -335,5 +339,38 @@ suite("Repository history lifecycle", () => {
       state.logCache.get(branchRoot.toString(true)),
       userAdded
     );
+  });
+
+  test("opening a duplicate URL preserves its loaded automatic history", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const original = {
+      entries: [{ revision: "40" }],
+      isComplete: true,
+      repo: {},
+      svnTarget: branchRoot,
+      persisted: { commitFrom: "30", baseRevision: 40 },
+      order: 2
+    };
+    const replacement = {
+      branchRoot,
+      repository: { info: { revision: "45" } }
+    };
+    state.logCache = new Map([[branchRoot.toString(true), original]]);
+
+    state.cacheRepository(replacement, undefined, true);
+
+    const cached = state.logCache.get(branchRoot.toString(true));
+    assert.strictEqual(cached.entries, original.entries);
+    assert.equal(cached.isComplete, true);
+    assert.strictEqual(cached.repo, replacement);
+    assert.deepStrictEqual(cached.persisted, {
+      commitFrom: "30",
+      baseRevision: 45
+    });
+    assert.equal(cached.order, 2);
   });
 });

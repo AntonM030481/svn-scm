@@ -131,7 +131,7 @@ export class RepoLogProvider
       () => commands.registerCommand("svn.repolog.refresh", this.refresh, this),
       () =>
         this.sourceControlManager.onDidOpenRepository(repository => {
-          this.cacheRepository(repository);
+          this.cacheRepository(repository, undefined, true);
           this._onDidChangeTreeData.fire(undefined);
         }),
       () =>
@@ -390,7 +390,7 @@ export class RepoLogProvider
   }
 
   private removeCachedRepository(repository: Repository): void {
-    let removed = false;
+    let changed = false;
     for (const [key, cached] of this.logCache) {
       if (!cached.persisted.userAdded && cached.repo === repository) {
         const replacement = this.sourceControlManager.repositories.find(
@@ -399,33 +399,44 @@ export class RepoLogProvider
         if (replacement) {
           cached.repo = replacement;
           cached.svnTarget = replacement.branchRoot;
+          cached.persisted.baseRevision = parseInt(
+            replacement.repository.info.revision,
+            10
+          );
+          changed = true;
           continue;
         }
         this.logCache.delete(key);
-        removed = true;
+        changed = true;
       }
     }
-    if (removed) {
+    if (changed) {
       this._onDidChangeTreeData.fire(undefined);
     }
   }
 
-  private cacheRepository(repository: Repository, previous?: ICachedLog): void {
+  private cacheRepository(
+    repository: Repository,
+    previous?: ICachedLog,
+    preserveEntries = false
+  ): void {
     const remoteRoot = repository.branchRoot;
     const repositoryUrl = remoteRoot.toString(true);
-    if (this.logCache.get(repositoryUrl)?.persisted.userAdded) {
+    const current = this.logCache.get(repositoryUrl);
+    if (current?.persisted.userAdded) {
       return;
     }
+    const cached = previous ?? (preserveEntries ? current : undefined);
     this.logCache.set(repositoryUrl, {
-      entries: [],
-      isComplete: false,
+      entries: preserveEntries ? (cached?.entries ?? []) : [],
+      isComplete: preserveEntries ? (cached?.isComplete ?? false) : false,
       repo: repository,
       svnTarget: remoteRoot,
       persisted: {
-        commitFrom: previous?.persisted.commitFrom ?? "HEAD",
+        commitFrom: cached?.persisted.commitFrom ?? "HEAD",
         baseRevision: parseInt(repository.repository.info.revision, 10)
       },
-      order: previous?.order ?? this.logCache.size
+      order: cached?.order ?? this.logCache.size
     });
   }
 
