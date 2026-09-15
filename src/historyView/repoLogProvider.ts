@@ -1,4 +1,4 @@
-import { registerResources } from "../lifecycle";
+import { disposeResources, registerResources } from "../lifecycle";
 import * as path from "path";
 import {
   commands,
@@ -23,7 +23,7 @@ import { exists } from "../fs";
 import { SourceControlManager } from "../source_control_manager";
 import { IRemoteRepository } from "../remoteRepository";
 import { Repository } from "../repository";
-import { dispose, unwrap } from "../util";
+import { unwrap } from "../util";
 import {
   checkIfFile,
   copyCommitToClipboard,
@@ -144,13 +144,15 @@ export class RepoLogProvider
       return;
     }
     this.disposed = true;
-    for (const inputBox of this.inputBoxes) {
-      inputBox.dispose();
-    }
+    const resources = [
+      { dispose: () => this._onDidChangeTreeData.dispose() },
+      { dispose: () => this.logCache.clear() },
+      ...this._dispose,
+      ...this.inputBoxes
+    ];
     this.inputBoxes.clear();
-    dispose(this._dispose);
-    this.logCache.clear();
-    this._onDidChangeTreeData.dispose();
+    this._dispose = [];
+    disposeResources(resources);
   }
 
   private createInputBox(): InputBox {
@@ -205,6 +207,9 @@ export class RepoLogProvider
             throw new Error("No repository in workspace root");
           }
           const info = await wsrepo.getInfo(repoLike);
+          if (this.disposed) {
+            return;
+          }
           uri = Uri.parse(info.url);
         } else {
           uri = Uri.parse(repoLike);

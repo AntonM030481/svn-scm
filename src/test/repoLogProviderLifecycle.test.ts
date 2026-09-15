@@ -25,8 +25,8 @@ suite("Repository history lifecycle", () => {
     provider.dispose();
 
     assert.deepStrictEqual(disposed, [
-      "input-one",
       "input-two",
+      "input-one",
       "registration",
       "event"
     ]);
@@ -80,4 +80,79 @@ suite("Repository history lifecycle", () => {
       }
     });
   }
+
+  test("dispose prevents caret resolution from opening a remote repository", async () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    let resolveInfo!: (info: { url: string }) => void;
+    const info = new Promise<{ url: string }>(resolve => {
+      resolveInfo = resolve;
+    });
+    let repositoryLookups = 0;
+    let remoteOpens = 0;
+
+    state.disposed = false;
+    state.inputBoxes = new Set();
+    state._dispose = [];
+    state.logCache = new Map();
+    state._onDidChangeTreeData = { dispose() {}, fire() {} };
+    state.sourceControlManager = {
+      getRepository: () => {
+        repositoryLookups++;
+        return repositoryLookups === 1 ? null : { getInfo: () => info };
+      },
+      getRemoteRepository: () => {
+        remoteOpens++;
+        return Promise.reject(new Error("unexpected remote open"));
+      }
+    };
+
+    const pending = state.addRepolike("^/trunk", "HEAD");
+    await Promise.resolve();
+    provider.dispose();
+    resolveInfo({ url: "https://example.test/svn/trunk" });
+    await pending;
+
+    assert.equal(remoteOpens, 0);
+  });
+
+  test("dispose continues after a transient UI cleanup throws", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const disposed: string[] = [];
+    const originalError = console.error;
+
+    state.disposed = false;
+    state.inputBoxes = new Set([
+      {
+        dispose: () => {
+          throw new Error("input cleanup failed");
+        }
+      },
+      { dispose: () => disposed.push("remaining-input") }
+    ]);
+    state._dispose = [{ dispose: () => disposed.push("registration") }];
+    state.logCache = new Map([["repository", {}]]);
+    state._onDidChangeTreeData = {
+      dispose: () => disposed.push("event")
+    };
+    console.error = () => undefined;
+
+    try {
+      provider.dispose();
+    } finally {
+      console.error = originalError;
+    }
+
+    assert.deepStrictEqual(disposed, [
+      "remaining-input",
+      "registration",
+      "event"
+    ]);
+    assert.equal(state.logCache.size, 0);
+  });
 });
