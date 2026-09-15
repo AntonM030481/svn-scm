@@ -13,7 +13,8 @@ import {
   SvnDepth,
   ISvnPathChange,
   ISvnPath,
-  ISvnListItem
+  ISvnListItem,
+  ISvnTextConflictInputs
 } from "./common/types";
 import { isSnapshotPath } from "./statusSnapshot";
 import { sequentialize } from "./decorators";
@@ -22,7 +23,7 @@ import { exists, writeFile, lstat, readdir } from "./fs";
 import { getBranchName } from "./helpers/branch";
 import { logLimit } from "./helpers/settingValues";
 import { configuration } from "./helpers/configuration";
-import { parseInfoXml } from "./parser/infoParser";
+import { getTextConflictInputs, parseInfoXml } from "./parser/infoParser";
 import { parseSvnList } from "./parser/listParser";
 import { parseSvnPropertyValue } from "./parser/propertyParser";
 import { parseSvnLog } from "./parser/logParser";
@@ -273,6 +274,14 @@ export class Repository {
     );
 
     return this._infoCache[file];
+  }
+
+  public async getTextConflictInputs(
+    file: string
+  ): Promise<ISvnTextConflictInputs | undefined> {
+    const target = this.removeAbsolutePath(file);
+    const result = await this.exec(["info", "--xml", target]);
+    return getTextConflictInputs(await parseInfoXml(result.stdout));
   }
 
   public async getChanges(): Promise<ISvnPathChange[]> {

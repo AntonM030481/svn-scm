@@ -44,6 +44,7 @@ export interface ISvnInfo {
     author: string;
     date: string;
   };
+  conflict?: ISvnConflict | ISvnConflict[];
 }
 
 export interface ISvnPath {
@@ -155,6 +156,20 @@ export interface IFileStatus {
     item: string;
   };
   [key: number]: IFileStatus;
+}
+
+export interface ISvnConflict {
+  operation?: string;
+  type?: string;
+  prevBaseFile?: string;
+  prevWcFile?: string;
+  curBaseFile?: string;
+}
+
+export interface ISvnTextConflictInputs {
+  base: string;
+  current: string;
+  incoming: string;
 }
 
 export interface IEntry {

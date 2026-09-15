@@ -1,5 +1,8 @@
 # Unreleased
 
+* Open text conflicts in VS Code's merge editor using SVN-recorded base,
+  current, and incoming files, with a normal editor fallback.
+
 # [2.21.0](https://github.com/AntonM030481/svn-scm/compare/v2.20.0...v2.21.0) (2026-09-15)
 
 Workflow, performance, and architecture release focused on responsive local

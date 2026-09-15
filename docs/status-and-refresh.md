@@ -39,6 +39,13 @@ It handles:
 - switched, incomplete, and locked working-copy state;
 - optional repository-side status returned by `--show-updates`.
 
+Opening a text conflict performs a separate local `svn info --xml` query for
+that file so the merge UI receives SVN's recorded base, local, and incoming
+inputs. These inputs are never restored from the status snapshot or reused from
+the repository-info cache. Saving a marker-free result retains the existing
+confirmation or `conflicts.autoResolve` behavior before `svn resolve --accept
+working` changes authoritative SVN state.
+
 A remote status contains local working-copy status as well. When remote polling
 is enabled, construction therefore performs one initial remote status instead
 of an immediate local scan followed by another remote scan.

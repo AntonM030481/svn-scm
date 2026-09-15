@@ -102,6 +102,14 @@ export class Resource implements SourceControlResourceState {
   }
 
   get command(): Command {
+    if (!this.remote && this.type === Status.CONFLICTED) {
+      return {
+        command: "svn.openMergeEditor",
+        title: "Open in Merge Editor",
+        arguments: [this]
+      };
+    }
+
     const diffHead = configuration.get<boolean>("diff.withHead", true);
     const changesLeftClick = configuration.get<string>(
       "sourceControl.changesLeftClick",

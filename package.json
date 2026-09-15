@@ -388,6 +388,12 @@
                 "title": "Remove"
             },
             {
+                "command": "svn.openMergeEditor",
+                "title": "Open in Merge Editor",
+                "category": "SVN",
+                "icon": "$(git-merge)"
+            },
+            {
                 "command": "svn.resolve",
                 "title": "Resolve conflicts for selected",
                 "category": "SVN",
@@ -964,7 +970,7 @@
                     "group": "navigation"
                 },
                 {
-                    "command": "svn.resolve",
+                    "command": "svn.openMergeEditor",
                     "when": "config.svn.enabled && scmProvider == svn && scmResourceGroup == conflicts",
                     "group": "inline"
                 },
