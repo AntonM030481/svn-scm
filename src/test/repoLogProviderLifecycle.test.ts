@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { window } from "vscode";
+import { Uri, window } from "vscode";
 import { RepoLogProvider } from "../historyView/repoLogProvider";
 
 suite("Repository history lifecycle", () => {
@@ -154,5 +154,223 @@ suite("Repository history lifecycle", () => {
       "event"
     ]);
     assert.equal(state.logCache.size, 0);
+  });
+
+  test("repository changes invalidate only the matching history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const changedRepository = {
+      branchRoot: Uri.parse("https://example.test/svn/changed"),
+      repository: { info: { revision: "45" } }
+    };
+    const unrelatedRepository = {
+      branchRoot: Uri.parse("https://example.test/svn/unrelated"),
+      repository: { info: { revision: "7" } }
+    };
+    const persisted = { commitFrom: "100", baseRevision: 42 };
+    const changed = {
+      entries: [{ revision: "100" }],
+      isComplete: true,
+      repo: changedRepository,
+      svnTarget: changedRepository.branchRoot,
+      persisted,
+      order: 3
+    };
+    const unrelated = {
+      entries: [{ revision: "7" }],
+      isComplete: true,
+      repo: unrelatedRepository,
+      svnTarget: unrelatedRepository.branchRoot,
+      persisted: { commitFrom: "HEAD", baseRevision: 7 },
+      order: 4
+    };
+    let refreshes = 0;
+    state.logCache = new Map([
+      [changedRepository.branchRoot.toString(true), changed],
+      [unrelatedRepository.branchRoot.toString(true), unrelated]
+    ]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.refreshRepository(changedRepository);
+
+    const refreshed = state.logCache.get(
+      changedRepository.branchRoot.toString(true)
+    );
+    assert.notStrictEqual(refreshed, changed);
+    assert.deepStrictEqual(refreshed.entries, []);
+    assert.deepStrictEqual(refreshed.persisted, {
+      commitFrom: "100",
+      baseRevision: 45
+    });
+    assert.equal(refreshed.order, 3);
+    assert.strictEqual(
+      state.logCache.get(unrelatedRepository.branchRoot.toString(true)),
+      unrelated
+    );
+    assert.equal(refreshes, 1);
+  });
+
+  test("repository URL changes preserve cache ordering", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const repository = {
+      branchRoot: Uri.parse("https://example.test/svn/switched"),
+      repository: { info: { revision: "50" } }
+    };
+    state.logCache = new Map([
+      [
+        "https://example.test/svn/original",
+        {
+          entries: [],
+          isComplete: true,
+          repo: repository,
+          svnTarget: Uri.parse("https://example.test/svn/original"),
+          persisted: { commitFrom: "40", baseRevision: 42 },
+          order: 3
+        }
+      ]
+    ]);
+    state._onDidChangeTreeData = { fire() {} };
+
+    state.refreshRepository(repository);
+
+    const refreshed = state.logCache.get(repository.branchRoot.toString(true));
+    assert.equal(state.logCache.size, 1);
+    assert.equal(refreshed.order, 3);
+    assert.deepStrictEqual(refreshed.persisted, {
+      commitFrom: "40",
+      baseRevision: 50
+    });
+  });
+
+  test("closing a repository removes only its automatic history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const repository = {};
+    const automatic = { repo: repository, persisted: {} };
+    const userAdded = { repo: repository, persisted: { userAdded: true } };
+    const unrelated = { repo: {}, persisted: {} };
+    let refreshes = 0;
+    state.sourceControlManager = { repositories: [] };
+    state.logCache = new Map([
+      ["automatic", automatic],
+      ["user-added", userAdded],
+      ["unrelated", unrelated]
+    ]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.removeCachedRepository(repository);
+
+    assert.deepStrictEqual(
+      [...state.logCache.entries()],
+      [
+        ["user-added", userAdded],
+        ["unrelated", unrelated]
+      ]
+    );
+    assert.equal(refreshes, 1);
+  });
+
+  test("closing a sibling projection transfers its shared history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const closed = { branchRoot };
+    const survivor = {
+      branchRoot,
+      repository: { info: { revision: "45" } }
+    };
+    const cached = {
+      entries: [{ revision: "42" }],
+      isComplete: true,
+      repo: closed,
+      svnTarget: branchRoot,
+      persisted: { commitFrom: "HEAD", baseRevision: 42 },
+      order: 2
+    };
+    let refreshes = 0;
+    state.sourceControlManager = { repositories: [survivor] };
+    state.logCache = new Map([[branchRoot.toString(true), cached]]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.removeCachedRepository(closed);
+
+    assert.strictEqual(state.logCache.get(branchRoot.toString(true)), cached);
+    assert.strictEqual(cached.repo, survivor);
+    assert.deepStrictEqual(cached.entries, [{ revision: "42" }]);
+    assert.equal(cached.persisted.baseRevision, 45);
+    assert.equal(refreshes, 1);
+  });
+
+  test("automatic caching preserves a user-added entry for the same URL", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const userAdded = {
+      entries: [{ revision: "20" }],
+      isComplete: true,
+      repo: {},
+      svnTarget: branchRoot,
+      persisted: {
+        commitFrom: "20",
+        baseRevision: 20,
+        userAdded: true
+      },
+      order: 1
+    };
+    state.logCache = new Map([[branchRoot.toString(true), userAdded]]);
+
+    state.cacheRepository({
+      branchRoot,
+      repository: { info: { revision: "50" } }
+    });
+
+    assert.strictEqual(
+      state.logCache.get(branchRoot.toString(true)),
+      userAdded
+    );
+  });
+
+  test("opening a duplicate URL preserves its loaded automatic history", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const original = {
+      entries: [{ revision: "40" }],
+      isComplete: true,
+      repo: {},
+      svnTarget: branchRoot,
+      persisted: { commitFrom: "30", baseRevision: 40 },
+      order: 2
+    };
+    const replacement = {
+      branchRoot,
+      repository: { info: { revision: "45" } }
+    };
+    state.logCache = new Map([[branchRoot.toString(true), original]]);
+
+    state.cacheRepository(replacement, undefined, true);
+
+    const cached = state.logCache.get(branchRoot.toString(true));
+    assert.strictEqual(cached.entries, original.entries);
+    assert.equal(cached.isComplete, true);
+    assert.strictEqual(cached.repo, replacement);
+    assert.deepStrictEqual(cached.persisted, {
+      commitFrom: "30",
+      baseRevision: 45
+    });
+    assert.equal(cached.order, 2);
   });
 });
