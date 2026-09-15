@@ -9,8 +9,10 @@ export class PatchAll extends Command {
 
   public async execute(repository: Repository) {
     const scopes = await workingCopyScopes(repository);
+    await Promise.all(scopes.map(scope => scope.ensureStatus()));
     const contents: string[] = [];
     const resources = uniqueScopeResources(scopes, scope => [
+      ...(scope.staged?.resourceStates ?? []),
       ...scope.changes.resourceStates,
       ...scope.conflicts.resourceStates,
       ...[...scope.changelists.values()].flatMap(group => group.resourceStates)

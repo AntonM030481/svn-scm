@@ -4,14 +4,23 @@ import { SvnUriAction } from "../common/types";
 import { Repository } from "../repository";
 import { toSvnUri } from "../uri";
 import { Command } from "./command";
+import { selectWorkingCopyScope } from "./workingCopyScopes";
 
 export class Log extends Command {
   constructor() {
     super("svn.log", { repository: true });
   }
 
-  public async execute(repository: Repository) {
+  public async execute(repository: Repository, hint?: unknown) {
     try {
+      if (hint === repository.sourceControl) {
+        const scope = await selectWorkingCopyScope(
+          repository,
+          "Choose an opened folder to show history"
+        );
+        if (!scope) return;
+        repository = scope;
+      }
       const resource = toSvnUri(
         Uri.file(repository.workspaceRoot),
         SvnUriAction.LOG
