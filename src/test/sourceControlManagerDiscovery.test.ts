@@ -47,7 +47,8 @@ suite("Source control repository discovery", () => {
           workspaceRoot,
           root: workspaceRoot,
           statusExternal: [],
-          statusIgnored: []
+          statusIgnored: [],
+          isPathExcludedFromRouting: () => false
         });
         const parent = makeRepository("/parent");
         const child = makeRepository("/parent/child");
@@ -269,7 +270,8 @@ suite("Source control repository discovery", () => {
               root: legacyParent ? path.dirname(root) : root,
               workspaceRoot: legacyParent ? path.dirname(root) : root,
               statusExternal: [],
-              statusIgnored: []
+              statusIgnored: [],
+              isPathExcludedFromRouting: () => false
             }
           });
           return {};

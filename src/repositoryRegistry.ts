@@ -1,4 +1,3 @@
-import * as path from "path";
 import { Uri } from "vscode";
 import { IOpenRepository } from "./common/types";
 import { Repository } from "./repository";
@@ -91,14 +90,7 @@ export class RepositoryRegistry {
   }
 
   private isExcluded(entry: IOpenRepository, filePath: string): boolean {
-    const { repository } = entry;
-    const containsPath = (status: { path: string }) =>
-      isDescendant(path.join(repository.workspaceRoot, status.path), filePath);
-
-    return (
-      repository.statusExternal.some(containsPath) ||
-      repository.statusIgnored.some(containsPath)
-    );
+    return entry.repository.isPathExcludedFromRouting(filePath);
   }
 
   private invalidate(): void {

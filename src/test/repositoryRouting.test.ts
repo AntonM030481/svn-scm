@@ -3,7 +3,9 @@ import * as path from "path";
 import { commands, EventEmitter, Uri, window } from "vscode";
 import { ChangeList } from "../commands/changeList";
 import { RepositoryState, Status } from "../common/types";
+import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
+import { isDescendant } from "../util";
 
 suite("Validated repository routing", () => {
   function fixture() {
@@ -36,6 +38,11 @@ suite("Validated repository routing", () => {
         workspaceRoot: root,
         statusExternal: [],
         statusIgnored: [],
+        isPathExcludedFromRouting(filePath: string) {
+          return [...this.statusExternal, ...this.statusIgnored].some(status =>
+            isDescendant(path.join(this.workspaceRoot, status.path), filePath)
+          );
+        },
         isInitialStatusPending: false,
         initialStatusSettled: Promise.resolve(),
         ensureStatus: async () => undefined,
@@ -291,6 +298,42 @@ suite("Validated repository routing", () => {
       }
     });
   }
+
+  test("repository indexes routing exclusions independently of status arrays", () => {
+    const repository = Object.create(Repository.prototype) as any;
+    repository.repository = { workspaceRoot: root };
+    repository.statusExternal = [{ path: "external" }];
+    repository.statusIgnored = [{ path: path.join("ignored", "nested") }];
+    repository.refreshRoutingExclusions();
+
+    repository.statusExternal = new Proxy([], {
+      get() {
+        throw new Error("routing lookup scanned statusExternal");
+      }
+    });
+    repository.statusIgnored = new Proxy([], {
+      get() {
+        throw new Error("routing lookup scanned statusIgnored");
+      }
+    });
+
+    assert.strictEqual(
+      repository.isPathExcludedFromRouting(
+        path.join(root, "external", "file.txt")
+      ),
+      true
+    );
+    assert.strictEqual(
+      repository.isPathExcludedFromRouting(
+        path.join(root, "ignored", "nested")
+      ),
+      true
+    );
+    assert.strictEqual(
+      repository.isPathExcludedFromRouting(path.join(root, "external-sibling")),
+      false
+    );
+  });
 
   test("a failed nested validation never retries through the parent", async () => {
     const f = fixture();
