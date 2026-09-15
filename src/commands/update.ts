@@ -1,4 +1,5 @@
 import { window } from "vscode";
+import { Operation } from "../common/types";
 import { configuration } from "../helpers/configuration";
 import { Repository } from "../repository";
 import { Command } from "./command";
@@ -26,6 +27,9 @@ export class Update extends Command {
       const allScopes = await workingCopyScopes(repository);
       const operationScopes = await workingCopyOperationScopes(repository);
       const owner = operationScopes[0];
+      const operationMarkers = allScopes.map(scope =>
+        scope.markOperation(Operation.Update)
+      );
       let result: string;
       try {
         result = await owner.updateRevision(
@@ -43,6 +47,8 @@ export class Update extends Command {
       } catch (error) {
         await Promise.allSettled(allScopes.map(scope => scope.status()));
         throw error;
+      } finally {
+        operationMarkers.reverse().forEach(marker => marker.dispose());
       }
 
       if (showUpdateMessage) {

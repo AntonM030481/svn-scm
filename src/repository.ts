@@ -647,6 +647,15 @@ export class Repository implements IRemoteRepository {
     return !this.disposed;
   }
 
+  public markOperation(operation: Operation): Disposable {
+    this._operations.start(operation);
+    this._onRunOperation.fire(operation);
+    return new Disposable(() => {
+      this._operations.end(operation);
+      this._onDidRunOperation.fire(operation);
+    });
+  }
+
   public async whenIdleAndFocused(): Promise<boolean> {
     while (!this.disposed) {
       if (!(await this.whenIdle())) {

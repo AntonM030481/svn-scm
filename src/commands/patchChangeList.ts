@@ -10,6 +10,7 @@ export class PatchChangeList extends Command {
 
   public async execute(repository: Repository) {
     const scopes = await workingCopyScopes(repository);
+    await Promise.all(scopes.map(scope => scope.ensureStatus()));
     const names = [
       ...new Set(
         scopes.flatMap(scope =>
