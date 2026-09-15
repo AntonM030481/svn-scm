@@ -393,6 +393,14 @@ export class RepoLogProvider
     let removed = false;
     for (const [key, cached] of this.logCache) {
       if (!cached.persisted.userAdded && cached.repo === repository) {
+        const replacement = this.sourceControlManager.repositories.find(
+          candidate => candidate.branchRoot.toString(true) === key
+        );
+        if (replacement) {
+          cached.repo = replacement;
+          cached.svnTarget = replacement.branchRoot;
+          continue;
+        }
         this.logCache.delete(key);
         removed = true;
       }

@@ -257,6 +257,7 @@ suite("Repository history lifecycle", () => {
     const userAdded = { repo: repository, persisted: { userAdded: true } };
     const unrelated = { repo: {}, persisted: {} };
     let refreshes = 0;
+    state.sourceControlManager = { repositories: [] };
     state.logCache = new Map([
       ["automatic", automatic],
       ["user-added", userAdded],
@@ -274,5 +275,34 @@ suite("Repository history lifecycle", () => {
       ]
     );
     assert.equal(refreshes, 1);
+  });
+
+  test("closing a sibling projection transfers its shared history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const closed = { branchRoot };
+    const survivor = { branchRoot };
+    const cached = {
+      entries: [{ revision: "42" }],
+      isComplete: true,
+      repo: closed,
+      svnTarget: branchRoot,
+      persisted: { commitFrom: "HEAD", baseRevision: 42 },
+      order: 2
+    };
+    let refreshes = 0;
+    state.sourceControlManager = { repositories: [survivor] };
+    state.logCache = new Map([[branchRoot.toString(true), cached]]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.removeCachedRepository(closed);
+
+    assert.strictEqual(state.logCache.get(branchRoot.toString(true)), cached);
+    assert.strictEqual(cached.repo, survivor);
+    assert.deepStrictEqual(cached.entries, [{ revision: "42" }]);
+    assert.equal(refreshes, 0);
   });
 });
