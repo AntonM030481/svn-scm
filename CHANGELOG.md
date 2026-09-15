@@ -1,14 +1,46 @@
 # Unreleased
 
-- Fix manual remote refresh with polling disabled, apply SCM display settings
-  without scanning, and validate numeric and regex settings.
-- Match previous-commit authors exactly with bounded history retrieval; document
-  settings application timing and encoding compatibility.
+# [2.21.0](https://github.com/AntonM030481/svn-scm/compare/v2.20.0...v2.21.0) (2026-09-15)
 
-- Restore the previous SCM changes list on startup and quickly validate small
-  known changes before the full working-copy scan.
+Workflow, performance, and architecture release focused on responsive local
+status and predictable multi-root behavior.
 
-# [Unreleased]
+### Features
+
+* Add Git-like file and folder staging, including stage/unstage-all commands,
+  changelist preservation, hidden-file handling, and shared-working-copy
+  coordination (#103, #117, #121, #122, #126, #128).
+
+### Performance Improvements
+
+* Restore the previous SCM changes list on startup, validate small known changes
+  early, and retain authoritative full-status reconciliation (#104, #111).
+* Avoid redundant full status scans during staged operations and index repository
+  routing exclusions for faster ignored-path lookups (#124, #142).
+* Invalidate repository-history caches only for affected repositories while
+  preserving loaded history across multi-root projection ownership changes
+  (#141, #143).
+
+### Bug Fixes
+
+* Apply SCM display, polling, numeric, regex, and author-filter settings
+  consistently at runtime without accidental scans or unbounded history reads.
+* Preserve staging membership across commits, moves, nested folders, hidden
+  descendants, symlinks, external changes, and sibling workspace projections.
+* Keep repository discovery and routing coherent across nested working copies,
+  workspace removal, concurrent discovery, and legacy SVN layouts (#107,
+  #129, #133, #134, #135).
+* Normalize SVN command targets, XML property parsing, error codes, and
+  user-facing failure messages (#132, #136, #137, #138, #139, #140).
+
+### Maintenance
+
+* Centralize operation policy and disposable lifecycle ownership across
+  repositories, commands, views, watchers, and virtual file systems (#130,
+  #131).
+* Restrict integration-test discovery to the intended compiled test directory.
+* Increase resilience of VS Code test-runtime downloads and cache the fixed
+  minimum-version runtime in CI (#145, #146).
 
 # [2.20.0](https://github.com/AntonM030481/svn-scm/compare/v2.19.0...v2.20.0) (2026-09-13)
 

@@ -16,6 +16,31 @@ On reopening a working copy, the extension restores the last changes list while
 refreshing in the background. Small known changes are checked first; the full
 scan then discovers the remaining changes. Large files are left to the full scan.
 
+## Installation without Marketplace
+
+1. Open the latest [GitHub Release](https://github.com/AntonM030481/svn-scm/releases/latest).
+2. Download the `svn-scm-v<version>.vsix` asset.
+3. In VS Code, open **Extensions**, select **Views and More Actions** (`...`),
+   choose **Install from VSIX...**, and select the downloaded file.
+4. Reload VS Code when prompted.
+
+You can also install from a terminal:
+
+```sh
+code --install-extension path/to/svn-scm-v<version>.vsix --force
+```
+
+GitHub-installed VSIX files do not update through Marketplace. Repeat these
+steps with a newer release to update. To remove the extension, use **Uninstall**
+in the Extensions view or run:
+
+```sh
+code --uninstall-extension antonm030481.svn-scm
+```
+
+Disable another SVN SCM extension if it registers the same working copies, to
+avoid duplicate Source Control providers.
+
 ## Windows
 
 If you use [TortoiseSVN](https://tortoisesvn.net/), make sure the option
