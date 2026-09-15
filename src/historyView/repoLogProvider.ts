@@ -217,6 +217,9 @@ export class RepoLogProvider
         item.repo = remRepo;
         item.svnTarget = uri;
       } catch (e) {
+        if (this.disposed) {
+          return;
+        }
         window.showWarningMessage(
           "Failed to add repo: " + (e instanceof Error ? e.message : "")
         );
@@ -229,6 +232,9 @@ export class RepoLogProvider
         item.svnTarget = Uri.parse(svninfo.url);
         item.persisted.baseRevision = parseInt(svninfo.revision, 10);
       } catch (_error) {
+        if (this.disposed) {
+          return;
+        }
         window.showErrorMessage("Failed to resolve svn path");
         return;
       }
