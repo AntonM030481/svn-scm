@@ -323,6 +323,10 @@ suite("Validated repository routing", () => {
         null
       );
       assert.strictEqual(
+        f.manager.getRepository(path.join(root, "external") + path.sep),
+        null
+      );
+      assert.strictEqual(
         f.manager.getRepository(Uri.file(path.join(root, "external-sibling"))),
         owner.repository
       );
