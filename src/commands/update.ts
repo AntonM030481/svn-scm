@@ -27,6 +27,7 @@ export class Update extends Command {
       const allScopes = await workingCopyScopes(repository);
       const operationScopes = await workingCopyOperationScopes(repository);
       const owner = operationScopes[0];
+      await Promise.all(allScopes.map(scope => scope.ensureStatus()));
       const operationMarkers = allScopes.map(scope =>
         scope.markOperation(Operation.Update)
       );

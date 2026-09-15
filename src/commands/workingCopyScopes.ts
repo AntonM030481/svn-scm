@@ -47,6 +47,11 @@ export async function runWorkingCopyOperation<T>(
     for (const scope of operationScopes) {
       results.push(await operation(scope));
     }
+    await Promise.all(
+      allScopes
+        .filter(scope => !operationScopes.includes(scope))
+        .map(scope => scope.status())
+    );
   } catch (error) {
     await Promise.allSettled(allScopes.map(scope => scope.status()));
     throw error;
