@@ -9,8 +9,11 @@ export class Cleanup extends Command {
   }
 
   public async execute(repository: Repository) {
-    await runWorkingCopyOperation(repository, Operation.CleanUp, scope =>
-      scope.cleanup()
+    await runWorkingCopyOperation(
+      repository,
+      Operation.CleanUp,
+      scope => scope.cleanup(),
+      false
     );
   }
 }

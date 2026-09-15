@@ -40,13 +40,16 @@ export async function workingCopyOperationScopes(
 export async function runWorkingCopyOperation<T>(
   repository: Repository,
   operationType: Operation,
-  operation: (scope: Repository) => Promise<T>
+  operation: (scope: Repository) => Promise<T>,
+  validateStatus = true
 ): Promise<T[]> {
   const allScopes = await workingCopyScopes(repository);
   const operationScopes = await workingCopyOperationScopes(repository);
   const results: T[] = [];
   try {
-    await Promise.all(allScopes.map(scope => scope.ensureStatus()));
+    if (validateStatus) {
+      await Promise.all(allScopes.map(scope => scope.ensureStatus()));
+    }
     for (const scope of operationScopes) {
       const siblingMarkers = allScopes
         .filter(candidate => candidate !== scope)
