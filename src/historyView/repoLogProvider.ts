@@ -413,6 +413,9 @@ export class RepoLogProvider
   private cacheRepository(repository: Repository, previous?: ICachedLog): void {
     const remoteRoot = repository.branchRoot;
     const repositoryUrl = remoteRoot.toString(true);
+    if (this.logCache.get(repositoryUrl)?.persisted.userAdded) {
+      return;
+    }
     this.logCache.set(repositoryUrl, {
       entries: [],
       isComplete: false,

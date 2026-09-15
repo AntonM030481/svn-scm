@@ -305,4 +305,35 @@ suite("Repository history lifecycle", () => {
     assert.deepStrictEqual(cached.entries, [{ revision: "42" }]);
     assert.equal(refreshes, 0);
   });
+
+  test("automatic caching preserves a user-added entry for the same URL", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const branchRoot = Uri.parse("https://example.test/svn/shared");
+    const userAdded = {
+      entries: [{ revision: "20" }],
+      isComplete: true,
+      repo: {},
+      svnTarget: branchRoot,
+      persisted: {
+        commitFrom: "20",
+        baseRevision: 20,
+        userAdded: true
+      },
+      order: 1
+    };
+    state.logCache = new Map([[branchRoot.toString(true), userAdded]]);
+
+    state.cacheRepository({
+      branchRoot,
+      repository: { info: { revision: "50" } }
+    });
+
+    assert.strictEqual(
+      state.logCache.get(branchRoot.toString(true)),
+      userAdded
+    );
+  });
 });
