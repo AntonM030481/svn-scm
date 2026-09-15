@@ -41,6 +41,7 @@ import {
   throttle
 } from "./decorators";
 import { exists } from "./fs";
+import { hasCompleteConflictMarkers } from "./conflictMarkers";
 import { configuration } from "./helpers/configuration";
 import OperationsImpl from "./operationsImpl";
 import { getOperationPolicy } from "./operationPolicy";
@@ -1328,6 +1329,10 @@ export class Repository implements IRemoteRepository {
     );
   }
 
+  public getTextConflictInputs(file: string) {
+    return this.repository.getTextConflictInputs(file);
+  }
+
   public async commitFiles(message: string, files: any[]) {
     return this.run(Operation.Commit, () =>
       this.repository.commitFiles(message, files)
@@ -1646,8 +1651,7 @@ export class Repository implements IRemoteRepository {
 
     const text = document.getText();
 
-    // Check for lines begin with "<<<<<<", "=======", ">>>>>>>"
-    if (!/^<{7}[^]+^={7}[^]+^>{7}/m.test(text)) {
+    if (!hasCompleteConflictMarkers(text)) {
       commands.executeCommand("svn.resolved", conflict.resourceUri);
     }
   }

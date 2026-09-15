@@ -175,6 +175,14 @@ has only partially completed.
 - File-system providers expose document content but do not become persistent
   storage or a repository-state authority.
 
+Text conflicts use fresh `svn info --xml` metadata to identify the common base,
+local pre-merge file, incoming base file, and working output. A small adapter
+opens VS Code's merge editor when its internal command is available. Because
+that command is not a public extension API, failure or absence falls back to
+opening the working file with the normal conflict-marker experience. Tree,
+property, or incomplete conflicts always use that fallback. The SVN CLI remains
+the authority for marking the result resolved.
+
 Crossing one of these boundaries should be treated as an architecture change,
 not as a local refactor.
 

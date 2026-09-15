@@ -17,6 +17,7 @@ async function main(): Promise<void> {
   mocha.addFile(path.resolve(__dirname, "propertyParser.test.js"));
   mocha.addFile(path.resolve(__dirname, "commitMessageHtml.test.js"));
   mocha.addFile(path.resolve(__dirname, "stagingModel.test.js"));
+  mocha.addFile(path.resolve(__dirname, "conflictWorkflow.test.js"));
 
   mocha.addFile(path.resolve(__dirname, "settingsDocumentation.test.js"));
   mocha.addFile(path.resolve(__dirname, "settingValues.test.js"));

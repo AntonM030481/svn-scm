@@ -41,6 +41,15 @@ code --uninstall-extension antonm030481.svn-scm
 Disable another SVN SCM extension if it registers the same working copies, to
 avoid duplicate Source Control providers.
 
+## Resolving conflicts
+
+Select a text-conflicted file in Source Control to open VS Code's three-way
+merge editor. The result remains conflicted in SVN until you save it without
+conflict markers and confirm that it should be marked resolved, or run
+**SVN: Resolve conflicts for selected** and choose an explicit SVN resolution.
+Tree and property conflicts open in the normal editor and retain the explicit
+SVN resolution commands.
+
 ## Windows
 
 If you use [TortoiseSVN](https://tortoisesvn.net/), make sure the option

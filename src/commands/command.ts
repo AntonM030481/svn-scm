@@ -20,6 +20,7 @@ import {
   LineChange
 } from "../common/types";
 import { exists, readFile, stat, unlink } from "../fs";
+import { hasCompleteConflictMarkers } from "../conflictMarkers";
 import { inputIgnoreList } from "../ignoreitems";
 import { applyLineChanges } from "../lineChanges";
 import { SourceControlManager } from "../source_control_manager";
@@ -291,8 +292,7 @@ export abstract class Command implements Disposable {
         encoding: "utf8"
       })) as string;
 
-      // Check for lines begin with "<<<<<<", "=======", ">>>>>>>"
-      if (/^<{7}[^]+^={7}[^]+^>{7}/m.test(text)) {
+      if (hasCompleteConflictMarkers(text)) {
         return undefined;
       }
     }

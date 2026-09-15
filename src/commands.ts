@@ -19,6 +19,7 @@ import { OpenChangeHead } from "./commands/openChangeHead";
 import { OpenChangePrev } from "./commands/openChangePrev";
 import { OpenFile } from "./commands/openFile";
 import { OpenHeadFile } from "./commands/openHeadFile";
+import { OpenMergeEditor } from "./commands/openMergeEditor";
 import { OpenResourceBase } from "./commands/openResourceBase";
 import { OpenResourceHead } from "./commands/openResourceHead";
 import { Patch } from "./commands/patch";
@@ -107,6 +108,7 @@ export function registerCommands(
   disposables.push(new DeleteUnversioned());
   disposables.push(new OpenChangeHead());
   disposables.push(new OpenHeadFile());
+  disposables.push(new OpenMergeEditor());
   disposables.push(new RevertAll());
   disposables.push(new PickCommitMessage(sourceControlManager.svn.version));
   disposables.push(new RevertExplorer());

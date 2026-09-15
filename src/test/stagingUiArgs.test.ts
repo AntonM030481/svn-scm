@@ -400,6 +400,13 @@ suite("Staging UI Argument Tests", () => {
     svn(["update"], checkout.fsPath);
     await repository.fullStatus();
 
+    const conflictInputs =
+      await repository.getTextConflictInputs(conflictedFile);
+    assert.ok(conflictInputs);
+    assert.equal(fs.readFileSync(conflictInputs.current, "utf8"), "local\n");
+    assert.equal(fs.readFileSync(conflictInputs.incoming, "utf8"), "remote\n");
+    assert.equal(fs.readFileSync(conflictInputs.base, "utf8"), "base\n");
+
     assert.equal(
       repository.conflicts.resourceStates.some(
         resource => resource.resourceUri.fsPath === conflictedFile
