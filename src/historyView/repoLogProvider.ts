@@ -130,6 +130,15 @@ export class RepoLogProvider
         ),
       () => commands.registerCommand("svn.repolog.refresh", this.refresh, this),
       () =>
+        this.sourceControlManager.onDidOpenRepository(repository => {
+          this.cacheRepository(repository);
+          this._onDidChangeTreeData.fire(undefined);
+        }),
+      () =>
+        this.sourceControlManager.onDidCloseRepository(repository => {
+          this.removeCachedRepository(repository);
+        }),
+      () =>
         this.sourceControlManager.onDidChangeRepository(
           (event: RepositoryChangeEvent) => {
             this.refreshRepository(event.repository);
@@ -369,18 +378,28 @@ export class RepoLogProvider
   }
 
   private refreshRepository(repository: Repository): void {
-    const repositoryUrl = repository.branchRoot.toString(true);
     let previous: ICachedLog | undefined;
     for (const [key, cached] of this.logCache) {
       if (!cached.persisted.userAdded && cached.repo === repository) {
-        if (key === repositoryUrl) {
-          previous = cached;
-        }
+        previous = cached;
         this.logCache.delete(key);
       }
     }
     this.cacheRepository(repository, previous);
     this._onDidChangeTreeData.fire(undefined);
+  }
+
+  private removeCachedRepository(repository: Repository): void {
+    let removed = false;
+    for (const [key, cached] of this.logCache) {
+      if (!cached.persisted.userAdded && cached.repo === repository) {
+        this.logCache.delete(key);
+        removed = true;
+      }
+    }
+    if (removed) {
+      this._onDidChangeTreeData.fire(undefined);
+    }
   }
 
   private cacheRepository(repository: Repository, previous?: ICachedLog): void {
@@ -391,8 +410,8 @@ export class RepoLogProvider
       isComplete: false,
       repo: repository,
       svnTarget: remoteRoot,
-      persisted: previous?.persisted ?? {
-        commitFrom: "HEAD",
+      persisted: {
+        commitFrom: previous?.persisted.commitFrom ?? "HEAD",
         baseRevision: parseInt(repository.repository.info.revision, 10)
       },
       order: previous?.order ?? this.logCache.size

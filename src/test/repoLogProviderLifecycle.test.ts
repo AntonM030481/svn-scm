@@ -163,7 +163,7 @@ suite("Repository history lifecycle", () => {
     const state = provider as any;
     const changedRepository = {
       branchRoot: Uri.parse("https://example.test/svn/changed"),
-      repository: { info: { revision: "42" } }
+      repository: { info: { revision: "45" } }
     };
     const unrelatedRepository = {
       branchRoot: Uri.parse("https://example.test/svn/unrelated"),
@@ -200,11 +200,78 @@ suite("Repository history lifecycle", () => {
     );
     assert.notStrictEqual(refreshed, changed);
     assert.deepStrictEqual(refreshed.entries, []);
-    assert.strictEqual(refreshed.persisted, persisted);
+    assert.deepStrictEqual(refreshed.persisted, {
+      commitFrom: "100",
+      baseRevision: 45
+    });
     assert.equal(refreshed.order, 3);
     assert.strictEqual(
       state.logCache.get(unrelatedRepository.branchRoot.toString(true)),
       unrelated
+    );
+    assert.equal(refreshes, 1);
+  });
+
+  test("repository URL changes preserve cache ordering", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const repository = {
+      branchRoot: Uri.parse("https://example.test/svn/switched"),
+      repository: { info: { revision: "50" } }
+    };
+    state.logCache = new Map([
+      [
+        "https://example.test/svn/original",
+        {
+          entries: [],
+          isComplete: true,
+          repo: repository,
+          svnTarget: Uri.parse("https://example.test/svn/original"),
+          persisted: { commitFrom: "40", baseRevision: 42 },
+          order: 3
+        }
+      ]
+    ]);
+    state._onDidChangeTreeData = { fire() {} };
+
+    state.refreshRepository(repository);
+
+    const refreshed = state.logCache.get(repository.branchRoot.toString(true));
+    assert.equal(state.logCache.size, 1);
+    assert.equal(refreshed.order, 3);
+    assert.deepStrictEqual(refreshed.persisted, {
+      commitFrom: "40",
+      baseRevision: 50
+    });
+  });
+
+  test("closing a repository removes only its automatic history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const repository = {};
+    const automatic = { repo: repository, persisted: {} };
+    const userAdded = { repo: repository, persisted: { userAdded: true } };
+    const unrelated = { repo: {}, persisted: {} };
+    let refreshes = 0;
+    state.logCache = new Map([
+      ["automatic", automatic],
+      ["user-added", userAdded],
+      ["unrelated", unrelated]
+    ]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.removeCachedRepository(repository);
+
+    assert.deepStrictEqual(
+      [...state.logCache.entries()],
+      [
+        ["user-added", userAdded],
+        ["unrelated", unrelated]
+      ]
     );
     assert.equal(refreshes, 1);
   });
