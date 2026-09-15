@@ -239,7 +239,10 @@ suite("Source control manager lifecycle", () => {
       sourceControl: {},
       onDidChangeState: state.event,
       onDidChangeStatus: status.event,
+      onDidRebuildStatusProjection: status.event,
       onDidChangeRepository: changed.event,
+      statusExternal: [],
+      statusIgnored: [],
       dispose: () => {
         disposed++;
         state.fire(RepositoryState.Disposed);
@@ -268,7 +271,7 @@ suite("Source control manager lifecycle", () => {
       ({ uri: Uri.file(root) }) as WorkspaceFolder;
     const disposed: string[] = [];
     const entry = (workspaceRoot: string) => ({
-      repository: { workspaceRoot },
+      repository: { workspaceRoot, statusExternal: [], statusIgnored: [] },
       dispose: () => disposed.push(workspaceRoot)
     });
     const removedRoot = Uri.file("/workspace/removed").fsPath;
@@ -407,11 +410,19 @@ suite("Source control manager lifecycle", () => {
       ).openRepositories.filter((candidate: any) => candidate !== entry);
     };
     second = {
-      repository: { workspaceRoot: secondRoot },
+      repository: {
+        workspaceRoot: secondRoot,
+        statusExternal: [],
+        statusIgnored: []
+      },
       dispose: () => close(second, secondRoot)
     };
     first = {
-      repository: { workspaceRoot: firstRoot },
+      repository: {
+        workspaceRoot: firstRoot,
+        statusExternal: [],
+        statusIgnored: []
+      },
       dispose: () => {
         close(first, firstRoot);
         second.dispose();

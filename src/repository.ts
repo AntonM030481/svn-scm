@@ -69,7 +69,6 @@ import {
   filterEvent,
   getSvnDir,
   isDescendant,
-  normalizePath,
   timeout,
   toDisposable
 } from "./util";
@@ -89,7 +88,6 @@ export class Repository implements IRemoteRepository {
   public conflicts: ISvnResourceGroup;
   public statusIgnored: IFileStatus[] = [];
   public statusExternal: IFileStatus[] = [];
-  private routingExclusionRoots = new Set<string>();
   private disposables: Disposable[] = [];
   public currentBranch = "";
   public remoteChangedFiles: number = 0;
@@ -880,8 +878,6 @@ export class Repository implements IRemoteRepository {
       }
     }
 
-    this.refreshRoutingExclusions();
-
     this.changes.resourceStates = changes;
     this.conflicts.resourceStates = conflicts;
 
@@ -980,28 +976,6 @@ export class Repository implements IRemoteRepository {
       this.sourceControl.quickDiffProvider = this;
     } else if (publishStatus) {
       this._onDidChangeStatus.fire();
-    }
-  }
-
-  private refreshRoutingExclusions(): void {
-    this.routingExclusionRoots = new Set(
-      [...this.statusExternal, ...this.statusIgnored].map(status =>
-        normalizePath(path.join(this.workspaceRoot, status.path))
-      )
-    );
-  }
-
-  public isPathExcludedFromRouting(filePath: string): boolean {
-    let candidate = normalizePath(filePath);
-    while (true) {
-      if (this.routingExclusionRoots.has(candidate)) {
-        return true;
-      }
-      const parent = path.dirname(candidate);
-      if (parent === candidate) {
-        return false;
-      }
-      candidate = parent;
     }
   }
 
@@ -1821,7 +1795,6 @@ export class Repository implements IRemoteRepository {
     this._onDidDispose.fire();
     this._onDidDispose.dispose();
     this._onDidRebuildStatusProjection?.dispose();
-    this.routingExclusionRoots?.clear();
     cancelDebounces(this);
     this.disposables = dispose(this.disposables);
   }

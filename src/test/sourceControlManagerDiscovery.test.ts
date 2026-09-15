@@ -47,8 +47,7 @@ suite("Source control repository discovery", () => {
           workspaceRoot,
           root: workspaceRoot,
           statusExternal: [],
-          statusIgnored: [],
-          isPathExcludedFromRouting: () => false
+          statusIgnored: []
         });
         const parent = makeRepository("/parent");
         const child = makeRepository("/parent/child");
@@ -105,8 +104,16 @@ suite("Source control repository discovery", () => {
     manager.disposed = false;
     manager.lifecycleGeneration = 0;
     manager._svn = { version: "1.6.23" };
-    const first = { workspaceRoot: "/parent/first" };
-    const second = { workspaceRoot: "/parent/second" };
+    const first = {
+      workspaceRoot: "/parent/first",
+      statusExternal: [],
+      statusIgnored: []
+    };
+    const second = {
+      workspaceRoot: "/parent/second",
+      statusExternal: [],
+      statusIgnored: []
+    };
     manager.provisionalLegacyRepositories = new WeakSet([first, second]);
     let parentDisposals = 0;
     manager.openRepositories = [
@@ -270,8 +277,7 @@ suite("Source control repository discovery", () => {
               root: legacyParent ? path.dirname(root) : root,
               workspaceRoot: legacyParent ? path.dirname(root) : root,
               statusExternal: [],
-              statusIgnored: [],
-              isPathExcludedFromRouting: () => false
+              statusIgnored: []
             }
           });
           return {};
@@ -449,7 +455,14 @@ suite("Source control repository discovery", () => {
     (manager as any).disposed = false;
     (manager as any).lifecycleGeneration = 0;
     (manager as any).openRepositories = [
-      { repository: { root, workspaceRoot: root } }
+      {
+        repository: {
+          root,
+          workspaceRoot: root,
+          statusExternal: [],
+          statusIgnored: []
+        }
+      }
     ];
     (manager as any).eventuallyScanPossibleSvnRepository = (
       candidate: string
