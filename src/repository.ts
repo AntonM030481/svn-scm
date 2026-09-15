@@ -1379,6 +1379,12 @@ export class Repository implements IRemoteRepository {
     return this.run(Operation.Patch, () => this.repository.patch(files));
   }
 
+  public async patchFromRoot(files: string[]) {
+    return this.run(Operation.Patch, () =>
+      this.repository.patchFromRoot(files)
+    );
+  }
+
   public async patchBuffer(files: string[]) {
     return this.run(Operation.Patch, () => this.repository.patchBuffer(files));
   }

@@ -718,6 +718,18 @@ export class Repository {
     return message;
   }
 
+  public async patchFromRoot(files: string[]) {
+    files = files.map(file =>
+      fixPegRevision(fixPathSeparator(path.relative(this.root, file)))
+    );
+    const result = await this.svn.exec(
+      this.root,
+      ["diff", "--internal-diff", ...files],
+      { username: this.username, password: this.password }
+    );
+    return result.stdout;
+  }
+
   public async patchBuffer(files: string[]) {
     files = files.map(file => this.removeAbsolutePath(file));
     const result = await this.execBuffer(["diff", "--internal-diff", ...files]);

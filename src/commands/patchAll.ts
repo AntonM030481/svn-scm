@@ -10,20 +10,16 @@ export class PatchAll extends Command {
   public async execute(repository: Repository) {
     const scopes = await workingCopyScopes(repository);
     await Promise.all(scopes.map(scope => scope.ensureStatus()));
-    const contents: string[] = [];
     const resources = uniqueScopeResources(scopes, scope => [
       ...(scope.staged?.resourceStates ?? []),
       ...scope.changes.resourceStates,
       ...scope.conflicts.resourceStates,
       ...[...scope.changelists.values()].flatMap(group => group.resourceStates)
     ]);
-    for (const scope of scopes) {
-      const paths = resources
-        .filter(item => item.scope === scope)
-        .map(item => item.resource.resourceUri.fsPath);
-      if (paths.length) contents.push(await scope.patch(paths));
-    }
-    const content = contents.join("\n");
+    if (!resources.length) return;
+    const content = await repository.patchFromRoot(
+      resources.map(item => item.resource.resourceUri.fsPath)
+    );
     if (!content) return;
     await this.showDiffPath(repository, content);
   }

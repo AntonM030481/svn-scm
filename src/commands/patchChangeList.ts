@@ -36,14 +36,10 @@ export class PatchChangeList extends Command {
       scopes,
       scope => scope.changelists.get(changelistName)?.resourceStates ?? []
     );
-    const contents: string[] = [];
-    for (const scope of scopes) {
-      const paths = resources
-        .filter(item => item.scope === scope)
-        .map(item => item.resource.resourceUri.fsPath);
-      if (paths.length) contents.push(await scope.patch(paths));
-    }
-    const content = contents.join("\n");
+    if (!resources.length) return;
+    const content = await repository.patchFromRoot(
+      resources.map(item => item.resource.resourceUri.fsPath)
+    );
     await this.showDiffPath(repository, content);
   }
 }
