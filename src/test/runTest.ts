@@ -8,6 +8,7 @@ async function main() {
   try {
     await runTests({
       version: process.env.CODE_VERSION,
+      timeout: 120_000,
       extensionDevelopmentPath,
       extensionTestsPath
     });

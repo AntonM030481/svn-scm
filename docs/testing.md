@@ -53,6 +53,10 @@ yarn test:integration
 ```
 
 If `CODE_VERSION` is absent, `@vscode/test-electron` chooses its default.
+Downloads allow up to two minutes without incoming data so transient CDN stalls
+do not abort large test-runtime archives. CI caches the fixed minimum-version
+runtime by operating system and architecture; the moving `stable` target is not
+cached under a permanent key.
 
 ## CI matrix
 
