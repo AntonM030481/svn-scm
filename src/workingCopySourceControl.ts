@@ -154,12 +154,20 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
       this.remoteChanges.resourceStates = remote;
     }
 
+    const ignoreOnStatusCount = configuration.get<string[]>(
+      "sourceControl.ignoreOnStatusCount"
+    );
+    const countedChangelists = [...this.changelists]
+      .filter(([name]) => !ignoreOnStatusCount.includes(name))
+      .flatMap(([, group]) => group.resourceStates);
     this.sourceControl.count = uniqueResources([
       ...this.staged.resourceStates,
       ...this.changes.resourceStates,
       ...this.conflicts.resourceStates,
-      ...this.unversioned.resourceStates,
-      ...[...this.changelists.values()].flatMap(group => group.resourceStates)
+      ...(configuration.get<boolean>("sourceControl.countUnversioned", false)
+        ? this.unversioned.resourceStates
+        : []),
+      ...countedChangelists
     ]).length;
     this.enableQuickDiff();
     this.sourceControl.acceptInputCommand = {

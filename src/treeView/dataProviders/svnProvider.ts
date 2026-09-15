@@ -54,7 +54,7 @@ export default class SvnProvider
     }
 
     const repositories = this.sourceControlManager.workingCopies.map(
-      workingCopy => new RepositoryNode(workingCopy.scopes[0], this)
+      workingCopy => new RepositoryNode(workingCopy.scopes, this)
     );
 
     return repositories;

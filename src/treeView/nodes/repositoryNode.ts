@@ -8,16 +8,16 @@ import IncomingChangesNode from "./incomingChangesNode";
 
 export default class RepositoryNode implements BaseNode {
   constructor(
-    private repository: Repository,
+    private repositories: Repository[],
     private svnProvider: SvnProvider
   ) {
-    repository.onDidChangeStatus(() => {
-      this.svnProvider.update(this);
-    });
+    repositories.forEach(repository =>
+      repository.onDidChangeStatus(() => this.svnProvider.update(this))
+    );
   }
 
   get label() {
-    return path.basename(this.repository.workspaceRoot);
+    return path.basename(this.repositories[0].root);
   }
 
   public getTreeItem(): TreeItem {
@@ -31,6 +31,6 @@ export default class RepositoryNode implements BaseNode {
   }
 
   public async getChildren(): Promise<BaseNode[]> {
-    return [new IncomingChangesNode(this.repository)];
+    return [new IncomingChangesNode(this.repositories)];
   }
 }

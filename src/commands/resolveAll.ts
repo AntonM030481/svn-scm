@@ -3,6 +3,7 @@ import { getConflictPickOptions } from "../conflictItems";
 import { Repository } from "../repository";
 import { getDisplayErrorMessage } from "../svnError";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 export class ResolveAll extends Command {
   constructor() {
@@ -10,8 +11,9 @@ export class ResolveAll extends Command {
   }
 
   public async execute(repository: Repository) {
-    await repository.ensureStatus();
-    const conflicts = repository.conflicts.resourceStates;
+    const scopes = await workingCopyScopes(repository);
+    await Promise.all(scopes.map(scope => scope.ensureStatus()));
+    const conflicts = scopes.flatMap(scope => scope.conflicts.resourceStates);
 
     if (!conflicts.length) {
       window.showInformationMessage("No Conflicts");
@@ -28,7 +30,11 @@ export class ResolveAll extends Command {
       }
 
       try {
-        const response = await repository.resolve(
+        const owner = scopes.find(scope =>
+          scope.conflicts.resourceStates.includes(conflict)
+        );
+        if (!owner) continue;
+        const response = await owner.resolve(
           [conflict.resourceUri.path],
           choice.label
         );

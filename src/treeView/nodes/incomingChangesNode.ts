@@ -6,7 +6,7 @@ import IncomingChangeNode from "./incomingChangeNode";
 import NoIncomingChangesNode from "./noIncomingChangesNode";
 
 export default class IncomingChangesNode implements BaseNode {
-  constructor(private repository: Repository) {}
+  constructor(private repositories: Repository[]) {}
 
   public getTreeItem(): TreeItem {
     const item = new TreeItem(
@@ -22,18 +22,18 @@ export default class IncomingChangesNode implements BaseNode {
   }
 
   public async getChildren(): Promise<BaseNode[]> {
-    if (!this.repository.remoteChanges) {
-      return [];
-    }
-
-    const changes = this.repository.remoteChanges.resourceStates.map(
-      remoteChange => {
+    const seen = new Set<string>();
+    const changes = this.repositories.flatMap(repository =>
+      (repository.remoteChanges?.resourceStates ?? []).flatMap(remoteChange => {
+        const key = remoteChange.resourceUri.toString();
+        if (seen.has(key)) return [];
+        seen.add(key);
         return new IncomingChangeNode(
           remoteChange.resourceUri,
           remoteChange.type,
-          this.repository
+          repository
         );
-      }
+      })
     );
 
     if (changes.length === 0) {

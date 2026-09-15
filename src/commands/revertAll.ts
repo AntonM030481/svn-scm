@@ -2,6 +2,7 @@ import { window } from "vscode";
 import { ISvnResourceGroup } from "../common/types";
 import { checkAndPromptDepth, confirmRevert } from "../input/revert";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 export class RevertAll extends Command {
   constructor() {
@@ -11,14 +12,9 @@ export class RevertAll extends Command {
   public async execute(resourceGroup: ISvnResourceGroup) {
     const owner = resourceGroup.repository;
     if (owner) {
-      await owner.ensureStatus();
-      resourceGroup =
-        [
-          owner.changes,
-          owner.conflicts,
-          owner.unversioned,
-          ...owner.changelists.values()
-        ].find(group => group.id === resourceGroup.id) || resourceGroup;
+      await Promise.all(
+        (await workingCopyScopes(owner)).map(scope => scope.ensureStatus())
+      );
     }
     const resourceStates = resourceGroup.resourceStates;
 

@@ -162,11 +162,11 @@ export class SourceControlManager implements IDisposable {
   }
 
   public repositoriesForWorkingCopy(repository: Repository): Repository[] {
-    return (
-      this.workingCopySourceControls?.get(
+    return [
+      ...(this.workingCopySourceControls?.get(
         normalizeWorkingCopyRoot(repository.root)
-      )?.scopes ?? [repository]
-    );
+      )?.scopes ?? [repository])
+    ];
   }
 
   public get openRepositories(): IOpenRepository[] {
