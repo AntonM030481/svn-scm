@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { window } from "vscode";
+import { Uri, window } from "vscode";
 import { RepoLogProvider } from "../historyView/repoLogProvider";
 
 suite("Repository history lifecycle", () => {
@@ -154,5 +154,58 @@ suite("Repository history lifecycle", () => {
       "event"
     ]);
     assert.equal(state.logCache.size, 0);
+  });
+
+  test("repository changes invalidate only the matching history cache", () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const changedRepository = {
+      branchRoot: Uri.parse("https://example.test/svn/changed"),
+      repository: { info: { revision: "42" } }
+    };
+    const unrelatedRepository = {
+      branchRoot: Uri.parse("https://example.test/svn/unrelated"),
+      repository: { info: { revision: "7" } }
+    };
+    const persisted = { commitFrom: "100", baseRevision: 42 };
+    const changed = {
+      entries: [{ revision: "100" }],
+      isComplete: true,
+      repo: changedRepository,
+      svnTarget: changedRepository.branchRoot,
+      persisted,
+      order: 3
+    };
+    const unrelated = {
+      entries: [{ revision: "7" }],
+      isComplete: true,
+      repo: unrelatedRepository,
+      svnTarget: unrelatedRepository.branchRoot,
+      persisted: { commitFrom: "HEAD", baseRevision: 7 },
+      order: 4
+    };
+    let refreshes = 0;
+    state.logCache = new Map([
+      [changedRepository.branchRoot.toString(true), changed],
+      [unrelatedRepository.branchRoot.toString(true), unrelated]
+    ]);
+    state._onDidChangeTreeData = { fire: () => refreshes++ };
+
+    state.refreshRepository(changedRepository);
+
+    const refreshed = state.logCache.get(
+      changedRepository.branchRoot.toString(true)
+    );
+    assert.notStrictEqual(refreshed, changed);
+    assert.deepStrictEqual(refreshed.entries, []);
+    assert.strictEqual(refreshed.persisted, persisted);
+    assert.equal(refreshed.order, 3);
+    assert.strictEqual(
+      state.logCache.get(unrelatedRepository.branchRoot.toString(true)),
+      unrelated
+    );
+    assert.equal(refreshes, 1);
   });
 });

@@ -131,9 +131,8 @@ export class RepoLogProvider
       () => commands.registerCommand("svn.repolog.refresh", this.refresh, this),
       () =>
         this.sourceControlManager.onDidChangeRepository(
-          async (_e: RepositoryChangeEvent) => {
-            return this.refresh();
-            // TODO refresh only required repo, need to pass element === getChildren()
+          (event: RepositoryChangeEvent) => {
+            this.refreshRepository(event.repository);
           }
         )
     );
@@ -355,24 +354,7 @@ export class RepoLogProvider
         }
       }
       for (const repo of this.sourceControlManager.repositories) {
-        const remoteRoot = repo.branchRoot;
-        const repoUrl = remoteRoot.toString(true);
-        let persisted: ICachedLog["persisted"] = {
-          commitFrom: "HEAD",
-          baseRevision: parseInt(repo.repository.info.revision, 10)
-        };
-        const prev = this.logCache.get(repoUrl);
-        if (prev) {
-          persisted = prev.persisted;
-        }
-        this.logCache.set(repoUrl, {
-          entries: [],
-          isComplete: false,
-          repo,
-          svnTarget: remoteRoot,
-          persisted,
-          order: this.logCache.size
-        });
+        this.cacheRepository(repo);
       }
     } else if (element.kind === LogTreeItemKind.Repo) {
       const cached = this.getCached(element);
@@ -384,6 +366,37 @@ export class RepoLogProvider
       }
     }
     this._onDidChangeTreeData.fire(element);
+  }
+
+  private refreshRepository(repository: Repository): void {
+    const repositoryUrl = repository.branchRoot.toString(true);
+    let previous: ICachedLog | undefined;
+    for (const [key, cached] of this.logCache) {
+      if (!cached.persisted.userAdded && cached.repo === repository) {
+        if (key === repositoryUrl) {
+          previous = cached;
+        }
+        this.logCache.delete(key);
+      }
+    }
+    this.cacheRepository(repository, previous);
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  private cacheRepository(repository: Repository, previous?: ICachedLog): void {
+    const remoteRoot = repository.branchRoot;
+    const repositoryUrl = remoteRoot.toString(true);
+    this.logCache.set(repositoryUrl, {
+      entries: [],
+      isComplete: false,
+      repo: repository,
+      svnTarget: remoteRoot,
+      persisted: previous?.persisted ?? {
+        commitFrom: "HEAD",
+        baseRevision: parseInt(repository.repository.info.revision, 10)
+      },
+      order: previous?.order ?? this.logCache.size
+    });
   }
 
   public async getTreeItem(element: ILogTreeItem): Promise<TreeItem> {
