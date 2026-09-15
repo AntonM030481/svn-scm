@@ -930,6 +930,10 @@ export class SourceControlManager implements IDisposable {
       this._onDidChangeStatusRepository.fire(repository);
     });
 
+    const projectionListener = repository.onDidRebuildStatusProjection(() => {
+      this.repositoryRegistry.refreshExclusions(repository);
+    });
+
     const statusListener = repository.onDidChangeStatus(() => {
       this.scanNestedRepositories(repository);
     });
@@ -942,6 +946,7 @@ export class SourceControlManager implements IDisposable {
       disappearListener.dispose();
       changeListener.dispose();
       changeStatus.dispose();
+      projectionListener.dispose();
       statusListener.dispose();
       repository.dispose();
 

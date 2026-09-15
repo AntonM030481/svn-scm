@@ -2,12 +2,13 @@ import * as path from "path";
 import { Uri } from "vscode";
 import { IOpenRepository } from "./common/types";
 import { Repository } from "./repository";
-import { isDescendant } from "./util";
+import { isDescendant, normalizePath } from "./util";
 
 export class RepositoryRegistry {
   private entries: IOpenRepository[] = [];
   private sortedEntries?: IOpenRepository[];
   private sortedSource?: IOpenRepository[];
+  private exclusions = new WeakMap<Repository, Set<string>>();
 
   public get openRepositories(): IOpenRepository[] {
     return this.entries;
@@ -15,6 +16,10 @@ export class RepositoryRegistry {
 
   public set openRepositories(entries: IOpenRepository[]) {
     this.entries = entries;
+    this.exclusions = new WeakMap();
+    for (const entry of entries) {
+      this.refreshExclusions(entry.repository);
+    }
     this.invalidate();
   }
 
@@ -24,12 +29,23 @@ export class RepositoryRegistry {
 
   public add(entry: IOpenRepository): void {
     this.entries.push(entry);
+    this.refreshExclusions(entry.repository);
     this.invalidate();
   }
 
   public remove(entry: IOpenRepository): void {
     this.entries = this.entries.filter(candidate => candidate !== entry);
+    this.exclusions.delete(entry.repository);
     this.invalidate();
+  }
+
+  public refreshExclusions(repository: Repository): void {
+    const roots = new Set(
+      [...repository.statusExternal, ...repository.statusIgnored].map(status =>
+        normalizePath(path.join(repository.workspaceRoot, status.path))
+      )
+    );
+    this.exclusions.set(repository, roots);
   }
 
   public deepestFirst(): IOpenRepository[] {
@@ -91,14 +107,18 @@ export class RepositoryRegistry {
   }
 
   private isExcluded(entry: IOpenRepository, filePath: string): boolean {
-    const { repository } = entry;
-    const containsPath = (status: { path: string }) =>
-      isDescendant(path.join(repository.workspaceRoot, status.path), filePath);
-
-    return (
-      repository.statusExternal.some(containsPath) ||
-      repository.statusIgnored.some(containsPath)
-    );
+    const roots = this.exclusions.get(entry.repository);
+    let candidate = normalizePath(path.resolve(normalizePath(filePath)));
+    while (true) {
+      if (roots?.has(candidate)) {
+        return true;
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return false;
+      }
+      candidate = parent;
+    }
   }
 
   private invalidate(): void {

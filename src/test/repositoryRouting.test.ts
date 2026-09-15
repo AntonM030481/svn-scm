@@ -36,6 +36,7 @@ suite("Validated repository routing", () => {
         workspaceRoot: root,
         statusExternal: [],
         statusIgnored: [],
+        onDidRebuildStatusProjection: status.event,
         isInitialStatusPending: false,
         initialStatusSettled: Promise.resolve(),
         ensureStatus: async () => undefined,
@@ -274,6 +275,7 @@ suite("Validated repository routing", () => {
       const ancestor = f.add(root);
       const nested = f.add(path.join(root, "nested"));
       nested.repository[boundary] = [{ path: "blocked" }];
+      nested.status.fire();
       const uri = Uri.file(path.join(root, "nested", "blocked", "file.txt"));
       try {
         assert.strictEqual(f.manager.getRepository(uri), null);
@@ -291,6 +293,57 @@ suite("Validated repository routing", () => {
       }
     });
   }
+
+  test("registry indexes routing exclusions independently of status arrays", () => {
+    const f = fixture();
+    const owner = f.add(root);
+    owner.repository.statusExternal = [{ path: "external" }];
+    owner.repository.statusIgnored = [{ path: path.join("ignored", "nested") }];
+    owner.status.fire();
+
+    owner.repository.statusExternal = new Proxy([], {
+      get() {
+        throw new Error("routing lookup scanned statusExternal");
+      }
+    });
+    owner.repository.statusIgnored = new Proxy([], {
+      get() {
+        throw new Error("routing lookup scanned statusIgnored");
+      }
+    });
+    try {
+      assert.strictEqual(
+        f.manager.getRepository(
+          Uri.file(path.join(root, "external", "file.txt"))
+        ),
+        null
+      );
+      assert.strictEqual(
+        f.manager.getRepository(Uri.file(path.join(root, "ignored", "nested"))),
+        null
+      );
+      assert.strictEqual(
+        f.manager.getRepository(path.join(root, "external") + path.sep),
+        null
+      );
+      const alternateSeparator = path.sep === "/" ? "\\" : "/";
+      assert.strictEqual(
+        f.manager.getRepository(
+          path
+            .join(root, "external", "file.txt")
+            .split(path.sep)
+            .join(alternateSeparator)
+        ),
+        null
+      );
+      assert.strictEqual(
+        f.manager.getRepository(Uri.file(path.join(root, "external-sibling"))),
+        owner.repository
+      );
+    } finally {
+      f.dispose();
+    }
+  });
 
   test("a failed nested validation never retries through the parent", async () => {
     const f = fixture();
