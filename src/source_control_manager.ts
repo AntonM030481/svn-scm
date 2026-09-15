@@ -1036,13 +1036,14 @@ export class SourceControlManager implements IDisposable {
       throw new Error("There are no available repositories");
     }
 
-    const picks: any[] = this.workingCopies.map(workingCopy => {
+    const picks: any[] = this.repositories.map(repository => {
       return {
-        label: path.basename(workingCopy.root),
-        repository: workingCopy.scopes[0]
+        label: path.basename(repository.workspaceRoot),
+        description: repository.workspaceRoot,
+        repository
       };
     });
-    const placeHolder = "Choose a repository";
+    const placeHolder = "Choose an opened folder";
     const pick = await window.showQuickPick(picks, { placeHolder });
 
     return pick && pick.repository;

@@ -5,6 +5,7 @@ import {
   EventEmitter,
   ExtensionContext,
   Uri,
+  window,
   workspace,
   WorkspaceFolder
 } from "vscode";
@@ -460,5 +461,37 @@ suite("Source control manager lifecycle", () => {
     });
 
     assert.equal(scans, 1);
+  });
+
+  test("repository picker preserves workspace scope selection", async () => {
+    const first = {
+      root: "/workspace/wc",
+      workspaceRoot: "/workspace/wc/first",
+      statusExternal: [],
+      statusIgnored: []
+    };
+    const second = {
+      root: "/workspace/wc",
+      workspaceRoot: "/workspace/wc/second",
+      statusExternal: [],
+      statusIgnored: []
+    };
+    (manager as any).openRepositories = [
+      { repository: first, dispose: () => undefined },
+      { repository: second, dispose: () => undefined }
+    ];
+    let picks: any[] = [];
+    stub(window, "showQuickPick", async (items: any[]) => {
+      picks = items;
+      return items[1];
+    });
+
+    const selected = await manager.pickRepository();
+
+    assert.strictEqual(selected, second);
+    assert.deepStrictEqual(
+      picks.map(pick => pick.label),
+      ["first", "second"]
+    );
   });
 });

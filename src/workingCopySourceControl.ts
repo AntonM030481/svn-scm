@@ -267,10 +267,7 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
     }
 
     const busy = this.scopes.some(scope => !scope.operations.isIdle());
-    const remote = this.scopes.reduce(
-      (total, scope) => total + scope.remoteChangedFiles,
-      0
-    );
+    const remote = this.remoteChanges?.resourceStates.length ?? 0;
     commands.push({
       command: busy ? "" : "svn.update",
       title: busy ? "$(sync~spin)" : `$(sync)${remote ? ` ${remote}↓` : ""}`,
