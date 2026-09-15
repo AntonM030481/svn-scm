@@ -1,4 +1,5 @@
 import { Repository } from "../repository";
+import { Operation } from "../common/types";
 import { Command } from "./command";
 import { window } from "vscode";
 import { runWorkingCopyOperation } from "./workingCopyScopes";
@@ -18,7 +19,7 @@ export class RemoveUnversioned extends Command {
     if (answer !== "Yes") {
       return;
     }
-    await runWorkingCopyOperation(repository, scope =>
+    await runWorkingCopyOperation(repository, Operation.CleanUp, scope =>
       scope.removeUnversioned()
     );
   }

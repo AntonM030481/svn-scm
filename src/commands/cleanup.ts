@@ -1,4 +1,5 @@
 import { Repository } from "../repository";
+import { Operation } from "../common/types";
 import { Command } from "./command";
 import { runWorkingCopyOperation } from "./workingCopyScopes";
 
@@ -8,6 +9,8 @@ export class Cleanup extends Command {
   }
 
   public async execute(repository: Repository) {
-    await runWorkingCopyOperation(repository, scope => scope.cleanup());
+    await runWorkingCopyOperation(repository, Operation.CleanUp, scope =>
+      scope.cleanup()
+    );
   }
 }

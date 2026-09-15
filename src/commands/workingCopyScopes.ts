@@ -1,5 +1,6 @@
 import * as path from "path";
 import { commands, window } from "vscode";
+import { Operation } from "../common/types";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import { SourceControlManager } from "../source_control_manager";
@@ -38,14 +39,23 @@ export async function workingCopyOperationScopes(
 
 export async function runWorkingCopyOperation<T>(
   repository: Repository,
+  operationType: Operation,
   operation: (scope: Repository) => Promise<T>
 ): Promise<T[]> {
   const allScopes = await workingCopyScopes(repository);
   const operationScopes = await workingCopyOperationScopes(repository);
   const results: T[] = [];
   try {
+    await Promise.all(allScopes.map(scope => scope.ensureStatus()));
     for (const scope of operationScopes) {
-      results.push(await operation(scope));
+      const siblingMarkers = allScopes
+        .filter(candidate => candidate !== scope)
+        .map(candidate => candidate.markOperation(operationType));
+      try {
+        results.push(await operation(scope));
+      } finally {
+        siblingMarkers.reverse().forEach(marker => marker.dispose());
+      }
     }
     await Promise.all(
       allScopes

@@ -268,10 +268,39 @@ export class WorkingCopySourceControl implements Disposable, QuickDiffProvider {
 
     const busy = this.scopes.some(scope => !scope.operations.isIdle());
     const remote = this.remoteChanges?.resourceStates.length ?? 0;
+    if (busy) {
+      commands.push({
+        command: "",
+        title: "$(sync~spin)",
+        tooltip: "Running...",
+        arguments: [this.sourceControl]
+      });
+      return commands;
+    }
+    const cleanupScope = this.scopes.find(scope => scope.needCleanUp);
+    const incompleteScope = this.scopes.find(scope => scope.isIncomplete);
+    if (cleanupScope) {
+      commands.push({
+        command: "svn.cleanup",
+        title: "$(alert) Need cleanup",
+        tooltip: "Run cleanup command",
+        arguments: [this.sourceControl]
+      });
+      return commands;
+    }
+    if (incompleteScope) {
+      commands.push({
+        command: "svn.finishCheckout",
+        title: "$(issue-reopened) Incomplete (Need finish checkout)",
+        tooltip: "Run update to complete",
+        arguments: [incompleteScope]
+      });
+      return commands;
+    }
     commands.push({
-      command: busy ? "" : "svn.update",
-      title: busy ? "$(sync~spin)" : `$(sync)${remote ? ` ${remote}↓` : ""}`,
-      tooltip: busy ? "Running..." : "Update Revision",
+      command: "svn.update",
+      title: `$(sync)${remote ? ` ${remote}↓` : ""}`,
+      tooltip: "Update Revision",
       arguments: [this.sourceControl]
     });
     return commands;
