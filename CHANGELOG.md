@@ -1,7 +1,26 @@
-# Unreleased
+# [2.22.0](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.0) (2026-09-16)
+
+Marketplace-readiness and shared-working-copy release.
+
+### Features
 
 * Open text conflicts in VS Code's merge editor using SVN-recorded base,
-  current, and incoming files, with a normal editor fallback.
+  current, and incoming files, with a normal editor fallback (#79).
+* Represent one physical SVN working copy with one SCM provider while preserving
+  the status and routing scope of every opened workspace folder.
+
+### Bug Fixes
+
+* Run shared-working-copy commands once across the correct aggregate scope,
+  including update, patch, history, cleanup, refresh, and recovery workflows.
+* Avoid duplicate scope selection when switching branches or merging (#150).
+
+### Maintenance
+
+* Rename the extension package to `svn-scm-modern` for Marketplace publication.
+* Lead the README with product highlights and move detailed VSIX installation
+  instructions to dedicated documentation.
+* Stabilize queued watcher-status integration coverage.
 
 # [2.21.0](https://github.com/AntonM030481/svn-scm/compare/v2.20.0...v2.21.0) (2026-09-15)
 
