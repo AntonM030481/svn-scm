@@ -680,6 +680,40 @@ suite("Staging Tests", () => {
     }
   });
 
+  test("Switch and Merge preserve an already selected workspace scope", async () => {
+    const checkout = await createCheckoutWithFiles();
+    const one = path.join(checkout.fsPath, "one");
+    const two = path.join(checkout.fsPath, "two");
+
+    await sourceControlManager.tryOpenRepository(one);
+    await sourceControlManager.tryOpenRepository(two);
+
+    const repositoryOne = sourceControlManager.getRepository(Uri.file(one));
+    const repositoryTwo = sourceControlManager.getRepository(Uri.file(two));
+    assert.ok(repositoryOne);
+    assert.ok(repositoryTwo);
+    opened.push(repositoryOne, repositoryTwo);
+
+    const originalShowQuickPick = window.showQuickPick;
+    const placeholders: Array<string | undefined> = [];
+    (window as any).showQuickPick = async (
+      _items: readonly any[],
+      options?: { placeHolder?: string }
+    ) => {
+      placeholders.push(options?.placeHolder);
+      return undefined;
+    };
+
+    try {
+      await commands.executeCommand("svn.switchBranch", Uri.file(one));
+      await commands.executeCommand("svn.merge", Uri.file(one));
+    } finally {
+      window.showQuickPick = originalShowQuickPick;
+    }
+
+    assert.deepStrictEqual(placeholders, [undefined, undefined]);
+  });
+
   test("palette commit routes staged active file through staged finalization", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
