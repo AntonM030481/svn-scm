@@ -1,4 +1,4 @@
-# [2.22.0](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.0) (2026-09-16)
+# [2.22.1](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.1) (2026-09-16)
 
 Marketplace-readiness and shared-working-copy release.
 
@@ -17,7 +17,8 @@ Marketplace-readiness and shared-working-copy release.
 
 ### Maintenance
 
-* Rename the extension package to `svn-scm-modern` for Marketplace publication.
+* Rename the extension package to `svn-scm-modern` and its display name to
+  `SVN SCM Modern` for Marketplace publication.
 * Lead the README with product highlights and move detailed VSIX installation
   instructions to dedicated documentation.
 * Stabilize queued watcher-status integration coverage.

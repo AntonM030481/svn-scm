@@ -1,8 +1,8 @@
 {
     "name": "svn-scm-modern",
-    "displayName": "SVN",
+    "displayName": "SVN SCM Modern",
     "description": "Integrated Subversion source control",
-    "version": "2.22.0",
+    "version": "2.22.1",
     "publisher": "antonm030481",
     "engines": {
         "vscode": "^1.86.0"
