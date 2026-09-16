@@ -1,113 +1,92 @@
-# Subversion source control for VS Code
+# SVN source control for Visual Studio Code
 
-> Maintained fork of [JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm).
->
-> This fork continues maintenance of the original extension and provides
-> downloadable VSIX releases through GitHub.
+Modern Subversion integration for everyday development in VS Code, including
+large working copies and multi-root workspaces.
 
 ![CI](https://github.com/AntonM030481/svn-scm/actions/workflows/main.yml/badge.svg)
 
-# Prerequisites
+## Highlights
 
-> **Note**: This extension leverages your machine's SVN installation,\
-> so you need to [install SVN](https://subversion.apache.org) first.
+- Git-like file and folder staging with **Stage**, **Unstage**, **Commit
+  Staged**, and their all-files variants.
+- One Source Control provider for opened folders that belong to the same
+  physical SVN working copy.
+- Three-way text-conflict resolution in VS Code's Merge Editor, with a normal
+  editor fallback when the merge editor is unavailable.
+- Fast incremental status refresh backed by authoritative SVN reconciliation.
+- Repository, file, and branch history, including cancellable text-log search.
+- Incoming-change inspection, selective update, changelists, externals, and
+  nested working-copy support.
+- Quick diffs, gutter decorations, status bar actions, patches, branching,
+  switching, cleanup, revert, and commit workflows.
 
-On reopening a working copy, the extension restores the last changes list while
-refreshing in the background. Small known changes are checked first; the full
-scan then discovers the remaining changes. Large files are left to the full scan.
+## Requirements
 
-## Installation without Marketplace
+The extension uses your local [SVN command-line client](https://subversion.apache.org)
+and supports SVN 1.6 or newer.
 
-1. Open the latest [GitHub Release](https://github.com/AntonM030481/svn-scm/releases/latest).
-2. Download the `svn-scm-v<version>.vsix` asset.
-3. In VS Code, open **Extensions**, select **Views and More Actions** (`...`),
-   choose **Install from VSIX...**, and select the downloaded file.
-4. Reload VS Code when prompted.
+On Windows, TortoiseSVN users must install **Command Line Tools** and make
+`C:\Program Files\TortoiseSVN\bin` available in `PATH`.
 
-You can also install from a terminal:
+## Installation
 
-```sh
-code --install-extension path/to/svn-scm-v<version>.vsix --force
-```
+Install **SVN** from the VS Code Extensions view. The Marketplace identifier is
+`antonm030481.svn-scm-modern`.
 
-GitHub-installed VSIX files do not update through Marketplace. Repeat these
-steps with a newer release to update. To remove the extension, use **Uninstall**
-in the Extensions view or run:
-
-```sh
-code --uninstall-extension antonm030481.svn-scm
-```
+For manual or offline installation, see
+[Installing from a VSIX](docs/install.md).
 
 Disable another SVN SCM extension if it registers the same working copies, to
 avoid duplicate Source Control providers.
 
-## Resolving conflicts
-
-Select a text-conflicted file in Source Control to open VS Code's three-way
-merge editor. The result remains conflicted in SVN until you save it without
-conflict markers and confirm that it should be marked resolved, or run
-**SVN: Resolve conflicts for selected** and choose an explicit SVN resolution.
-Tree and property conflicts open in the normal editor and retain the explicit
-SVN resolution commands.
-
-## Windows
-
-If you use [TortoiseSVN](https://tortoisesvn.net/), make sure the option
-**Command Line Tools** is checked during installation and
-`C:\Program Files\TortoiseSVN\bin` is available in PATH.
-
-## Feedback & Contributing
-
-* Please report any bugs, suggestions or documentation requests via the
-  [Issues](https://github.com/AntonM030481/svn-scm/issues)
-* Feel free to submit
-  [pull requests](https://github.com/AntonM030481/svn-scm/pulls)
-* See the [maintainer documentation](docs/README.md) for architecture,
-  development, testing, and release details
-
-## [Original contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors)
-
-# Features
+## Everyday workflows
 
 ### Checkout
 
-You can checkout a SVN repository with the `SVN: Checkout` command in the **Command Palette** (`Ctrl+Shift+P`). You will be asked for the URL of the repository and the parent directory under which to put the local repository.
+Run **SVN: Checkout** from the Command Palette (`Ctrl+Shift+P`), enter the
+repository URL, and choose the parent directory for the new working copy.
 
-----
+### Stage and commit
 
-* Source Control View
-* Quick Diffs in gutter
-* Status Bar
-* Create changelists
-* Add files
-* Revert edits
-* Remove files
-* Create branches
-* Switch branches
-* Create patches
-* Diff changes
-* Commit changes/changelists
-* See commit messages
+The Source Control view separates **Changes** from **Staged Changes**. Stage
+individual files or folders, use **Stage All Changes**, and commit the selected
+set with **Commit Staged**. **Commit All Changes** remains available when staging
+is not needed.
 
-## Log search
+When multiple opened workspace folders belong to one physical working copy,
+their visible changes are combined in one Source Control provider and staged
+paths can be committed together.
 
-Text log search uses the SVN client selected by `svn.path` and the repository's
-credentials. Results appear progressively in `tempsvnfs:/svn.log`. Searching
-history may contact the SVN server; it only runs when requested.
+### Resolve conflicts
 
-Cancel the progress notification or close the result document to stop a search.
-Starting another search replaces the previous one. Streaming text uses
-`svn.default.encoding`, or UTF-8 when unset; set an encoding explicitly for a
-client that produces another encoding.
+Select a text-conflicted file in Source Control to open VS Code's three-way
+Merge Editor. The file remains conflicted in SVN until the result is saved
+without conflict markers and explicitly or automatically marked resolved.
 
-## Blame
+Tree, property, or incomplete text conflicts open in the normal editor and
+retain the explicit SVN resolution commands.
 
-Please use a dedicated extension like [blamer-vs](https://marketplace.visualstudio.com/items?itemName=beaugust.blamer-vs)
+### Inspect history and incoming changes
+
+Repository, file, and branch history are available from the Subversion views
+and context menus. Text-log search streams results into a document and can be
+cancelled from its progress notification or by closing that document.
+
+Remote status checks may contact the server and run only when requested or when
+remote polling is enabled. Incoming changes can be inspected and updated from
+the repository tree.
+
+### Work with large working copies
+
+On startup, the extension can restore the previous changes list while SVN
+validates the working copy in the background. Small known edits are checked
+early, while a full status scan remains the correctness fallback. Normal file
+events and local SVN operations use targeted refreshes when safe.
 
 ## Settings
-Here are all of the extension settings with their default values. To change any of these, add the relevant Config key and value to your VSCode settings.json file. Alternatively search for the config key in the settings UI to change its value.
 
-See [settings behavior and application timing](docs/settings.md) for interactions,
+Change settings in the VS Code Settings UI or in `settings.json`. See
+[settings behavior and application timing](docs/settings.md) for interactions,
 validation, and settings that require a refresh or reload.
 
 <!--begin-settings-->
@@ -159,8 +138,27 @@ validation, and settings that require a refresh or reload.
 | `svn.update.ignoreExternals` | Set to ignore externals definitions on update (add --ignore-externals) | `true` |
 <!--end-settings-->
 
+## Limitations
 
-With auto-refresh enabled, small files edited while the initial status scan is
-running can appear in Changes after a quick local check, without waiting for
-the full scan. The normal progress indicator remains visible until startup
-reconciliation finishes.
+- The extension requires an existing local SVN installation; it does not bundle
+  an SVN client.
+- Blame annotations are not included. Use a dedicated extension such as
+  [blamer-vs](https://marketplace.visualstudio.com/items?itemName=beaugust.blamer-vs).
+- GitHub-installed VSIX files do not update automatically through Marketplace.
+
+## Feedback and contributing
+
+- Report bugs, suggestions, and documentation requests in
+  [Issues](https://github.com/AntonM030481/svn-scm/issues).
+- Contributions are welcome through
+  [pull requests](https://github.com/AntonM030481/svn-scm/pulls).
+- See the [maintainer documentation](docs/README.md) for architecture,
+  development, testing, and release details.
+
+## Project history
+
+This project is a maintained fork of
+[JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm). See the
+[original contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors).
+Prebuilt VSIX packages remain available from
+[GitHub Releases](https://github.com/AntonM030481/svn-scm/releases/latest).
