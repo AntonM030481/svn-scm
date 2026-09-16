@@ -34,7 +34,7 @@ suite("Staging UI Argument Tests", () => {
   });
 
   test("manifest exposes Git-like folder and group staging actions", () => {
-    const extension = extensions.getExtension("antonm030481.svn-scm");
+    const extension = extensions.getExtension("antonm030481.svn-scm-modern");
     assert.ok(extension);
 
     const menus = extension.packageJSON.contributes.menus as Record<
