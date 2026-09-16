@@ -10,13 +10,15 @@ export class SwitchBranch extends Command {
     super("svn.switchBranch", { repository: true });
   }
 
-  public async execute(repository: Repository) {
-    const scope = await selectWorkingCopyScope(
-      repository,
-      "Choose an opened folder to switch"
-    );
-    if (!scope) return;
-    repository = scope;
+  public async execute(repository: Repository, hint?: unknown) {
+    if (hint === repository.sourceControl) {
+      const scope = await selectWorkingCopyScope(
+        repository,
+        "Choose an opened folder to switch"
+      );
+      if (!scope) return;
+      repository = scope;
+    }
     const branch = await selectBranch(repository, true);
 
     if (!branch) {

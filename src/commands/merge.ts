@@ -11,13 +11,15 @@ export class Merge extends Command {
     super("svn.merge", { repository: true });
   }
 
-  public async execute(repository: Repository) {
-    const scope = await selectWorkingCopyScope(
-      repository,
-      "Choose an opened folder to merge"
-    );
-    if (!scope) return;
-    repository = scope;
+  public async execute(repository: Repository, hint?: unknown) {
+    if (hint === repository.sourceControl) {
+      const scope = await selectWorkingCopyScope(
+        repository,
+        "Choose an opened folder to merge"
+      );
+      if (!scope) return;
+      repository = scope;
+    }
     const branch = await selectBranch(repository);
 
     if (!branch) {
