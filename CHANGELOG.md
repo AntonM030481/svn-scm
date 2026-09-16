@@ -1,4 +1,4 @@
-# [2.22.1](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.1) (2026-09-16)
+# [2.22.2](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.2) (2026-09-16)
 
 Marketplace-readiness and shared-working-copy release.
 
