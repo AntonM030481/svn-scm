@@ -99,13 +99,15 @@
                     "icon": "icons/subversion-logo.svg"
                 }
             ],
-            "svnActivity": [
+            "scm": [
                 {
                     "id": "repolog",
-                    "name": "Repositories",
+                    "name": "SVN History",
                     "when": "config.svn.enabled && svnOpenRepositoryCount != 0",
                     "icon": "icons/subversion-logo.svg"
-                },
+                }
+            ],
+            "svnActivity": [
                 {
                     "id": "itemlog",
                     "name": "File History",
