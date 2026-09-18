@@ -7,6 +7,7 @@ import {
   ConfigurationTarget,
   extensions,
   Uri,
+  window,
   workspace
 } from "vscode";
 import { Repository } from "../repository";
@@ -43,12 +44,32 @@ suite("Staging UI Argument Tests", () => {
     >;
     const folderMenu = menus["scm/resourceFolder/context"] ?? [];
     const groupMenu = menus["scm/resourceGroup/context"] ?? [];
+    const resourceMenu = menus["scm/resourceState/context"] ?? [];
+    const registeredCommands = extension.packageJSON.contributes
+      .commands as Array<{
+      command: string;
+      icon?: string;
+    }>;
+
+    assert.equal(
+      registeredCommands.find(item => item.command === "svn.deleteUnversioned")
+        ?.icon,
+      "$(trash)"
+    );
 
     assert.ok(
       folderMenu.some(
         item =>
           item.command === "svn.stage" &&
           item.when?.includes("scmResourceGroup != staged")
+      )
+    );
+    assert.ok(
+      folderMenu.some(
+        item =>
+          item.command === "svn.deleteUnversioned" &&
+          item.when?.includes("scmResourceGroup == unversioned") &&
+          item.group?.startsWith("inline")
       )
     );
     assert.ok(
@@ -77,9 +98,26 @@ suite("Staging UI Argument Tests", () => {
     assert.ok(
       groupMenu.some(
         item =>
-          item.command === "svn.stageAll" &&
-          item.when?.includes("scmResourceGroup != staged")
+          item.command === "svn.stage" &&
+          item.when?.includes("scmResourceGroup == unversioned") &&
+          item.group?.startsWith("inline")
       )
+    );
+    assert.ok(
+      groupMenu.some(
+        item =>
+          item.command === "svn.deleteUnversioned" &&
+          item.when?.includes("scmResourceGroup == unversioned") &&
+          item.group?.startsWith("inline")
+      )
+    );
+    assert.equal(
+      groupMenu.some(
+        item =>
+          item.command === "svn.stageAll" &&
+          item.when?.includes("scmResourceGroup == unversioned")
+      ),
+      false
     );
     assert.ok(
       groupMenu.some(
@@ -96,6 +134,124 @@ suite("Staging UI Argument Tests", () => {
       ),
       false
     );
+    assert.ok(
+      resourceMenu.some(
+        item =>
+          item.command === "svn.deleteUnversioned" &&
+          item.when?.includes("scmResourceGroup == unversioned") &&
+          !item.group?.startsWith("inline")
+      )
+    );
+    assert.ok(
+      resourceMenu.some(
+        item =>
+          item.command === "svn.deleteUnversioned" &&
+          item.group?.startsWith("inline")
+      )
+    );
+  });
+
+  test("Unversioned group Stage does not stage neighboring changes", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+    const tracked = path.join(checkout.fsPath, "tracked.txt");
+    const unversioned = path.join(checkout.fsPath, "unversioned.txt");
+    fs.writeFileSync(tracked, "base\n");
+    svn(["add", "tracked.txt"], checkout.fsPath);
+    svn(["commit", "-m", "initial"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    fs.writeFileSync(tracked, "changed\n");
+    fs.writeFileSync(unversioned, "new\n");
+    await repository.status();
+
+    await commands.executeCommand("svn.stage", repository.unversioned);
+
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === unversioned
+      ),
+      true
+    );
+    assert.equal(
+      repository.staged?.resourceStates.some(
+        item => item.resourceUri.fsPath === tracked
+      ),
+      false
+    );
+    assert.equal(
+      repository.changes.resourceStates.some(
+        item => item.resourceUri.fsPath === tracked
+      ),
+      true
+    );
+  });
+
+  test("Unversioned folder and group Delete remove their selected roots", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const repository = sourceControlManager.getRepository(
+      checkout
+    ) as Repository;
+    opened.push(repository);
+
+    const directory = path.join(checkout.fsPath, "folder");
+    const nested = path.join(directory, "nested", "child.txt");
+    const trackedDirectory = path.join(checkout.fsPath, "tracked-folder");
+    const trackedBase = path.join(trackedDirectory, "base.txt");
+    const trackedNew = path.join(trackedDirectory, "new.txt");
+    const remaining = path.join(checkout.fsPath, "remaining.txt");
+    fs.mkdirSync(trackedDirectory);
+    fs.writeFileSync(trackedBase, "base\n");
+    svn(["add", "tracked-folder"], checkout.fsPath);
+    svn(["commit", "-m", "tracked folder"], checkout.fsPath);
+    fs.mkdirSync(path.dirname(nested), { recursive: true });
+    fs.writeFileSync(nested, "nested\n");
+    fs.writeFileSync(trackedNew, "new\n");
+    fs.writeFileSync(remaining, "remaining\n");
+    await repository.status();
+
+    const originalWarning = window.showWarningMessage;
+    (window as any).showWarningMessage = async () => "Yes";
+    try {
+      await commands.executeCommand("svn.deleteUnversioned", {
+        uri: Uri.file(directory),
+        context: repository.unversioned
+      });
+      assert.equal(fs.existsSync(directory), false);
+      assert.equal(fs.existsSync(remaining), true);
+
+      await repository.status();
+      await commands.executeCommand("svn.deleteUnversioned", {
+        uri: Uri.file(trackedDirectory),
+        context: repository.unversioned
+      });
+      assert.equal(fs.existsSync(trackedDirectory), true);
+      assert.equal(fs.existsSync(trackedBase), true);
+      assert.equal(fs.existsSync(trackedNew), false);
+
+      await repository.status();
+      await commands.executeCommand(
+        "svn.deleteUnversioned",
+        repository.unversioned
+      );
+      assert.equal(fs.existsSync(remaining), false);
+    } finally {
+      window.showWarningMessage = originalWarning;
+    }
   });
 
   test("Stage and Unstage accept SCM tree resource-node arguments", async () => {
@@ -185,6 +341,7 @@ suite("Staging UI Argument Tests", () => {
 
     fs.writeFileSync(first, "changed first\n");
     fs.writeFileSync(second, "changed second\n");
+    svn(["propset", "test:property", "changed", "folder"], checkout.fsPath);
     await repository.status();
 
     const originalFullStatus = repository.fullStatus.bind(repository);
@@ -212,6 +369,12 @@ suite("Staging UI Argument Tests", () => {
     assert.equal(changedPaths.includes(second), true);
     assert.equal(fs.readFileSync(first, "utf8"), "changed first\n");
     assert.equal(fs.readFileSync(second, "utf8"), "changed second\n");
+    assert.equal(
+      repository.changes.resourceStates.some(
+        resource => resource.resourceUri.fsPath === directory
+      ),
+      true
+    );
 
     await commands.executeCommand("svn.stage", {
       uri: Uri.file(directory),

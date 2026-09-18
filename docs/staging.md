@@ -4,7 +4,15 @@ The extension exposes a Git-like whole-file staging workflow on top of SVN chang
 
 ## User model
 
-`Staged Changes` appears above `Changes`, matching the built-in VS Code Git provider. `Changes` contains unstaged working-copy changes and `Staged Changes` contains the files selected for the next commit. Stage/Unstage and Stage All/Unstage All mirror the standard VS Code Git interaction model. Files and folders in `Changes` expose Stage (and Revert where applicable); files and folders in `Staged Changes` expose Unstage. The SCM input box is used directly by Commit Staged; Commit All remains available when staging is not desired.
+`Staged Changes` appears above `Changes`, matching the built-in VS Code Git provider. `Changes` contains unstaged working-copy changes and `Staged Changes` contains the files selected for the next commit. Stage/Unstage and Stage All/Unstage All mirror the standard VS Code Git interaction model. Files and folders in `Changes` expose Stage (and Revert where applicable); files and folders in `Staged Changes` expose Unstage. Group and folder Stage actions are limited to the selected group or tree branch. The SCM input box is used directly by Commit Staged; Commit All remains available when staging is not desired.
+
+| Unversioned item | Inline actions | Context-menu actions |
+| --- | --- | --- |
+| Group | Stage, Delete | — |
+| Folder | Stage, Delete | — |
+| File | Stage, Delete | Add, Delete, Ignore |
+
+Delete removes the selected unversioned files and directories after one confirmation.
 
 Partial/hunk staging is deliberately separate and tracked by issue #90.
 
