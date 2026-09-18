@@ -65,6 +65,16 @@ function resourceFolderFromScmArgument(
   return { uri, group };
 }
 
+function resourceGroupFromScmArgument(
+  value: unknown
+): SourceControlResourceGroup | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const resourceStates = (value as { resourceStates?: unknown }).resourceStates;
+  if (!Array.isArray(resourceStates)) return undefined;
+  return value as SourceControlResourceGroup;
+}
+
 async function getSourceControlManager(): Promise<SourceControlManager> {
   return (await commands.executeCommand(
     "svn.getSourceControlManager",
@@ -286,12 +296,40 @@ abstract class BaseStagingCommand extends Command {
       }
 
       const folder = resourceFolderFromScmArgument(resourceState);
-      if (!folder) continue;
+      if (folder) {
+        const folderResources: Resource[] = [];
+        for (const candidate of folder.group.resourceStates) {
+          const candidateUri = candidate.resourceUri;
+          if (!isPathInside(folder.uri.fsPath, candidateUri.fsPath)) continue;
 
-      for (const candidate of folder.group.resourceStates) {
+          const repository = sourceControlManager.getRepository(candidateUri);
+          const resource = repository?.getResourceFromFile(candidateUri);
+          if (resource) folderResources.push(resource);
+        }
+        const root = folderResources.find(
+          resource =>
+            resource.resourceUri.fsPath === folder.uri.fsPath &&
+            resource.type === Status.UNVERSIONED &&
+            !isUnversionedChildResource(resource)
+        );
+        if (root) {
+          resources.push(root);
+        } else {
+          resources.push(...folderResources);
+        }
+        continue;
+      }
+
+      const group = resourceGroupFromScmArgument(resourceState);
+      if (!group) continue;
+      for (const candidate of group.resourceStates) {
+        if (
+          candidate instanceof Resource &&
+          isUnversionedChildResource(candidate)
+        ) {
+          continue;
+        }
         const candidateUri = candidate.resourceUri;
-        if (!isPathInside(folder.uri.fsPath, candidateUri.fsPath)) continue;
-
         const repository = sourceControlManager.getRepository(candidateUri);
         const resource = repository?.getResourceFromFile(candidateUri);
         if (resource) resources.push(resource);
