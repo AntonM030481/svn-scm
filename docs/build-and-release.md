@@ -69,9 +69,12 @@ The `Tag release` workflow validates that the package version matches the top
 changelog release, creates `v<package-version>` on that master commit if it
 does not already exist, pushes the tag, and explicitly dispatches the release
 workflow for that tag. The explicit dispatch is required because tag pushes made
-with GitHub's workflow token do not start another workflow automatically. The
-tagging workflow can also be dispatched manually from `master` for recovery
-and has only `contents: write` plus `actions: write`.
+with GitHub's workflow token do not start another workflow automatically. If a
+release attempt fails before a GitHub Release exists, a later validated release
+commit may move that unpublished tag for recovery; once a GitHub Release exists,
+the workflow never moves its tag. The tagging workflow can also be dispatched
+manually from `master` for recovery and has only `contents: write` plus
+`actions: write`.
 
 The release workflow accepts either the tag push or that explicit manual
 dispatch and verifies that the tag equals the package version, reruns
