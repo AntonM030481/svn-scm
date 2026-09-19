@@ -28,7 +28,7 @@ import { Repository } from "../repository";
 import { Resource } from "../resource";
 import IncomingChangeNode from "../treeView/nodes/incomingChangeNode";
 import { fromSvnUri, toSvnUri } from "../uri";
-import { getSvnDir } from "../util";
+import { getSvnDir, normalizePath, pathEquals } from "../util";
 
 export abstract class Command implements Disposable {
   private _disposable?: Disposable;
@@ -94,7 +94,10 @@ export abstract class Command implements Disposable {
     ) as Resource[];
     if (!validateForMutation || !selection.length) return selection;
     const selected = new Map(
-      selection.map(resource => [resource.resourceUri.toString(), resource])
+      selection.map(resource => [
+        normalizePath(resource.resourceUri.fsPath),
+        resource
+      ])
     );
     const groups = await this.runByRepository(
       selection.map(resource => resource.resourceUri),
@@ -102,7 +105,7 @@ export abstract class Command implements Disposable {
         await repository.ensureStatus();
         const current: Resource[] = [];
         for (const uri of uris) {
-          const before = selected.get(uri.toString())!;
+          const before = selected.get(normalizePath(uri.fsPath))!;
           // A saved directory selection does not authorize newly discovered descendants.
           // Require reselection from the live model, even if its own properties match.
           if (repository.isPreviewResource(before)) {
@@ -113,8 +116,8 @@ export abstract class Command implements Disposable {
             }
           }
           const after = before.remote
-            ? repository.remoteChanges?.resourceStates.find(
-                resource => resource.resourceUri.toString() === uri.toString()
+            ? repository.remoteChanges?.resourceStates.find(resource =>
+                pathEquals(resource.resourceUri.fsPath, uri.fsPath)
               )
             : repository.getResourceFromFile(uri);
           // Do not silently reinterpret an old selection as a different operation target.
@@ -122,8 +125,12 @@ export abstract class Command implements Disposable {
             after &&
             after.type === before.type &&
             after.props === before.props &&
-            after.renameResourceUri?.toString() ===
-              before.renameResourceUri?.toString()
+            (after.renameResourceUri && before.renameResourceUri
+              ? pathEquals(
+                  after.renameResourceUri.fsPath,
+                  before.renameResourceUri.fsPath
+                )
+              : after.renameResourceUri === before.renameResourceUri)
           ) {
             current.push(after);
           }
