@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, Uri } from "vscode";
+import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
 import { Operation } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -26,6 +26,64 @@ suite("Shared working-copy staging guard", () => {
 
   suiteTeardown(() => {
     opened.forEach(repository => sourceControlManager.close(repository));
+  });
+
+  test("Delete refreshes every overlapping projection in the same WC", async () => {
+    const repoUri = await testUtil.createRepoServer();
+    await testUtil.createStandardLayout(testUtil.getSvnUrl(repoUri));
+    const checkout = await testUtil.createRepoCheckout(
+      `${testUtil.getSvnUrl(repoUri)}/trunk`
+    );
+    const nested = path.join(checkout.fsPath, "nested");
+    const baseFile = path.join(nested, "base.txt");
+    fs.mkdirSync(nested);
+    fs.writeFileSync(baseFile, "base\n");
+    svn(["add", "nested"], checkout.fsPath);
+    svn(["commit", "-m", "nested scope"], checkout.fsPath);
+
+    await sourceControlManager.tryOpenRepository(nested);
+    await sourceControlManager.tryOpenRepository(checkout.fsPath);
+    const nestedRepository = sourceControlManager.repositories.find(
+      repository => path.resolve(repository.workspaceRoot) === path.resolve(nested)
+    );
+    const rootRepository = sourceControlManager.repositories.find(
+      repository =>
+        path.resolve(repository.workspaceRoot) === path.resolve(checkout.fsPath)
+    );
+    assert.ok(nestedRepository);
+    assert.ok(rootRepository);
+    opened.push(nestedRepository, rootRepository);
+
+    const file = path.join(nested, "delete-me.txt");
+    fs.writeFileSync(file, "temporary\n");
+    await Promise.all([nestedRepository.status(), rootRepository.status()]);
+    const nestedResource = nestedRepository.getResourceFromFile(Uri.file(file));
+    assert.ok(nestedResource);
+    assert.ok(rootRepository.getResourceFromFile(Uri.file(file)));
+
+    const config = workspace.getConfiguration("svn");
+    const previousAutorefresh =
+      config.inspect<boolean>("autorefresh")?.globalValue;
+    try {
+      await config.update("autorefresh", false, ConfigurationTarget.Global);
+      await commands.executeCommand("svn.deleteUnversioned", nestedResource);
+
+      assert.equal(fs.existsSync(file), false);
+      assert.equal(
+        nestedRepository.getResourceFromFile(Uri.file(file)),
+        undefined
+      );
+      assert.equal(
+        rootRepository.getResourceFromFile(Uri.file(file)),
+        undefined
+      );
+    } finally {
+      await config.update(
+        "autorefresh",
+        previousAutorefresh,
+        ConfigurationTarget.Global
+      );
+    }
   });
 
   test("Stage waits for a busy sibling projection in the same WC", async () => {
