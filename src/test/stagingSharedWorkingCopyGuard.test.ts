@@ -2,7 +2,13 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import { commands, ConfigurationTarget, Uri, workspace } from "vscode";
+import {
+  commands,
+  ConfigurationTarget,
+  Uri,
+  window,
+  workspace
+} from "vscode";
 import { Operation } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -65,6 +71,8 @@ suite("Shared working-copy staging guard", () => {
     const config = workspace.getConfiguration("svn");
     const previousAutorefresh =
       config.inspect<boolean>("autorefresh")?.globalValue;
+    const originalWarning = window.showWarningMessage;
+    (window as any).showWarningMessage = async () => "Yes";
     try {
       await config.update("autorefresh", false, ConfigurationTarget.Global);
       await commands.executeCommand("svn.deleteUnversioned", nestedResource);
@@ -84,6 +92,7 @@ suite("Shared working-copy staging guard", () => {
         previousAutorefresh,
         ConfigurationTarget.Global
       );
+      window.showWarningMessage = originalWarning;
     }
   });
 
