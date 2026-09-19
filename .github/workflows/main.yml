@@ -14,7 +14,67 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    name: Format
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Format TypeScript
+        run: yarn style-fix
+
+      - name: Commit formatting
+        id: commit
+        shell: bash
+        run: |
+          if git diff --quiet -- src; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "Apply automatic formatting"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run CI for formatted head
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run main.yml --ref "${{ github.event.pull_request.head.ref }}"
+
   build:
+    needs: format
+    if: >-
+      always() &&
+      (needs.format.result == 'skipped' ||
+       (needs.format.result == 'success' && needs.format.outputs.changed != 'true'))
     runs-on: ubuntu-latest
 
     steps:
@@ -56,6 +116,11 @@ jobs:
           path: svn-scm.vsix
 
   test:
+    needs: format
+    if: >-
+      always() &&
+      (needs.format.result == 'skipped' ||
+       (needs.format.result == 'success' && needs.format.outputs.changed != 'true'))
     name: Test (${{ matrix.os }}, VS Code ${{ matrix.vscode-version }})
     runs-on: ${{ matrix.os }}
 
