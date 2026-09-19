@@ -173,18 +173,13 @@ export async function fetchMore(cached: ICachedLog) {
     rfrom = entries[entries.length - 1].revision;
     rfrom = (Number.parseInt(rfrom, 10) - 1).toString();
   }
-  let moreCommits: ISvnLogEntry[] = [];
   const limit = getLimit();
-  try {
-    moreCommits = await cached.repo.log(
-      rfrom,
-      "1",
-      limit,
-      cached.svnTarget.toString(true)
-    );
-  } catch {
-    // Item didn't exist
-  }
+  const moreCommits = await cached.repo.log(
+    rfrom,
+    "1",
+    limit,
+    cached.svnTarget.toString(true)
+  );
   if (!needFetch(entries, moreCommits, limit)) {
     cached.isComplete = true;
   }
