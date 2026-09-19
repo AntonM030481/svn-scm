@@ -318,14 +318,14 @@ export class RepoLogProvider
     return openFileRemote(item.repo, ri.remoteFullPath, parent.revision);
   }
 
-  public openFileLocal(element: ILogTreeItem) {
+  public async openFileLocal(element: ILogTreeItem) {
     const commit = element.data as ISvnLogEntryPath;
     const item = this.getCached(element);
     const ri = item.repo.getPathNormalizer().parse(commit._);
-    if (!checkIfFile(ri, true)) {
+    if (!(await checkIfFile(ri, true))) {
       return;
     }
-    commands.executeCommand("vscode.open", unwrap(ri.localFullPath));
+    return commands.executeCommand("vscode.open", unwrap(ri.localFullPath));
   }
 
   public async openDiffCmd(element: ILogTreeItem) {
