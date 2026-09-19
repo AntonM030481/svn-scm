@@ -347,6 +347,30 @@ suite("Repository Tests", () => {
     }
   });
 
+  test("File history clears when the active resource is not a file", async () => {
+    const itemLogProvider = Object.create(
+      ItemLogProvider.prototype
+    ) as ItemLogProvider;
+    const state = itemLogProvider as any;
+    const changeEmitter = new EventEmitter<any>();
+    let refreshes = 0;
+
+    state.currentItem = { entries: [{ revision: "1" }] };
+    state._onDidChangeTreeData = changeEmitter;
+    changeEmitter.event(() => refreshes++);
+
+    try {
+      await itemLogProvider.refresh(undefined, {
+        document: { uri: Uri.parse("untitled:test") }
+      } as any);
+
+      assert.equal(state.currentItem, undefined);
+      assert.equal(refreshes, 1);
+    } finally {
+      changeEmitter.dispose();
+    }
+  });
+
   test("File history waits for a later status operation", async () => {
     const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
     assert.ok(repository);
