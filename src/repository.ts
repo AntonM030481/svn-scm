@@ -1764,6 +1764,8 @@ export class Repository implements IRemoteRepository {
   ): Promise<T> {
     let attempt = 0;
     let accounts: IStoredAuth[] = [];
+    let storedAccountIndex: number | undefined;
+    let promptAttempts = 0;
 
     while (true) {
       if (signal?.aborted) {
@@ -1772,7 +1774,11 @@ export class Repository implements IRemoteRepository {
       try {
         attempt++;
         const result = await runOperation();
-        this.saveAuth();
+        try {
+          await this.saveAuth();
+        } catch (error) {
+          console.error("Unable to save SVN credentials", error);
+        }
         return result;
       } catch (err) {
         if (signal?.aborted) {
@@ -1787,31 +1793,28 @@ export class Repository implements IRemoteRepository {
           await timeout(Math.pow(attempt, 2) * 50);
         } else if (
           err instanceof SvnError &&
-          err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
-          attempt <= 1 + accounts.length
+          err.svnErrorCode === svnErrorCodes.AuthorizationFailed
         ) {
-          // First attempt load all stored auths
-          if (attempt === 1) {
+          if (storedAccountIndex === undefined) {
             accounts = await this.loadStoredAuths(signal);
+            storedAccountIndex = accounts.length - 1;
           }
 
           if (signal?.aborted) {
             throw new SvnCancellationError();
           }
 
-          // each attempt, try a different account
-          const index = accounts.length - 1;
-          if (typeof accounts[index] !== "undefined") {
-            this.username = accounts[index].account;
-            this.password = accounts[index].password;
-          }
-        } else if (
-          err instanceof SvnError &&
-          err.svnErrorCode === svnErrorCodes.AuthorizationFailed &&
-          attempt <= 3 + accounts.length
-        ) {
-          const result = await this.promptAuth(signal);
-          if (!result) {
+          if (storedAccountIndex >= 0) {
+            const account = accounts[storedAccountIndex--];
+            this.username = account.account;
+            this.password = account.password;
+          } else if (promptAttempts < 2) {
+            promptAttempts++;
+            const result = await this.promptAuth(signal);
+            if (!result) {
+              throw err;
+            }
+          } else {
             throw err;
           }
         } else {
