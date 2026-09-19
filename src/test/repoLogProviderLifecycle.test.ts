@@ -156,6 +156,36 @@ suite("Repository history lifecycle", () => {
     assert.equal(state.logCache.size, 0);
   });
 
+  test("open local history waits for path validation", async () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const originalError = window.showErrorMessage;
+    let errors = 0;
+
+    state.getCached = () => ({
+      repo: {
+        getPathNormalizer: () => ({
+          parse: () => ({ localFullPath: undefined })
+        })
+      }
+    });
+    (window as any).showErrorMessage = async () => {
+      errors += 1;
+      return undefined;
+    };
+
+    try {
+      await provider.openFileLocal({
+        data: { _: "/trunk/file.txt" }
+      } as any);
+      assert.equal(errors, 1);
+    } finally {
+      window.showErrorMessage = originalError;
+    }
+  });
+
   test("repository changes invalidate only the matching history cache", () => {
     const provider = Object.create(
       RepoLogProvider.prototype
