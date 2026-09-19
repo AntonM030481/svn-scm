@@ -226,7 +226,8 @@ suite("Staging UI Argument Tests", () => {
 
     const originalWarning = window.showWarningMessage;
     const config = workspace.getConfiguration("svn");
-    const previousAutorefresh = config.inspect<boolean>("autorefresh")?.globalValue;
+    const previousAutorefresh =
+      config.inspect<boolean>("autorefresh")?.globalValue;
     const base = repository.repository;
     const originalExec = base.exec.bind(base);
     let targetedStatuses = 0;
@@ -254,7 +255,10 @@ suite("Staging UI Argument Tests", () => {
       });
       assert.equal(fs.existsSync(directory), false);
       assert.equal(fs.existsSync(remaining), true);
-      assert.equal(repository.getResourceFromFile(Uri.file(directory)), undefined);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(directory)),
+        undefined
+      );
 
       await commands.executeCommand("svn.deleteUnversioned", {
         uri: Uri.file(trackedDirectory),
@@ -263,14 +267,20 @@ suite("Staging UI Argument Tests", () => {
       assert.equal(fs.existsSync(trackedDirectory), true);
       assert.equal(fs.existsSync(trackedBase), true);
       assert.equal(fs.existsSync(trackedNew), false);
-      assert.equal(repository.getResourceFromFile(Uri.file(trackedNew)), undefined);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(trackedNew)),
+        undefined
+      );
 
       await commands.executeCommand(
         "svn.deleteUnversioned",
         repository.unversioned
       );
       assert.equal(fs.existsSync(remaining), false);
-      assert.equal(repository.getResourceFromFile(Uri.file(remaining)), undefined);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(remaining)),
+        undefined
+      );
       assert.ok(targetedStatuses >= 3);
       assert.equal(untargetedStatuses, 0);
     } finally {
