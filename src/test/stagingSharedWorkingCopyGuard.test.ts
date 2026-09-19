@@ -2,13 +2,7 @@ import * as assert from "assert";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "path";
-import {
-  commands,
-  ConfigurationTarget,
-  Uri,
-  window,
-  workspace
-} from "vscode";
+import { commands, ConfigurationTarget, Uri, window, workspace } from "vscode";
 import { Operation } from "../common/types";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
