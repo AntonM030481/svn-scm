@@ -48,12 +48,28 @@ jobs:
 
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
 
-      - name: Create release tag if missing
+      - name: Create or recover release tag
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "$RELEASE_TAG already exists"
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "$RELEASE_TAG is already published; leaving it unchanged"
+              exit 0
+            fi
+
+            git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            CURRENT_TAG_SHA=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [ "$CURRENT_TAG_SHA" = "$GITHUB_SHA" ]; then
+              echo "$RELEASE_TAG already points at this release commit"
+              exit 0
+            fi
+
+            echo "Recovering unpublished $RELEASE_TAG from $CURRENT_TAG_SHA to $GITHUB_SHA"
+            git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+            git push --force origin "$RELEASE_TAG"
             exit 0
           fi
 
