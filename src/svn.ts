@@ -14,6 +14,7 @@ import { parseInfoXml } from "./parser/infoParser";
 import SvnError from "./svnError";
 import { Repository } from "./svnRepository";
 import { runSvnProcess } from "./svnProcess";
+import { normalizePath } from "./util";
 import * as iconv from "@vscode/iconv-lite-umd";
 
 const SLOW_COMMAND_LOG_MS = 250;
@@ -419,7 +420,7 @@ export class Svn {
       );
 
       const info = await parseInfoXml(result.stdout);
-      this.initialRepositoryInfo.set(path, info);
+      this.initialRepositoryInfo.set(normalizePath(path), info);
 
       if (info && info.wcInfo && info.wcInfo.wcrootAbspath) {
         return info.wcInfo.wcrootAbspath;
@@ -440,8 +441,9 @@ export class Svn {
     repositoryRoot: string,
     workspaceRoot: string
   ): Promise<Repository> {
-    const info = this.initialRepositoryInfo.get(workspaceRoot);
-    this.initialRepositoryInfo.delete(workspaceRoot);
+    const key = normalizePath(workspaceRoot);
+    const info = this.initialRepositoryInfo.get(key);
+    this.initialRepositoryInfo.delete(key);
 
     return new Repository(
       this,
