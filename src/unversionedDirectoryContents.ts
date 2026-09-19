@@ -37,6 +37,16 @@ export function isUnversionedChildResource(
   return resource instanceof UnversionedChildResource;
 }
 
+export function deduplicateUnversionedResources(
+  resources: Resource[]
+): Resource[] {
+  const byPath = new Map<string, Resource>();
+  resources.forEach(resource =>
+    byPath.set(normalizePath(resource.resourceUri.fsPath), resource)
+  );
+  return [...byPath.values()];
+}
+
 function excludePatterns(repository: Repository): string[] {
   const files = workspace.getConfiguration("files", Uri.file(repository.root));
   const excluded = files.get<Record<string, boolean>>("exclude", {});
@@ -203,10 +213,9 @@ export class UnversionedDirectoryContents implements Disposable {
       );
     }
 
-    const byPath = new Map<string, Resource>();
-    [...baseResources, ...children].forEach(resource =>
-      byPath.set(normalizePath(resource.resourceUri.fsPath), resource)
-    );
-    repository.unversioned.resourceStates = [...byPath.values()];
+    repository.unversioned.resourceStates = deduplicateUnversionedResources([
+      ...baseResources,
+      ...children
+    ]);
   }
 }
