@@ -93,7 +93,12 @@ export class ItemLogProvider
   }
 
   private isCurrentEditor(uri: Uri): boolean {
-    return window.activeTextEditor?.document.uri.toString() === uri.toString();
+    const active = window.activeTextEditor?.document.uri;
+    return (
+      active?.scheme === "file" &&
+      uri.scheme === "file" &&
+      pathEquals(active.fsPath, uri.fsPath)
+    );
   }
 
   private async waitForStatusOperations(repo: Repository): Promise<boolean> {

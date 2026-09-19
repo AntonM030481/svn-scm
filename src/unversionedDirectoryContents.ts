@@ -6,7 +6,7 @@ import { configuration } from "./helpers/configuration";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
 import { SourceControlManager } from "./source_control_manager";
-import { dispose, getSvnDir } from "./util";
+import { dispose, getSvnDir, normalizePath } from "./util";
 import { matchAll } from "./util/globMatch";
 
 const MAX_UNVERSIONED_CHILDREN = 2000;
@@ -35,6 +35,16 @@ export function isUnversionedChildResource(
   resource: Resource
 ): resource is UnversionedChildResource {
   return resource instanceof UnversionedChildResource;
+}
+
+export function deduplicateUnversionedResources(
+  resources: Resource[]
+): Resource[] {
+  const byPath = new Map<string, Resource>();
+  resources.forEach(resource =>
+    byPath.set(normalizePath(resource.resourceUri.fsPath), resource)
+  );
+  return [...byPath.values()];
 }
 
 function excludePatterns(repository: Repository): string[] {
@@ -203,10 +213,9 @@ export class UnversionedDirectoryContents implements Disposable {
       );
     }
 
-    const byUri = new Map<string, Resource>();
-    [...baseResources, ...children].forEach(resource =>
-      byUri.set(resource.resourceUri.toString(), resource)
-    );
-    repository.unversioned.resourceStates = [...byUri.values()];
+    repository.unversioned.resourceStates = deduplicateUnversionedResources([
+      ...baseResources,
+      ...children
+    ]);
   }
 }

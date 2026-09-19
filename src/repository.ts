@@ -70,6 +70,8 @@ import {
   filterEvent,
   getSvnDir,
   isDescendant,
+  normalizePath,
+  pathEquals,
   timeout,
   toDisposable
 } from "./util";
@@ -1210,12 +1212,12 @@ export class Repository implements IRemoteRepository {
       ...this.changelists.values()
     ];
 
-    const uriString = uri.toString();
+    const key = normalizePath(uri.fsPath);
 
     for (const group of groups) {
       for (const resource of group.resourceStates) {
         if (
-          uriString === resource.resourceUri.toString() &&
+          key === normalizePath(resource.resourceUri.fsPath) &&
           resource instanceof Resource
         ) {
           return resource;
@@ -1673,9 +1675,9 @@ export class Repository implements IRemoteRepository {
 
   public onDidSaveTextDocument(document: TextDocument) {
     if (!this.hasLiveStatus || this.disposed) return;
-    const uriString = document.uri.toString();
-    const conflict = this.conflicts.resourceStates.find(
-      resource => resource.resourceUri.toString() === uriString
+    if (document.uri.scheme !== "file") return;
+    const conflict = this.conflicts.resourceStates.find(resource =>
+      pathEquals(resource.resourceUri.fsPath, document.uri.fsPath)
     );
     if (!conflict) {
       return;

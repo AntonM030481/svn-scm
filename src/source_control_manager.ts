@@ -112,7 +112,10 @@ export class SourceControlManager implements IDisposable {
     Repository,
     Map<string, Promise<boolean>>
   >();
-  private possibleSvnRepositoryPaths = new Map<string, boolean>();
+  private possibleSvnRepositoryPaths = new Map<
+    string,
+    { path: string; allowNested: boolean }
+  >();
   private readonly workingCopySourceControls = new Map<
     string,
     WorkingCopySourceControl
@@ -424,8 +427,12 @@ export class SourceControlManager implements IDisposable {
       return;
     }
 
-    const existing = this.possibleSvnRepositoryPaths.get(path) || false;
-    this.possibleSvnRepositoryPaths.set(path, existing || allowNested);
+    const key = normalizePath(path);
+    const existing = this.possibleSvnRepositoryPaths.get(key);
+    this.possibleSvnRepositoryPaths.set(key, {
+      path: existing?.path ?? path,
+      allowNested: (existing?.allowNested ?? false) || allowNested
+    });
     this.eventuallyScanPossibleSvnRepositories();
   }
 
@@ -436,7 +443,10 @@ export class SourceControlManager implements IDisposable {
       return;
     }
 
-    for (const [path, allowNested] of this.possibleSvnRepositoryPaths) {
+    for (const {
+      path,
+      allowNested
+    } of this.possibleSvnRepositoryPaths.values()) {
       void this.tryOpenRepository(path, 1, {
         allowNested,
         recursive: !allowNested

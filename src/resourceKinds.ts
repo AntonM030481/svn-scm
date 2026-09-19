@@ -1,13 +1,13 @@
 import * as path from "path";
 import { IFileStatus, Status } from "./common/types";
 import { lstat } from "./fs";
+import { normalizePath } from "./util";
 
 const directoryPaths = new Set<string>();
 const MAX_STAT_CONCURRENCY = 16;
 
 function key(file: string): string {
-  const resolved = path.resolve(file);
-  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  return normalizePath(path.resolve(file));
 }
 
 function absolutePath(workspaceRoot: string, file: string): string {

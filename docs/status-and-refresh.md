@@ -204,8 +204,10 @@ publish a mixture of old and new groups as a stable result.
 - SVN metadata suppression is physical-working-copy-wide but bounded; do not
   infer target identity from administration-file watcher paths.
 - Debounced and scheduled work is cancelled when its owner is disposed.
-- Windows drive and UNC path comparison remains case-insensitive; other path
-  behavior remains platform-correct.
+- Windows drive and UNC path comparison remains case-insensitive; local
+  filesystem identity uses the shared `normalizePath`/`pathEquals` contract
+  documented in [Design principles](design-principles.md), while repository
+  URLs and virtual URI keys remain URI identities.
 
 Tests for this area should cover target containment, merge behavior, deletes,
 rename pairs, repository-wide flags, watcher echoes, metadata fallback, failed

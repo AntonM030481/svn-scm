@@ -20,7 +20,7 @@ import {
   isUnversionedChildResource,
   UnversionedChildResource
 } from "../unversionedDirectoryContents";
-import { normalizePath } from "../util";
+import { normalizePath, pathEquals } from "../util";
 import { withWorkingCopyMutationLocks } from "../workingCopyMutationLock";
 import { Command } from "./command";
 
@@ -308,7 +308,7 @@ abstract class BaseStagingCommand extends Command {
         }
         const root = folderResources.find(
           resource =>
-            resource.resourceUri.fsPath === folder.uri.fsPath &&
+            pathEquals(resource.resourceUri.fsPath, folder.uri.fsPath) &&
             resource.type === Status.UNVERSIONED &&
             !isUnversionedChildResource(resource)
         );

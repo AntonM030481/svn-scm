@@ -185,6 +185,28 @@ suite("Source control repository discovery", () => {
     }
   });
 
+  test("deduplicates queued Windows discovery paths by normalized identity", function () {
+    if (process.platform !== "win32") this.skip();
+
+    const manager = Object.create(SourceControlManager.prototype) as any;
+    manager.enabled = true;
+    manager.disposed = false;
+    manager.possibleSvnRepositoryPaths = new Map();
+
+    try {
+      manager.eventuallyScanPossibleSvnRepository("C:\\Work\\Project", false);
+      manager.eventuallyScanPossibleSvnRepository("c:/work/project", true);
+
+      assert.equal(manager.possibleSvnRepositoryPaths.size, 1);
+      assert.deepStrictEqual(
+        [...manager.possibleSvnRepositoryPaths.values()],
+        [{ path: "C:\\Work\\Project", allowNested: true }]
+      );
+    } finally {
+      cancelDebounces(manager);
+    }
+  });
+
   for (const recursive of [false, true]) {
     test(`honors recursive=${recursive} even with configured depth 10`, async () => {
       const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-discovery-"));
