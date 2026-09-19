@@ -35,6 +35,18 @@ function gate() {
   return { promise, resolve };
 }
 
+async function flushStartupFileScans(repo: Repository): Promise<void> {
+  const state = repo as any;
+  for (let pass = 0; pass < 10; pass++) {
+    await state.scanStartupFiles();
+    if (!state.startupFileScanRunning && state.startupFileTargets.size === 0) {
+      return;
+    }
+  }
+
+  assert.fail("startup file scan did not drain requeued targets");
+}
+
 suite("Persisted startup status integration", () => {
   let manager: SourceControlManager;
   let server: Uri;
@@ -207,7 +219,7 @@ suite("Persisted startup status integration", () => {
       const changed = path.join(f.root, "new.txt");
       await fs.appendFile(changed, "during startup\n");
       await emitFileEvent(events, changed);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       assert.equal(repo.isInitialStatusPending, true);
       assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
       assert.ok(repo.isPreviewResource(repo.getResourceFromFile(changed)!));
@@ -216,29 +228,29 @@ suite("Persisted startup status integration", () => {
       const reverted = path.join(f.root, "clean.txt");
       await base.exec(["revert", reverted]);
       repo.validateStartupFile(reverted);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       assert.equal(repo.getResourceFromFile(reverted), undefined);
       // Delete events target their parent in normal status, but must invalidate
       // the exact file's startup evidence so it cannot be resurrected by overlay.
       const transient = path.join(f.root, "transient.txt");
       await fs.writeFile(transient, "temporary");
       await emitFileEvent(events, transient);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       assert.equal(
         repo.getResourceFromFile(transient)!.type,
         Status.UNVERSIONED
       );
       await fs.appendFile(descendant, "modified child");
       await emitFileEvent(events, descendant);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       assert.equal(repo.getResourceFromFile(descendant)!.type, Status.MODIFIED);
       await fs.rm(directory, { recursive: true });
       // A recursive delete may emit only the directory URI.
       await emitFileEvent(deletions, directory);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       await fs.unlink(transient);
       await emitFileEvent(deletions, transient);
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       release.resolve();
       await repo.initialStatusSettled;
       assert.equal(repo.getResourceFromFile(changed)!.type, Status.MODIFIED);
@@ -358,7 +370,7 @@ suite("Persisted startup status integration", () => {
         undefined,
         "obsolete modified result must not publish"
       );
-      await (repo as any).scanStartupFiles();
+      await flushStartupFileScans(repo);
       assert.equal(repo.getResourceFromFile(file), undefined);
       fullRelease.resolve();
       await repo.initialStatusSettled;
