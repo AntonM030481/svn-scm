@@ -13,6 +13,7 @@ import { getDisplayErrorMessage } from "../svnError";
 import { isUnversionedChildResource } from "../unversionedDirectoryContents";
 import { deleteDirectory } from "../util";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
@@ -198,7 +199,17 @@ export class DeleteUnversioned extends Command {
           }
 
           if (deleted.length) {
-            await refreshStatusTargets(repository, deleted);
+            const scopes = await workingCopyScopes(repository);
+            await Promise.all(
+              scopes.map(scope => {
+                const targets = deleted.filter(filePath =>
+                  isPathInside(scope.workspaceRoot, filePath)
+                );
+                return targets.length
+                  ? refreshStatusTargets(scope, targets)
+                  : Promise.resolve();
+              })
+            );
           }
 
           return failed;
