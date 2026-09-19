@@ -65,9 +65,7 @@ suite("Local path identity", () => {
     repository.changelists = new Map();
 
     assert.strictEqual(
-      repository.getResourceFromFile(
-        Uri.file("c:\\work\\project\\FILE.TXT")
-      ),
+      repository.getResourceFromFile(Uri.file("c:\\work\\project\\FILE.TXT")),
       resource
     );
   });
@@ -111,10 +109,9 @@ suite("Local path identity", () => {
       Status.UNVERSIONED
     );
 
-    assert.deepStrictEqual(
-      deduplicateUnversionedResources([first, second]),
-      [second]
-    );
+    assert.deepStrictEqual(deduplicateUnversionedResources([first, second]), [
+      second
+    ]);
   });
 
   test("conflict save accepts Windows casing", async function () {
