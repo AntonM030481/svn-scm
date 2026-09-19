@@ -25,7 +25,7 @@ class ValidationCommand extends Command {
 }
 
 suite("Local path identity", () => {
-  test("path equality delegates to the canonical local-path normalization", function () {
+  test("path equality uses canonical local normalization", function () {
     assert.equal(pathEquals("a/b", "a\\b"), true);
 
     if (process.platform !== "win32") {
@@ -50,9 +50,7 @@ suite("Local path identity", () => {
     );
   });
 
-  test(
-    "repository resource lookup accepts Windows casing variants",
-    function () {
+  test("repository lookup accepts Windows casing variants", function () {
     if (process.platform !== "win32") this.skip();
 
     const resource = new Resource(
@@ -66,18 +64,15 @@ suite("Local path identity", () => {
     repository.staged = undefined;
     repository.changelists = new Map();
 
-      assert.strictEqual(
-        repository.getResourceFromFile(
-          Uri.file("c:\\work\\project\\FILE.TXT")
-        ),
-        resource
-      );
-    }
-  );
+    assert.strictEqual(
+      repository.getResourceFromFile(
+        Uri.file("c:\\work\\project\\FILE.TXT")
+      ),
+      resource
+    );
+  });
 
-  test(
-    "incoming changes deduplicate Windows casing variants",
-    async function () {
+  test("incoming changes deduplicate Windows casing", async function () {
     if (process.platform !== "win32") this.skip();
 
     const first = new Resource(
@@ -101,13 +96,10 @@ suite("Local path identity", () => {
       ]
     } as any);
 
-      assert.equal((await node.getChildren()).length, 1);
-    }
-  );
+    assert.equal((await node.getChildren()).length, 1);
+  });
 
-  test(
-    "expanded unversioned resources deduplicate Windows casing variants",
-    function () {
+  test("unversioned resources deduplicate Windows casing", function () {
     if (process.platform !== "win32") this.skip();
 
     const first = new Resource(
@@ -119,16 +111,13 @@ suite("Local path identity", () => {
       Status.UNVERSIONED
     );
 
-      assert.deepStrictEqual(
-        deduplicateUnversionedResources([first, second]),
-        [second]
-      );
-    }
-  );
+    assert.deepStrictEqual(
+      deduplicateUnversionedResources([first, second]),
+      [second]
+    );
+  });
 
-  test(
-    "conflict save matching accepts Windows casing variants",
-    async function () {
+  test("conflict save accepts Windows casing", async function () {
     if (process.platform !== "win32") this.skip();
 
     const conflict = new Resource(
@@ -155,14 +144,11 @@ suite("Local path identity", () => {
 
       assert.strictEqual(resolved, conflict.resourceUri);
     } finally {
-        commands.executeCommand = originalExecute;
-      }
+      commands.executeCommand = originalExecute;
     }
-  );
+  });
 
-  test(
-    "file history recognizes a casing variant of the active editor",
-    async function () {
+  test("file history matches Windows editor casing", async function () {
     if (process.platform !== "win32") this.skip();
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-path-editor-"));
@@ -181,14 +167,11 @@ suite("Local path identity", () => {
       );
     } finally {
       await commands.executeCommand("workbench.action.closeActiveEditor");
-        fs.rmSync(root, { recursive: true, force: true });
-      }
+      fs.rmSync(root, { recursive: true, force: true });
     }
-  );
+  });
 
-  test(
-    "mutation validation accepts remote and rename casing changes",
-    async function () {
+  test("mutation validation accepts Windows casing", async function () {
     if (process.platform !== "win32") this.skip();
 
     const before = new Resource(
@@ -220,8 +203,7 @@ suite("Local path identity", () => {
       assert.deepStrictEqual(await command.validate([before]), [after]);
     } finally {
       command.dispose();
-        commands.executeCommand = originalExecute;
-      }
+      commands.executeCommand = originalExecute;
     }
-  );
+  });
 });
