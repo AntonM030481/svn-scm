@@ -1,0 +1,60 @@
+name: Tag release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.head_commit.message, 'Prepare release ')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
+      - name: Validate release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "master" || {
+            echo "Release tags may only be created from master"
+            exit 1
+          }
+
+          VERSION=$(node -p "require('./package.json').version")
+          CHANGELOG_VERSION=$(sed -n 's/^# \[\([^]]*\)\].*/\1/p' CHANGELOG.md | head -n 1)
+
+          test "$CHANGELOG_VERSION" = "$VERSION" || {
+            echo "Top changelog version $CHANGELOG_VERSION does not match package version $VERSION"
+            exit 1
+          }
+
+          echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+
+      - name: Create release tag if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG already exists"
+            exit 0
+          fi
+
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "$RELEASE_TAG"
