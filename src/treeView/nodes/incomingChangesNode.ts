@@ -1,6 +1,7 @@
 import { TreeItem, TreeItemCollapsibleState } from "vscode";
 import { WorkingCopySourceControl } from "../../workingCopySourceControl";
 import { getIconUri } from "../../uri";
+import { normalizePath } from "../../util";
 import BaseNode from "./baseNode";
 import IncomingChangeNode from "./incomingChangeNode";
 import NoIncomingChangesNode from "./noIncomingChangesNode";
@@ -25,7 +26,7 @@ export default class IncomingChangesNode implements BaseNode {
     const seen = new Set<string>();
     const changes = this.workingCopy.scopes.flatMap(repository =>
       (repository.remoteChanges?.resourceStates ?? []).flatMap(remoteChange => {
-        const key = remoteChange.resourceUri.toString();
+        const key = normalizePath(remoteChange.resourceUri.fsPath);
         if (seen.has(key)) return [];
         seen.add(key);
         return new IncomingChangeNode(
