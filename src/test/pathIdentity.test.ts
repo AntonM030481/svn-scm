@@ -1,7 +1,11 @@
 import * as assert from "assert";
-import { commands, Uri } from "vscode";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { commands, Uri, window, workspace } from "vscode";
 import { Command } from "../commands/command";
 import { Status } from "../common/types";
+import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import IncomingChangesNode from "../treeView/nodes/incomingChangesNode";
@@ -144,6 +148,29 @@ suite("Local path identity", () => {
       assert.strictEqual(resolved, conflict.resourceUri);
     } finally {
       commands.executeCommand = originalExecute;
+    }
+  });
+
+  test("file history recognizes a casing variant of the active editor", async function () {
+    if (process.platform !== "win32") this.skip();
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-path-editor-"));
+    const file = path.join(root, "MixedCase.txt");
+    fs.writeFileSync(file, "content");
+    const document = await workspace.openTextDocument(file);
+    await window.showTextDocument(document);
+    const provider = Object.create(
+      ItemLogProvider.prototype
+    ) as ItemLogProvider;
+
+    try {
+      assert.equal(
+        (provider as any).isCurrentEditor(Uri.file(file.toUpperCase())),
+        true
+      );
+    } finally {
+      await commands.executeCommand("workbench.action.closeActiveEditor");
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
