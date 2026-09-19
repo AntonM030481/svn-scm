@@ -34,6 +34,9 @@ jobs:
 
   validation:
     needs: verify-tag
+    permissions:
+      contents: write
+      actions: write
     uses: ./.github/workflows/main.yml
 
   release:
