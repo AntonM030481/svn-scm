@@ -32,6 +32,8 @@ Source Control workflow and correctness release.
   test without sleeps or production behavior changes (#163).
 * Automatically format TypeScript changes in same-repository pull requests and
   rerun CI on the formatted head while keeping fork PRs read-only (#164).
+* Automatically create a release tag from a validated release-prep merge, while
+  retaining manual workflow dispatch for recovery (#167).
 * Document the shared local-path normalization contract and current history-view
   placement.
 

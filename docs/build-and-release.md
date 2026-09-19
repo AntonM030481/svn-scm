@@ -61,11 +61,20 @@ do not increase a limit merely to silence a failure.
 Releases are driven by tags matching `v*`:
 
 1. update `package.json` to the intended version;
-2. add a matching section to `CHANGELOG.md`;
-3. merge the release change to `master`;
-4. create and push tag `v<package-version>`.
+2. add a matching top section to `CHANGELOG.md`;
+3. merge the release change to `master` with a commit title beginning
+   `Prepare release `.
 
-The release workflow verifies that the tag equals the package version, reruns
+The `Tag release` workflow validates that the package version matches the top
+changelog release, creates `v<package-version>` on that master commit if it
+does not already exist, pushes the tag, and explicitly dispatches the release
+workflow for that tag. The explicit dispatch is required because tag pushes made
+with GitHub's workflow token do not start another workflow automatically. The
+tagging workflow can also be dispatched manually from `master` for recovery
+and has only `contents: write` plus `actions: write`.
+
+The release workflow accepts either the tag push or that explicit manual
+dispatch and verifies that the tag equals the package version, reruns
 the same reusable CI workflow (including the full OS/minimum/stable matrix),
 creates `svn-scm-v<version>.vsix`, checks its budgets, extracts the
 matching changelog section, and publishes a GitHub Release.
