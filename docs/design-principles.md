@@ -74,6 +74,22 @@ Nested working copies, ignored roots, externals, and multi-root workspaces make
 simple “first path prefix wins” routing incorrect. The most specific valid
 working-copy owner must win.
 
+### Local filesystem path identity is normalized
+
+Local filesystem paths are compared by filesystem identity, not by their raw
+URI/string spelling. Code that compares, deduplicates, or uses local paths as
+`Map`/`Set` keys must use `normalizePath(fsPath)` (or `pathEquals()` for
+pairwise equality). On Windows this makes drive-letter and UNC comparisons
+case-insensitive and normalizes separator variants.
+
+Keep the original path when passing a target to SVN/the filesystem or displaying
+it to the user; normalization is for identity keys and comparisons. Physical
+working-copy roots use the stricter `normalizeWorkingCopyRoot()` helper.
+
+This rule does **not** apply mechanically to repository URLs or virtual
+`svn:`/`tempsvnfs:` URIs. Those are URI identities and may legitimately use
+their serialized URI form as cache keys.
+
 ### The SVN CLI is the behavioral authority
 
 All SVN operations go through the local command-line client. This provides
