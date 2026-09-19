@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { Uri, window } from "vscode";
+import { fetchMore } from "../historyView/common";
 import { RepoLogProvider } from "../historyView/repoLogProvider";
 
 suite("Repository history lifecycle", () => {
@@ -184,6 +185,28 @@ suite("Repository history lifecycle", () => {
     } finally {
       window.showErrorMessage = originalError;
     }
+  });
+
+  test("history paging keeps failures retryable", async () => {
+    const cached = {
+      entries: [{ revision: "10" }],
+      isComplete: false,
+      svnTarget: Uri.parse("https://example.test/svn/trunk"),
+      repo: {
+        log: async () => {
+          throw new Error("temporary history failure");
+        }
+      },
+      persisted: { commitFrom: "HEAD" },
+      order: 0
+    };
+
+    await assert.rejects(
+      () => fetchMore(cached as any),
+      /temporary history failure/
+    );
+    assert.equal(cached.isComplete, false);
+    assert.deepStrictEqual(cached.entries, [{ revision: "10" }]);
   });
 
   test("repository changes invalidate only the matching history cache", () => {
