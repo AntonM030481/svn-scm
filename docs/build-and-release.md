@@ -39,9 +39,14 @@ branch or use the CI workflow's manual dispatch to validate an arbitrary branch.
 The build job uploads its VSIX as a workflow artifact for manual validation.
 It also runs the release-tooling regressions with `node --test scripts/*.test.cjs`.
 
-Keep GitHub Actions pinned to immutable commit SHAs, checkout credentials
-unpersisted, and workflow permissions explicit. Validation uses `contents: read`;
-only the publishing job receives `contents: write`. Dependabot checks Actions
+Keep GitHub Actions pinned to immutable commit SHAs and workflow permissions
+explicit. Normal validation keeps checkout credentials unpersisted and uses
+`contents: read`. Same-repository pull requests have a dedicated formatting job
+that temporarily receives `contents: write` and `actions: write`: it runs
+`yarn style-fix`, commits formatting-only changes back to the PR branch, and
+explicitly dispatches CI for the formatted head. Fork pull requests remain
+read-only and are checked without automatic writes. The publishing job receives
+`contents: write` only for creating the release. Dependabot checks Actions
 weekly. CI and release validation share `.github/workflows/main.yml`.
 
 `package-budgets.json` sets explicit ceilings of 1.5 MiB for the uncompressed
