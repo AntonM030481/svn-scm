@@ -4,9 +4,10 @@ Source Control workflow and correctness release.
 
 ### Features
 
-* Move repository history into the Source Control view as **SVN History** while
-  keeping File History and Branch Changes in their existing SVN activity views
-  (#158).
+* Remove the former **Repositories** pane from the Subversion activity area and
+  expose the same repository history directly in the standard Source Control
+  view as **SVN History**; File History and Branch Changes remain in the
+  Subversion activity area (#158).
 * Add inline **Stage** and **Delete** actions for unversioned groups, folders,
   and files, with current-status validation and targeted refresh after deletion
   (#159).
