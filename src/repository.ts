@@ -1765,6 +1765,7 @@ export class Repository implements IRemoteRepository {
     let attempt = 0;
     let accounts: IStoredAuth[] = [];
     let storedAccountIndex: number | undefined;
+    let retriedWithoutStoredCredentials = false;
     let promptAttempts = 0;
 
     while (true) {
@@ -1808,6 +1809,11 @@ export class Repository implements IRemoteRepository {
             const account = accounts[storedAccountIndex--];
             this.username = account.account;
             this.password = account.password;
+          } else if (
+            accounts.length === 0 &&
+            !retriedWithoutStoredCredentials
+          ) {
+            retriedWithoutStoredCredentials = true;
           } else if (promptAttempts < 2) {
             promptAttempts++;
             const result = await this.promptAuth(signal);
