@@ -253,7 +253,9 @@ export abstract class Command implements Disposable {
     if (
       preserveSelection &&
       activeTextEditor &&
-      activeTextEditor.document.uri.toString() === right.toString()
+      (activeTextEditor.document.uri.scheme === "file" && right.scheme === "file"
+        ? pathEquals(activeTextEditor.document.uri.fsPath, right.fsPath)
+        : activeTextEditor.document.uri.toString() === right.toString())
     ) {
       opts.selection = activeTextEditor.selection;
     }
