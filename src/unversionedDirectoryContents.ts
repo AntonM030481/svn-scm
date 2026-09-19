@@ -6,7 +6,7 @@ import { configuration } from "./helpers/configuration";
 import { Repository } from "./repository";
 import { Resource } from "./resource";
 import { SourceControlManager } from "./source_control_manager";
-import { dispose, getSvnDir } from "./util";
+import { dispose, getSvnDir, normalizePath } from "./util";
 import { matchAll } from "./util/globMatch";
 
 const MAX_UNVERSIONED_CHILDREN = 2000;
@@ -203,10 +203,10 @@ export class UnversionedDirectoryContents implements Disposable {
       );
     }
 
-    const byUri = new Map<string, Resource>();
+    const byPath = new Map<string, Resource>();
     [...baseResources, ...children].forEach(resource =>
-      byUri.set(resource.resourceUri.toString(), resource)
+      byPath.set(normalizePath(resource.resourceUri.fsPath), resource)
     );
-    repository.unversioned.resourceStates = [...byUri.values()];
+    repository.unversioned.resourceStates = [...byPath.values()];
   }
 }
