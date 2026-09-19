@@ -61,9 +61,14 @@ do not increase a limit merely to silence a failure.
 Releases are driven by tags matching `v*`:
 
 1. update `package.json` to the intended version;
-2. add a matching section to `CHANGELOG.md`;
-3. merge the release change to `master`;
-4. create and push tag `v<package-version>`.
+2. add a matching top section to `CHANGELOG.md`;
+3. merge the release change to `master` with a commit title beginning
+   `Prepare release `.
+
+The `Tag release` workflow validates that the package version matches the top
+changelog release, creates `v<package-version>` on that master commit if it
+does not already exist, and pushes the tag. It can also be dispatched manually
+from `master` for recovery. The workflow has only `contents: write`.
 
 The release workflow verifies that the tag equals the package version, reruns
 the same reusable CI workflow (including the full OS/minimum/stable matrix),
