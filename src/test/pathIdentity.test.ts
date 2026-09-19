@@ -1,6 +1,5 @@
 import * as assert from "assert";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { commands, Uri, window, workspace } from "vscode";
 import { Command } from "../commands/command";
@@ -13,6 +12,7 @@ import {
   deduplicateUnversionedResources
 } from "../unversionedDirectoryContents";
 import { normalizePath, pathEquals } from "../util";
+import * as testUtil from "./testUtil";
 
 class ValidationCommand extends Command {
   constructor() {
@@ -153,7 +153,7 @@ suite("Local path identity", () => {
   test("file history matches Windows editor casing", async function () {
     if (process.platform !== "win32") this.skip();
 
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "svn-path-editor-"));
+    const root = testUtil.newTempDir("svn-path-editor-");
     const file = path.join(root, "MixedCase.txt");
     fs.writeFileSync(file, "content");
     const document = await workspace.openTextDocument(file);
@@ -169,7 +169,6 @@ suite("Local path identity", () => {
       );
     } finally {
       await commands.executeCommand("workbench.action.closeActiveEditor");
-      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
