@@ -483,7 +483,11 @@ export abstract class Command implements Disposable {
       ),
       result
     );
-    workspace.applyEdit(edit);
+    const applied = await workspace.applyEdit(edit);
+    if (!applied) {
+      window.showErrorMessage("Unable to revert selected change");
+      return;
+    }
     await modifiedDocument.save();
   }
 
