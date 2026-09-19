@@ -1,3 +1,40 @@
+# [2.23.0](https://github.com/AntonM030481/svn-scm/compare/v2.22.2...v2.23.0) (2026-09-19)
+
+Source Control workflow and correctness release.
+
+### Features
+
+* Remove the former **Repositories** pane from the Subversion activity area and
+  expose the same repository history directly in the standard Source Control
+  view as **SVN History**; File History and Branch Changes remain in the
+  Subversion activity area (#158).
+* Add inline **Stage** and **Delete** actions for unversioned groups, folders,
+  and files, with current-status validation and targeted refresh after deletion
+  (#159).
+
+### Bug Fixes
+
+* Make Revert Change wait for workspace edits, accept HTTP(S) and `svn+ssh`
+  history paths, validate local history targets asynchronously, retry saved
+  credentials predictably, preserve retryable history pagination after SVN
+  errors, and clear stale File History state (#161).
+* Refresh deleted unversioned paths across every overlapping projection of one
+  physical working copy without requiring auto-refresh, while surfacing deletion
+  failures and keeping the successful path targeted (#161).
+* Normalize local filesystem identity consistently for Windows drive and UNC
+  paths across SCM lookup, incoming-change and unversioned deduplication,
+  mutation validation, editor matching, discovery caches, and related path keys
+  (#162).
+
+### Maintenance
+
+* Stabilize the Windows + VS Code 1.86 startup file-event ordering regression
+  test without sleeps or production behavior changes (#163).
+* Automatically format TypeScript changes in same-repository pull requests and
+  rerun CI on the formatted head while keeping fork PRs read-only (#164).
+* Document the shared local-path normalization contract and current history-view
+  placement.
+
 # [2.22.2](https://github.com/AntonM030481/svn-scm/compare/v2.21.0...v2.22.2) (2026-09-16)
 
 Marketplace-readiness and shared-working-copy release.

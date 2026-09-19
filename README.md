@@ -68,9 +68,12 @@ retain the explicit SVN resolution commands.
 
 ### Inspect history and incoming changes
 
-Repository, file, and branch history are available from the Subversion views
-and context menus. Text-log search streams results into a document and can be
-cancelled from its progress notification or by closing that document.
+The former **Repositories** pane is no longer shown in the Subversion activity
+area. Repository history is now available as **SVN History** directly in the
+standard Source Control view. **File History** and **Branch Changes** remain in
+the Subversion activity area and related context-menu workflows. Text-log search
+streams results into a document and can be cancelled from its progress
+notification or by closing that document.
 
 Remote status checks may contact the server and run only when requested or when
 remote polling is enabled. Incoming changes can be inspected and updated from
