@@ -250,14 +250,15 @@ export abstract class Command implements Disposable {
 
     const activeTextEditor = window.activeTextEditor;
 
-    if (
-      preserveSelection &&
-      activeTextEditor &&
-      (activeTextEditor.document.uri.scheme === "file" && right.scheme === "file"
-        ? pathEquals(activeTextEditor.document.uri.fsPath, right.fsPath)
-        : activeTextEditor.document.uri.toString() === right.toString())
-    ) {
-      opts.selection = activeTextEditor.selection;
+    if (preserveSelection && activeTextEditor) {
+      const activeUri = activeTextEditor.document.uri;
+      const sameResource =
+        activeUri.scheme === "file" && right.scheme === "file"
+          ? pathEquals(activeUri.fsPath, right.fsPath)
+          : activeUri.toString() === right.toString();
+      if (sameResource) {
+        opts.selection = activeTextEditor.selection;
+      }
     }
 
     if (!left) {
