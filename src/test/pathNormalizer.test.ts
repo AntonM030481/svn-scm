@@ -94,6 +94,24 @@ suite("SVN URLs parsing", () => {
     assert.equal(p4.localFullPath!.path, "/home/user/svn/file.c");
   });
 
+  test("supports HTTP and svn+ssh repository URLs", function () {
+    for (const scheme of ["http", "https", "svn+ssh"]) {
+      const root = `${scheme}://example.test/svn/project`;
+      const branch = `${root}/trunk`;
+      const nm = new PathNormalizer({
+        repository: { root },
+        url: branch
+      } as ISvnInfo);
+      const parsed = nm.parse(`${branch}/src/file.ts`);
+
+      assert.equal(
+        parsed.remoteFullPath.toString(),
+        Uri.parse(`${branch}/src/file.ts`).toString()
+      );
+      assert.equal(parsed.relativeFromBranch, "src/file.ts");
+    }
+  });
+
   const ri4 = {
     repository: {
       root: "svn://rootdomain.com"

@@ -225,16 +225,41 @@ suite("Staging UI Argument Tests", () => {
     await repository.status();
 
     const originalWarning = window.showWarningMessage;
+    const config = workspace.getConfiguration("svn");
+    const previousAutorefresh =
+      config.inspect<boolean>("autorefresh")?.globalValue;
+    const base = repository.repository;
+    const originalExec = base.exec.bind(base);
+    let targetedStatuses = 0;
+    let untargetedStatuses = 0;
+
     (window as any).showWarningMessage = async () => "Yes";
+    base.exec = async (args, options) => {
+      if (args[0] === "stat") {
+        const text = args.join(" ");
+        if (/folder|remaining\.txt/.test(text)) {
+          targetedStatuses += 1;
+        } else {
+          untargetedStatuses += 1;
+        }
+      }
+      return originalExec(args, options);
+    };
+
     try {
+      await config.update("autorefresh", false, ConfigurationTarget.Global);
+
       await commands.executeCommand("svn.deleteUnversioned", {
         uri: Uri.file(directory),
         context: repository.unversioned
       });
       assert.equal(fs.existsSync(directory), false);
       assert.equal(fs.existsSync(remaining), true);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(directory)),
+        undefined
+      );
 
-      await repository.status();
       await commands.executeCommand("svn.deleteUnversioned", {
         uri: Uri.file(trackedDirectory),
         context: repository.unversioned
@@ -242,14 +267,29 @@ suite("Staging UI Argument Tests", () => {
       assert.equal(fs.existsSync(trackedDirectory), true);
       assert.equal(fs.existsSync(trackedBase), true);
       assert.equal(fs.existsSync(trackedNew), false);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(trackedNew)),
+        undefined
+      );
 
-      await repository.status();
       await commands.executeCommand(
         "svn.deleteUnversioned",
         repository.unversioned
       );
       assert.equal(fs.existsSync(remaining), false);
+      assert.equal(
+        repository.getResourceFromFile(Uri.file(remaining)),
+        undefined
+      );
+      assert.ok(targetedStatuses >= 3);
+      assert.equal(untargetedStatuses, 0);
     } finally {
+      base.exec = originalExec;
+      await config.update(
+        "autorefresh",
+        previousAutorefresh,
+        ConfigurationTarget.Global
+      );
       window.showWarningMessage = originalWarning;
     }
   });

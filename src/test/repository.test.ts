@@ -13,6 +13,8 @@ import { Status, Operation } from "../common/types";
 import { configuration } from "../helpers/configuration";
 import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { SourceControlManager } from "../source_control_manager";
+import { svnErrorCodes } from "../svn";
+import SvnError from "../svnError";
 import { Repository } from "../repository";
 import { normalizePath } from "../util";
 import * as testUtil from "./testUtil";
@@ -345,6 +347,30 @@ suite("Repository Tests", () => {
     }
   });
 
+  test("File history clears when the active resource is not a file", async () => {
+    const itemLogProvider = Object.create(
+      ItemLogProvider.prototype
+    ) as ItemLogProvider;
+    const state = itemLogProvider as any;
+    const changeEmitter = new EventEmitter<any>();
+    let refreshes = 0;
+
+    state.currentItem = { entries: [{ revision: "1" }] };
+    state._onDidChangeTreeData = changeEmitter;
+    changeEmitter.event(() => refreshes++);
+
+    try {
+      await itemLogProvider.refresh(undefined, {
+        document: { uri: Uri.parse("untitled:test") }
+      } as any);
+
+      assert.equal(state.currentItem, undefined);
+      assert.equal(refreshes, 1);
+    } finally {
+      changeEmitter.dispose();
+    }
+  });
+
   test("File history waits for a later status operation", async () => {
     const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
     assert.ok(repository);
@@ -414,6 +440,96 @@ suite("Repository Tests", () => {
       fs.unlinkSync(file);
       await repository.status();
       await commands.executeCommand("workbench.action.closeActiveEditor");
+    }
+  });
+
+  test("Authentication retries each stored credential once", async () => {
+    const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
+    assert.ok(repository);
+
+    const originalLoadStoredAuths = repository.loadStoredAuths;
+    const originalPromptAuth = repository.promptAuth;
+    const originalSaveAuth = repository.saveAuth;
+    const originalUsername = repository.username;
+    const originalPassword = repository.password;
+    const attempts: string[] = [];
+    let promptCalls = 0;
+
+    repository.loadStoredAuths = async () => [
+      { account: "older-account", password: "older-password" },
+      { account: "newer-account", password: "newer-password" }
+    ];
+    repository.promptAuth = async () => {
+      promptCalls += 1;
+      return undefined;
+    };
+    repository.saveAuth = async () => undefined;
+    repository.username = undefined;
+    repository.password = undefined;
+
+    try {
+      const result = await (repository as any).retryRun(async () => {
+        attempts.push(repository.username ?? "<default>");
+        if (repository.username === "older-account") {
+          return "authenticated";
+        }
+        throw new SvnError({
+          message: "authorization failed",
+          svnErrorCode: svnErrorCodes.AuthorizationFailed
+        });
+      });
+
+      assert.equal(result, "authenticated");
+      assert.deepStrictEqual(attempts, [
+        "<default>",
+        "newer-account",
+        "older-account"
+      ]);
+      assert.equal(promptCalls, 0);
+    } finally {
+      repository.loadStoredAuths = originalLoadStoredAuths;
+      repository.promptAuth = originalPromptAuth;
+      repository.saveAuth = originalSaveAuth;
+      repository.username = originalUsername;
+      repository.password = originalPassword;
+    }
+  });
+
+  test("Successful operations wait for credential persistence", async () => {
+    const repository = sourceControlManager.getRepository(checkoutDir.fsPath);
+    assert.ok(repository);
+
+    const originalSaveAuth = repository.saveAuth;
+    let releaseSave!: () => void;
+    const saveGate = new Promise<void>(resolve => {
+      releaseSave = resolve;
+    });
+    let saveStarted = false;
+    let completed = false;
+
+    repository.saveAuth = async () => {
+      saveStarted = true;
+      await saveGate;
+    };
+
+    try {
+      const pending = (repository as any)
+        .retryRun(async () => "ok")
+        .then((value: string) => {
+          completed = true;
+          return value;
+        });
+
+      await Promise.resolve();
+      assert.equal(saveStarted, true);
+      assert.equal(completed, false);
+
+      releaseSave();
+      assert.equal(await pending, "ok");
+      assert.equal(completed, true);
+    } finally {
+      releaseSave();
+      repository.saveAuth = originalSaveAuth;
     }
   });
 

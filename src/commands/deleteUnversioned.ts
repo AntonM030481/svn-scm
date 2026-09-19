@@ -6,11 +6,14 @@ import {
   window
 } from "vscode";
 import { Status } from "../common/types";
+import { refreshStatusTargets } from "../incrementalStatus";
 import { exists, lstat, unlink } from "../fs";
 import { Resource } from "../resource";
+import { getDisplayErrorMessage } from "../svnError";
 import { isUnversionedChildResource } from "../unversionedDirectoryContents";
 import { deleteDirectory } from "../util";
 import { Command } from "./command";
+import { workingCopyScopes } from "./workingCopyScopes";
 
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
@@ -168,24 +171,60 @@ export class DeleteUnversioned extends Command {
       "No"
     );
     if (answer === "Yes") {
-      for (const uri of uris) {
-        const fsPath = uri.fsPath;
+      const failures = (
+        await this.runByRepository(uris, async (repository, resources) => {
+          const deleted: string[] = [];
+          const failed: Array<{ path: string; error: unknown }> = [];
 
-        try {
-          if (!(await exists(fsPath))) {
-            continue;
+          for (const uri of resources) {
+            const fsPath = uri.fsPath;
+
+            try {
+              if (!(await exists(fsPath))) {
+                deleted.push(fsPath);
+                continue;
+              }
+
+              const stat = await lstat(fsPath);
+
+              if (stat.isDirectory()) {
+                await deleteDirectory(fsPath);
+              } else {
+                await unlink(fsPath);
+              }
+              deleted.push(fsPath);
+            } catch (error) {
+              failed.push({ path: fsPath, error });
+            }
           }
 
-          const stat = await lstat(fsPath);
-
-          if (stat.isDirectory()) {
-            await deleteDirectory(fsPath);
-          } else {
-            await unlink(fsPath);
+          if (deleted.length) {
+            const scopes = await workingCopyScopes(repository);
+            await Promise.all(
+              scopes.map(scope => {
+                const targets = deleted.filter(filePath =>
+                  isPathInside(scope.workspaceRoot, filePath)
+                );
+                return targets.length
+                  ? refreshStatusTargets(scope, targets)
+                  : Promise.resolve();
+              })
+            );
           }
-        } catch (_error) {
-          // TODO(cjohnston) Show meaningful error to user
-        }
+
+          return failed;
+        })
+      ).flat();
+
+      if (failures.length) {
+        const first = failures[0];
+        const suffix =
+          failures.length > 1 ? ` (+${failures.length - 1} more)` : "";
+        window.showErrorMessage(
+          `Unable to delete "${path.basename(first.path)}": ${getDisplayErrorMessage(
+            first.error
+          )}${suffix}`
+        );
       }
     }
   }

@@ -179,57 +179,61 @@ export class ItemLogProvider
     if (te === undefined) {
       te = window.activeTextEditor;
     }
-    if (te) {
-      const uri = te.document.uri;
-      if (uri.scheme === "file") {
-        const repo = this.sourceControlManager.getRepository(uri);
-        if (repo !== null) {
-          await repo.initialStatusSettled;
+    if (!te || te.document.uri.scheme !== "file") {
+      this.currentItem = undefined;
+      this._onDidChangeTreeData.fire(element);
+      return;
+    }
 
+    const uri = te.document.uri;
+    const repo = this.sourceControlManager.getRepository(uri);
+    if (repo !== null) {
+      await repo.initialStatusSettled;
+
+      if (!this.isCurrentEditor(uri)) {
+        return;
+      }
+
+      if (!(await this.waitForStatusOperations(repo))) {
+        return;
+      }
+
+      if (!this.isCurrentEditor(uri)) {
+        return;
+      }
+
+      const isUnversioned = repo.unversioned.resourceStates.some(resource =>
+        pathEquals(resource.resourceUri.fsPath, uri.fsPath)
+      );
+
+      if (isUnversioned) {
+        this.currentItem = undefined;
+      } else {
+        try {
+          const info = await repo.getInfo(uri.fsPath);
           if (!this.isCurrentEditor(uri)) {
             return;
           }
-
-          if (!(await this.waitForStatusOperations(repo))) {
-            return;
-          }
-
-          if (!this.isCurrentEditor(uri)) {
-            return;
-          }
-
-          const isUnversioned = repo.unversioned.resourceStates.some(resource =>
-            pathEquals(resource.resourceUri.fsPath, uri.fsPath)
-          );
-
-          if (isUnversioned) {
-            this.currentItem = undefined;
-          } else {
-            try {
-              const info = await repo.getInfo(uri.fsPath);
-              if (!this.isCurrentEditor(uri)) {
-                return;
-              }
-              this.currentItem = {
-                isComplete: false,
-                entries: [],
-                repo,
-                svnTarget: Uri.parse(info.url),
-                persisted: {
-                  commitFrom: "HEAD",
-                  baseRevision: parseInt(info.revision, 10)
-                },
-                order: 0
-              };
-            } catch (_error) {
-              // doesn't belong to this repo
-              this.currentItem = undefined;
-            }
-          }
+          this.currentItem = {
+            isComplete: false,
+            entries: [],
+            repo,
+            svnTarget: Uri.parse(info.url),
+            persisted: {
+              commitFrom: "HEAD",
+              baseRevision: parseInt(info.revision, 10)
+            },
+            order: 0
+          };
+        } catch (_error) {
+          // doesn't belong to this repo
+          this.currentItem = undefined;
         }
       }
-      this._onDidChangeTreeData.fire(element);
+    } else {
+      this.currentItem = undefined;
     }
+    this._onDidChangeTreeData.fire(element);
   }
 
   public async getTreeItem(element: ILogTreeItem): Promise<TreeItem> {

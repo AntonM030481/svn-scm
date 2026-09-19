@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { Uri, window } from "vscode";
+import { fetchMore } from "../historyView/common";
 import { RepoLogProvider } from "../historyView/repoLogProvider";
 
 suite("Repository history lifecycle", () => {
@@ -154,6 +155,58 @@ suite("Repository history lifecycle", () => {
       "event"
     ]);
     assert.equal(state.logCache.size, 0);
+  });
+
+  test("open local history waits for path validation", async () => {
+    const provider = Object.create(
+      RepoLogProvider.prototype
+    ) as RepoLogProvider;
+    const state = provider as any;
+    const originalError = window.showErrorMessage;
+    let errors = 0;
+
+    state.getCached = () => ({
+      repo: {
+        getPathNormalizer: () => ({
+          parse: () => ({ localFullPath: undefined })
+        })
+      }
+    });
+    (window as any).showErrorMessage = async () => {
+      errors += 1;
+      return undefined;
+    };
+
+    try {
+      await provider.openFileLocal({
+        data: { _: "/trunk/file.txt" }
+      } as any);
+      assert.equal(errors, 1);
+    } finally {
+      window.showErrorMessage = originalError;
+    }
+  });
+
+  test("history paging keeps failures retryable", async () => {
+    const cached = {
+      entries: [{ revision: "10" }],
+      isComplete: false,
+      svnTarget: Uri.parse("https://example.test/svn/trunk"),
+      repo: {
+        log: async () => {
+          throw new Error("temporary history failure");
+        }
+      },
+      persisted: { commitFrom: "HEAD" },
+      order: 0
+    };
+
+    await assert.rejects(
+      () => fetchMore(cached as any),
+      /temporary history failure/
+    );
+    assert.equal(cached.isComplete, false);
+    assert.deepStrictEqual(cached.entries, [{ revision: "10" }]);
   });
 
   test("repository changes invalidate only the matching history cache", () => {
