@@ -8,9 +8,7 @@ import { ItemLogProvider } from "../historyView/itemLogProvider";
 import { Repository } from "../repository";
 import { Resource } from "../resource";
 import IncomingChangesNode from "../treeView/nodes/incomingChangesNode";
-import {
-  deduplicateUnversionedResources
-} from "../unversionedDirectoryContents";
+import { deduplicateUnversionedResources } from "../unversionedDirectoryContents";
 import { normalizePath, pathEquals } from "../util";
 import * as testUtil from "./testUtil";
 
