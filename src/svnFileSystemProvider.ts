@@ -20,6 +20,7 @@ import {
   filterEvent,
   eventToPromise,
   isDescendant,
+  normalizePath,
   pathEquals,
   EmptyDisposable
 } from "./util";
@@ -88,7 +89,7 @@ export class SvnFileSystemProvider implements FileSystemProvider, Disposable {
   }
 
   private onDidChangeRepository({ repository }: RepositoryChangeEvent): void {
-    this.changedRepositoryRoots.add(repository.root);
+    this.changedRepositoryRoots.add(normalizePath(repository.root));
     this.eventuallyFireChangeEvents();
   }
 
