@@ -194,14 +194,8 @@ suite("Source control repository discovery", () => {
     manager.possibleSvnRepositoryPaths = new Map();
 
     try {
-      manager.eventuallyScanPossibleSvnRepository(
-        "C:\\Work\\Project",
-        false
-      );
-      manager.eventuallyScanPossibleSvnRepository(
-        "c:/work/project",
-        true
-      );
+      manager.eventuallyScanPossibleSvnRepository("C:\\Work\\Project", false);
+      manager.eventuallyScanPossibleSvnRepository("c:/work/project", true);
 
       assert.equal(manager.possibleSvnRepositoryPaths.size, 1);
       assert.deepStrictEqual(
