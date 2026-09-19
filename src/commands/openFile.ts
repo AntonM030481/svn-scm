@@ -10,6 +10,7 @@ import { exists, stat } from "../fs";
 import { Resource } from "../resource";
 import IncomingChangeNode from "../treeView/nodes/incomingChangeNode";
 import { fromSvnUri } from "../uri";
+import { pathEquals } from "../util";
 import { Command } from "./command";
 
 export class OpenFile extends Command {
@@ -80,7 +81,9 @@ export class OpenFile extends Command {
 
       if (
         activeTextEditor &&
-        activeTextEditor.document.uri.toString() === uri.toString()
+        activeTextEditor.document.uri.scheme === "file" &&
+        uri.scheme === "file" &&
+        pathEquals(activeTextEditor.document.uri.fsPath, uri.fsPath)
       ) {
         opts.selection = activeTextEditor.selection;
       }
