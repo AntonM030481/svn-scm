@@ -329,6 +329,44 @@ suite("Svn Repository Tests", () => {
     assert.equal(repository.info.url, info.url);
   });
 
+  test("Reuses initial repository info across Windows casing variants", async function () {
+    if (process.platform !== "win32") this.skip();
+
+    svn = new Svn(options);
+    let execCalls = 0;
+    (svn as any).exec = async () => {
+      execCalls += 1;
+      return {
+        exitCode: 0,
+        stderr: "",
+        stdout: `<?xml version="1.0" encoding="UTF-8"?>
+          <info>
+            <entry kind="dir" path="." revision="42">
+              <url>https://example.test/svn/project/trunk</url>
+              <relative-url>^/trunk</relative-url>
+              <repository>
+                <root>https://example.test/svn/project</root>
+                <uuid>test-repository-uuid</uuid>
+              </repository>
+              <wc-info>
+                <wcroot-abspath>C:\\Work\\Project</wcroot-abspath>
+              </wc-info>
+              <commit revision="42">
+                <author>tester</author>
+                <date>2026-09-10T00:00:00.000000Z</date>
+              </commit>
+            </entry>
+          </info>`
+      };
+    };
+
+    const root = await svn.getRepositoryRoot("C:\\Work\\Project");
+    const repository = await svn.open(root, "c:\\work\\project");
+
+    assert.equal(execCalls, 1);
+    assert.equal(repository.info.url, info.url);
+  });
+
   test("Gets current branch from loaded repository info", async () => {
     svn = new Svn(options);
     const repository = await new Repository(
