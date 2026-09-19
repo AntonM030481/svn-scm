@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   tag:
@@ -58,3 +59,8 @@ jobs:
 
           git tag "$RELEASE_TAG" "$GITHUB_SHA"
           git push origin "$RELEASE_TAG"
+
+      - name: Run release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref "$RELEASE_TAG"
