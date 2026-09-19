@@ -67,9 +67,7 @@ suite("Local path identity", () => {
     repository.changelists = new Map();
 
     assert.strictEqual(
-      repository.getResourceFromFile(
-        Uri.file("c:\\work\\project\\FILE.TXT")
-      ),
+      repository.getResourceFromFile(Uri.file("c:\\work\\project\\FILE.TXT")),
       resource
     );
   });
