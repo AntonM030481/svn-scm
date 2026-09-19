@@ -44,7 +44,8 @@ suite("Shared working-copy staging guard", () => {
     await sourceControlManager.tryOpenRepository(nested);
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
     const nestedRepository = sourceControlManager.repositories.find(
-      repository => path.resolve(repository.workspaceRoot) === path.resolve(nested)
+      repository =>
+        path.resolve(repository.workspaceRoot) === path.resolve(nested)
     );
     const rootRepository = sourceControlManager.repositories.find(
       repository =>
