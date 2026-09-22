@@ -216,12 +216,7 @@ export class BlameController implements Disposable {
       });
       editor.setDecorations(record.activeDecoration, [
         {
-          range: new Range(
-            blame.line - 1,
-            Number.MAX_SAFE_INTEGER,
-            blame.line - 1,
-            Number.MAX_SAFE_INTEGER
-          ),
+          range: editor.document.lineAt(blame.line - 1).range.end,
           hoverMessage: hoverText(blame, log)
         }
       ]);
