@@ -24,7 +24,6 @@ suite("blame line mapping", () => {
     );
   });
 
-
   test("moves the original line when new lines are inserted at column zero", () => {
     const shifted = shiftBlameLines(lines, [
       {
