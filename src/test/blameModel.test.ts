@@ -9,21 +9,67 @@ suite("blame line mapping", () => {
     { line: 4, revision: "4" }
   ];
 
-  test("shifts following blame lines after insertion", () => {
+  test("shifts untouched lines after insertion at a line boundary", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedLineCount: 2
+      }
+    ]);
+
     assert.deepStrictEqual(
-      shiftBlameLines(lines, [
-        { startLine: 1, endLine: 1, insertedLineCount: 2 }
-      ]).map(x => x.line),
-      [1, 2, 5, 6]
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "2"],
+        [5, "3"],
+        [6, "4"]
+      ]
     );
   });
 
-  test("drops deleted lines and shifts following lines", () => {
+  test("preserves the line after a full-line deletion", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedLineCount: 0
+      }
+    ]);
+
     assert.deepStrictEqual(
-      shiftBlameLines(lines, [
-        { startLine: 1, endLine: 3, insertedLineCount: 0 }
-      ]).map(x => x.line),
-      [1, 2]
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [2, "3"],
+        [3, "4"]
+      ]
+    );
+  });
+
+  test("drops attribution for an edited line without shifting other lines", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 2,
+        endLine: 1,
+        endCharacter: 4,
+        insertedLineCount: 0
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "3"],
+        [4, "4"]
+      ]
     );
   });
 });
