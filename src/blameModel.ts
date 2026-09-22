@@ -19,18 +19,47 @@ export function shiftBlameLines(
     const end = change.endLine + 1;
     const removedLineBreaks = change.endLine - change.startLine;
     const delta = change.insertedLineCount - removedLineBreaks;
-    const lastConsumedLine =
-      change.endCharacter === 0 && change.endLine > change.startLine
-        ? end - 1
-        : end;
+    const insertion =
+      change.startLine === change.endLine &&
+      change.startCharacter === change.endCharacter;
 
     current = current.flatMap(line => {
-      if (line.line <= start) {
+      if (line.line < start) {
         return [line];
       }
-      if (line.line <= lastConsumedLine) {
+
+      if (change.startLine === change.endLine) {
+        if (line.line === start) {
+          if (insertion) {
+            return [
+              change.startCharacter === 0 && change.insertedLineCount > 0
+                ? { ...line, line: line.line + change.insertedLineCount }
+                : line
+            ];
+          }
+          return change.startCharacter > 0 ? [line] : [];
+        }
+        return [{ ...line, line: line.line + delta }];
+      }
+
+      if (line.line === start) {
+        return change.startCharacter > 0 ? [line] : [];
+      }
+
+      if (line.line < end) {
         return [];
       }
+
+      if (line.line === end) {
+        if (change.endCharacter !== 0) {
+          return [];
+        }
+        if (change.startCharacter > 0 && change.insertedLineCount === 0) {
+          return [];
+        }
+        return [{ ...line, line: line.line + delta }];
+      }
+
       return [{ ...line, line: line.line + delta }];
     });
   }
