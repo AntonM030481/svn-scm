@@ -95,6 +95,27 @@ suite("blame line mapping", () => {
     );
   });
 
+  test("drops attribution when text is inserted at column zero", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedLineCount: 0
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "3"],
+        [4, "4"]
+      ]
+    );
+  });
+
   test("drops attribution for an edited line without shifting other lines", () => {
     const mapped = shiftBlameLines(lines, [
       {
