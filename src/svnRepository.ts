@@ -39,6 +39,7 @@ import {
 } from "./util";
 import { matchAll } from "./util/globMatch";
 import { parseDiffXml } from "./parser/diffParser";
+import { parseBlameXml, SvnBlameLine } from "./parser/blameParser";
 
 export class Repository {
   public get usesPerDirectoryMetadata(): boolean {
@@ -177,6 +178,25 @@ export class Repository {
       { signal }
     );
     return parseStatusXml(result.stdout);
+  }
+
+  public async blame(file: string): Promise<SvnBlameLine[]> {
+    const target = this.removeAbsolutePath(file);
+    const result = await this.exec(
+      ["blame", "--xml", "-x", "-w --ignore-eol-style", target],
+      { logReason: "blame" }
+    );
+    return parseBlameXml(result.stdout);
+  }
+
+  public async blameLog(file: string, revision: string): Promise<ISvnLogEntry | undefined> {
+    if (!/^\\d+$/.test(revision)) {
+      return undefined;
+    }
+
+    const target = this.removeAbsolutePath(file);
+    const entries = await this.log(revision, revision, 1, target);
+    return entries[0];
   }
 
   public async getStatus(params: {
