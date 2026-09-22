@@ -131,6 +131,7 @@ export class BlameSession implements Disposable {
     // An insertion beginning with a newline at EOL leaves the original line
     // text untouched (including auto-indent payloads such as "\n    ").
     if (
+      change.range.start.character > 0 &&
       /^\r?\n/.test(change.text) &&
       event.document.lineAt(change.range.start.line).text.length ===
         change.range.start.character
