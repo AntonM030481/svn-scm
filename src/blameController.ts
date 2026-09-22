@@ -1,58 +1,29 @@
 import {
   commands,
   Disposable,
-  Range,
   TextDocumentChangeEvent,
   TextEditor,
-  TextEditorDecorationType,
-  ThemeColor,
-  Uri,
   window,
   workspace
 } from "vscode";
-import { SourceControlManager } from "./source_control_manager";
-import { SvnBlameLine } from "./parser/blameParser";
+import { BlameDecorations } from "./blameDecorations";
 import { shiftBlameLines } from "./blameModel";
+import { SvnBlameLine } from "./parser/blameParser";
 import { Repository } from "./repository";
+import { SourceControlManager } from "./source_control_manager";
 import { SvnCancellationError } from "./svnProcess";
 
 interface BlameRecord {
   repository: Repository;
   lines: SvnBlameLine[];
   logs: Map<string, string>;
-  decorations: TextEditorDecorationType[];
-  activeDecoration?: TextEditorDecorationType;
+  decorations: BlameDecorations;
 }
 
 interface PendingBlame {
   repository?: Repository;
   controller: AbortController;
   generation: number;
-}
-
-const VIEWPORT_BUFFER = 200;
-
-function iconForRevision(revision: string): Uri {
-  let hash = 0;
-  for (const char of revision) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const hue = hash % 360;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="4" fill="hsl(${hue} 60% 55%)"/></svg>`;
-  return Uri.parse(`data:image/svg+xml,${encodeURIComponent(svg)}`);
-}
-
-function formatDate(value?: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
-}
-
-function hoverText(line: SvnBlameLine, log?: string): string {
-  const parts = [`r${line.revision}`];
-  if (line.author) parts.push(line.author);
-  if (line.date) parts.push(formatDate(line.date));
-  let text = parts.join(" · ");
-  if (log) text += `\n\n${log}`;
-  return text;
 }
 
 export class BlameController implements Disposable {
@@ -165,8 +136,9 @@ export class BlameController implements Disposable {
       return;
     }
 
-    if (this.records.has(file)) {
-      this.render(editor);
+    const existing = this.records.get(file);
+    if (existing) {
+      existing.decorations.renderGutter(editor, existing.lines, existing.logs);
       return;
     }
     if (this.pendingBlame.has(file)) return;
@@ -183,13 +155,14 @@ export class BlameController implements Disposable {
       );
       if (
         !repository ||
-        this.disposed ||
-        controller.signal.aborted ||
-        this.pendingBlame.get(file) !== request ||
-        this.requestGenerations.get(file) !== generation ||
-        document.isClosed ||
-        document.isDirty ||
-        document.version !== documentVersion
+        !this.isBlameRequestCurrent(
+          file,
+          request,
+          documentVersion,
+          document.version,
+          document.isClosed,
+          document.isDirty
+        )
       ) {
         return;
       }
@@ -197,24 +170,26 @@ export class BlameController implements Disposable {
       request.repository = repository;
       const lines = await repository.blame(file, controller.signal);
       if (
-        this.disposed ||
-        controller.signal.aborted ||
-        this.pendingBlame.get(file) !== request ||
-        this.requestGenerations.get(file) !== generation ||
-        document.isClosed ||
-        document.isDirty ||
-        document.version !== documentVersion
+        !this.isBlameRequestCurrent(
+          file,
+          request,
+          documentVersion,
+          document.version,
+          document.isClosed,
+          document.isDirty
+        )
       ) {
         return;
       }
 
-      this.records.set(file, {
+      const record: BlameRecord = {
         repository,
         lines,
         logs: new Map(),
-        decorations: []
-      });
-      this.render(editor);
+        decorations: new BlameDecorations()
+      };
+      this.records.set(file, record);
+      record.decorations.renderGutter(editor, record.lines, record.logs);
       await this.onSelection(editor);
     } catch (error) {
       if (
@@ -233,18 +208,33 @@ export class BlameController implements Disposable {
     }
   }
 
+  private isBlameRequestCurrent(
+    file: string,
+    request: PendingBlame,
+    initialVersion: number,
+    currentVersion: number,
+    documentClosed: boolean,
+    documentDirty: boolean
+  ): boolean {
+    return (
+      !this.disposed &&
+      !request.controller.signal.aborted &&
+      this.pendingBlame.get(file) === request &&
+      this.requestGenerations.get(file) === request.generation &&
+      !documentClosed &&
+      !documentDirty &&
+      currentVersion === initialVersion
+    );
+  }
+
   private clear(file: string): void {
     this.nextRequestGeneration(file);
     this.pendingBlame.get(file)?.controller.abort();
     this.pendingBlame.delete(file);
     this.cancelSelection(file);
 
-    const record = this.records.get(file);
-    if (record) {
-      record.activeDecoration?.dispose();
-      for (const decoration of record.decorations) decoration.dispose();
-      this.records.delete(file);
-    }
+    this.records.get(file)?.decorations.dispose();
+    this.records.delete(file);
 
     // Missing generation entries also invalidate any async continuation, while
     // avoiding one retained path per document closed during a long VS Code session.
@@ -265,54 +255,10 @@ export class BlameController implements Disposable {
     for (const file of files) this.clear(file);
   }
 
-  private visibleLines(
-    editor: TextEditor,
-    record: BlameRecord
-  ): SvnBlameLine[] {
-    if (!editor.visibleRanges.length) return record.lines;
-    return record.lines.filter(line => {
-      const zeroBased = line.line - 1;
-      return editor.visibleRanges.some(
-        range =>
-          zeroBased >= Math.max(0, range.start.line - VIEWPORT_BUFFER) &&
-          zeroBased <= range.end.line + VIEWPORT_BUFFER
-      );
-    });
-  }
-
   private render(editor: TextEditor): void {
     const record = this.records.get(editor.document.uri.fsPath);
     if (!record) return;
-
-    for (const decoration of record.decorations) decoration.dispose();
-    record.decorations = [];
-
-    const showGutter = workspace
-      .getConfiguration("svn", editor.document.uri)
-      .get<boolean>("blame.gutter", true);
-    if (!showGutter) return;
-
-    const byRevision = new Map<string, SvnBlameLine[]>();
-    for (const line of this.visibleLines(editor, record)) {
-      const list = byRevision.get(line.revision) ?? [];
-      list.push(line);
-      byRevision.set(line.revision, list);
-    }
-
-    for (const [revision, lines] of byRevision) {
-      const decoration = window.createTextEditorDecorationType({
-        gutterIconPath: iconForRevision(revision),
-        gutterIconSize: "contain"
-      });
-      record.decorations.push(decoration);
-      editor.setDecorations(
-        decoration,
-        lines.map(line => ({
-          range: new Range(line.line - 1, 0, line.line - 1, 0),
-          hoverMessage: hoverText(line, record.logs.get(revision))
-        }))
-      );
-    }
+    record.decorations.renderGutter(editor, record.lines, record.logs);
   }
 
   private async onSelection(editor: TextEditor): Promise<void> {
@@ -325,8 +271,7 @@ export class BlameController implements Disposable {
     const selectedLine = editor.selection.active.line + 1;
     const blame = record.lines.find(line => line.line === selectedLine);
 
-    record.activeDecoration?.dispose();
-    record.activeDecoration = undefined;
+    record.decorations.clearActive();
     if (!blame) return;
 
     const isCurrent = () =>
@@ -336,29 +281,16 @@ export class BlameController implements Disposable {
       !editor.document.isClosed &&
       editor.selection.active.line + 1 === selectedLine;
 
-    const setActive = () => {
+    const renderActive = () => {
       if (!isCurrent()) return;
-
-      record.activeDecoration?.dispose();
-      const log = record.logs.get(blame.revision);
-      record.activeDecoration = window.createTextEditorDecorationType({
-        after: {
-          contentText: `  r${blame.revision}${blame.author ? ` · ${blame.author}` : ""}`,
-          color: new ThemeColor("editorCodeLens.foreground"),
-          margin: "0 0 0 2em"
-        }
-      });
-
-      const end = editor.document.lineAt(blame.line - 1).range.end;
-      editor.setDecorations(record.activeDecoration, [
-        {
-          range: new Range(end, end),
-          hoverMessage: hoverText(blame, log)
-        }
-      ]);
+      record.decorations.renderActive(
+        editor,
+        blame,
+        record.logs.get(blame.revision)
+      );
     };
 
-    setActive();
+    renderActive();
 
     if (record.logs.has(blame.revision) || !/^\d+$/.test(blame.revision)) {
       return;
@@ -376,8 +308,8 @@ export class BlameController implements Disposable {
       if (!entry || controller.signal.aborted || !isCurrent()) return;
 
       record.logs.set(blame.revision, entry.msg || "");
-      this.render(editor);
-      setActive();
+      record.decorations.renderGutter(editor, record.lines, record.logs);
+      renderActive();
     } catch (error) {
       if (
         !(error instanceof SvnCancellationError) &&
@@ -398,8 +330,7 @@ export class BlameController implements Disposable {
     if (!record || !event.contentChanges.length) return;
 
     this.cancelSelection(file);
-    record.activeDecoration?.dispose();
-    record.activeDecoration = undefined;
+    record.decorations.clearActive();
 
     record.lines = shiftBlameLines(
       record.lines,
@@ -422,7 +353,7 @@ export class BlameController implements Disposable {
       value => value.document.uri.fsPath === file
     );
     if (editor) {
-      this.render(editor);
+      record.decorations.renderGutter(editor, record.lines, record.logs);
       void this.onSelection(editor);
     }
   }
