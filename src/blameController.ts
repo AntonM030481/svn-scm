@@ -55,7 +55,7 @@ export class BlameController implements Disposable {
             .getConfiguration("svn", document.uri)
             .get<boolean>("blame.auto")
         ) {
-          void this.show(editor, false);
+          void this.show(editor, false, true);
         }
       }),
       workspace.onDidChangeConfiguration(event => {
@@ -130,7 +130,11 @@ export class BlameController implements Disposable {
     }
   }
 
-  private async show(editor: TextEditor, interactive: boolean): Promise<void> {
+  private async show(
+    editor: TextEditor,
+    interactive: boolean,
+    restartPending: boolean = false
+  ): Promise<void> {
     const document = editor.document;
     const file = document.uri.fsPath;
 
@@ -149,7 +153,11 @@ export class BlameController implements Disposable {
       existing.render(editor);
       return;
     }
-    if (this.pendingBlame.has(file)) return;
+    if (this.pendingBlame.has(file)) {
+      if (!restartPending) return;
+      this.pendingBlame.get(file)?.controller.abort();
+      this.pendingBlame.delete(file);
+    }
 
     const request: PendingBlame = { controller: new AbortController() };
     const documentVersion = document.version;
