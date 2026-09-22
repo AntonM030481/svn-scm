@@ -25,7 +25,7 @@ interface BlameRecord {
 }
 
 interface PendingBlame {
-  repository: Repository;
+  repository?: Repository;
   controller: AbortController;
   generation: number;
 }
@@ -172,25 +172,29 @@ export class BlameController implements Disposable {
     if (this.pendingBlame.has(file)) return;
 
     const documentVersion = document.version;
-    const repository = await this.sourceControlManager.getRepositoryFromUri(
-      document.uri
-    );
-    if (
-      !repository ||
-      this.disposed ||
-      document.isClosed ||
-      document.isDirty ||
-      document.version !== documentVersion
-    ) {
-      return;
-    }
-
     const generation = this.nextRequestGeneration(file);
     const controller = new AbortController();
-    const request: PendingBlame = { repository, controller, generation };
+    const request: PendingBlame = { controller, generation };
     this.pendingBlame.set(file, request);
 
     try {
+      const repository = await this.sourceControlManager.getRepositoryFromUri(
+        document.uri
+      );
+      if (
+        !repository ||
+        this.disposed ||
+        controller.signal.aborted ||
+        this.pendingBlame.get(file) !== request ||
+        this.requestGenerations.get(file) !== generation ||
+        document.isClosed ||
+        document.isDirty ||
+        document.version !== documentVersion
+      ) {
+        return;
+      }
+
+      request.repository = repository;
       const lines = await repository.blame(file, controller.signal);
       if (
         this.disposed ||
@@ -404,7 +408,13 @@ export class BlameController implements Disposable {
         startCharacter: change.range.start.character,
         endLine: change.range.end.line,
         endCharacter: change.range.end.character,
-        insertedLineCount: (change.text.match(/\n/g) ?? []).length
+        insertedLineCount: (change.text.match(/\n/g) ?? []).length,
+        preserveStartLine:
+          change.range.isEmpty &&
+          /^(?:\r?\n)+$/.test(change.text) &&
+          event.document.lineAt(change.range.start.line).text.length ===
+            change.range.start.character &&
+          event.document.lineAt(change.range.start.line + 1).text.length === 0
       }))
     );
 
