@@ -5,6 +5,7 @@ import {
   TextDocumentChangeEvent,
   TextEditor,
   TextEditorDecorationType,
+  ThemeColor,
   Uri,
   window,
   workspace
@@ -189,7 +190,7 @@ export class BlameController implements Disposable {
       record.activeDecoration = window.createTextEditorDecorationType({
         after: {
           contentText: `  r${blame.revision}${blame.author ? ` · ${blame.author}` : ""}`,
-          color: new (require("vscode").ThemeColor)("editorCodeLens.foreground"),
+          color: new ThemeColor("editorCodeLens.foreground"),
           margin: "0 0 0 2em"
         }
       });
