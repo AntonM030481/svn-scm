@@ -2,6 +2,7 @@ import {
   commands,
   Disposable,
   TextDocument,
+  TextDocumentChangeEvent,
   TextEditor,
   window,
   workspace
@@ -37,27 +38,12 @@ export class BlameController implements Disposable {
       window.onDidChangeTextEditorVisibleRanges(event =>
         this.sessionFor(event.textEditor)?.render(event.textEditor)
       ),
-      workspace.onDidChangeTextDocument(event => {
-        const session = this.sessions.get(event.document.uri.fsPath);
-        if (!session) return;
-        session.applyDocumentChange(
-          event,
-          window.visibleTextEditors.find(
-            editor => editor.document === event.document
-          )
-        );
-      }),
-      workspace.onDidSaveTextDocument(document => {
-        const editor = window.activeTextEditor;
-        if (
-          editor?.document === document &&
-          workspace
-            .getConfiguration("svn", document.uri)
-            .get<boolean>("blame.auto")
-        ) {
-          void this.show(editor, false, true);
-        }
-      }),
+      workspace.onDidChangeTextDocument(event =>
+        this.onDocumentChange(event)
+      ),
+      workspace.onDidSaveTextDocument(document =>
+        this.restartAutoBlame(document)
+      ),
       workspace.onDidChangeConfiguration(event => {
         if (event.affectsConfiguration("svn.blame.gutter")) {
           for (const editor of window.visibleTextEditors) {
@@ -132,8 +118,7 @@ export class BlameController implements Disposable {
 
   private async show(
     editor: TextEditor,
-    interactive: boolean,
-    restartPending: boolean = false
+    interactive: boolean
   ): Promise<void> {
     const document = editor.document;
     const file = document.uri.fsPath;
@@ -153,18 +138,14 @@ export class BlameController implements Disposable {
       existing.render(editor);
       return;
     }
-    if (this.pendingBlame.has(file)) {
-      if (!restartPending) return;
-      this.pendingBlame.get(file)?.controller.abort();
-      this.pendingBlame.delete(file);
-    }
+    if (this.pendingBlame.has(file)) return;
 
     const request: PendingBlame = { controller: new AbortController() };
     const documentVersion = document.version;
     this.pendingBlame.set(file, request);
 
     try {
-      const repository = await this.sourceControlManager.getRepositoryFromUri(
+      let repository = await this.sourceControlManager.getRepositoryFromUri(
         document.uri
       );
       if (
@@ -175,6 +156,25 @@ export class BlameController implements Disposable {
       }
 
       request.repository = repository;
+
+      if (!interactive && repository.isInitialStatusPending) {
+        await repository.initialStatusSettled;
+        if (!this.isRequestCurrent(file, request, document, documentVersion)) {
+          return;
+        }
+
+        repository = await this.sourceControlManager.getRepositoryFromUri(
+          document.uri
+        );
+        if (
+          !repository ||
+          !this.isRequestCurrent(file, request, document, documentVersion)
+        ) {
+          return;
+        }
+        request.repository = repository;
+      }
+
       const lines = await repository.blame(file, request.controller.signal);
       if (!this.isRequestCurrent(file, request, document, documentVersion)) {
         return;
@@ -199,6 +199,44 @@ export class BlameController implements Disposable {
         this.pendingBlame.delete(file);
       }
     }
+  }
+
+  private onDocumentChange(event: TextDocumentChangeEvent): void {
+    const file = event.document.uri.fsPath;
+    const pending = this.pendingBlame.get(file);
+    if (pending) {
+      pending.controller.abort();
+      this.pendingBlame.delete(file);
+    }
+
+    const session = this.sessions.get(file);
+    if (session) {
+      session.applyDocumentChange(
+        event,
+        window.visibleTextEditors.find(
+          editor => editor.document === event.document
+        )
+      );
+    }
+
+    if (!event.document.isDirty) {
+      this.restartAutoBlame(event.document);
+    }
+  }
+
+  private restartAutoBlame(document: TextDocument): void {
+    const editor = window.activeTextEditor;
+    if (
+      editor?.document !== document ||
+      !workspace
+        .getConfiguration("svn", document.uri)
+        .get<boolean>("blame.auto")
+    ) {
+      return;
+    }
+
+    this.clear(document.uri.fsPath);
+    void this.show(editor, false);
   }
 
   private isRequestCurrent(
