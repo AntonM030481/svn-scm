@@ -1,6 +1,4 @@
 import * as xml2js from "xml2js";
-import { camelcase } from "../util";
-
 export interface SvnBlameLine {
   line: number;
   revision: string;
@@ -25,8 +23,8 @@ export async function parseBlameXml(content: string): Promise<SvnBlameLine[]> {
         mergeAttrs: true,
         explicitRoot: false,
         explicitArray: false,
-        attrNameProcessors: [camelcase],
-        tagNameProcessors: [camelcase]
+        attrNameProcessors: [name => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())],
+        tagNameProcessors: [name => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())]
       },
       (err, result) => {
         if (err) {
