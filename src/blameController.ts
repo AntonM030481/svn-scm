@@ -91,6 +91,9 @@ export class BlameController implements Disposable {
       ),
       sourceControlManager.onDidCloseRepository(repository =>
         this.onRepositoryClosed(repository)
+      ),
+      sourceControlManager.onDidOpenRepository(() =>
+        void this.onActiveEditor(window.activeTextEditor)
       )
     );
 
