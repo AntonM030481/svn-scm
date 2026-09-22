@@ -52,6 +52,29 @@ suite("blame line mapping", () => {
     );
   });
 
+  test("preserves the original line when Enter is pressed at EOL", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 8,
+        endLine: 1,
+        endCharacter: 8,
+        insertedLineCount: 1,
+        preserveStartLine: true
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [2, "2"],
+        [4, "3"],
+        [5, "4"]
+      ]
+    );
+  });
+
   test("drops both endpoint attributions when deleting only a newline", () => {
     const mapped = shiftBlameLines(lines, [
       {
