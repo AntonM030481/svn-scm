@@ -13,10 +13,12 @@ import {
 import { SourceControlManager } from "./source_control_manager";
 import { SvnBlameLine } from "./parser/blameParser";
 import { shiftBlameLines } from "./blameModel";
+import { cancelDebounces, debounce } from "./decorators";
 
 interface BlameRecord {
   lines: SvnBlameLine[];
   logs: Map<string, string>;
+  loadingLogs: Set<string>;
   decorations: TextEditorDecorationType[];
   activeDecoration?: TextEditorDecorationType;
 }
@@ -58,11 +60,11 @@ export class BlameController implements Disposable {
       window.onDidChangeActiveTextEditor(
         editor => void this.onActiveEditor(editor)
       ),
-      window.onDidChangeTextEditorSelection(
-        event => void this.onSelection(event.textEditor)
+      window.onDidChangeTextEditorSelection(event =>
+        this.onSelectionChanged(event.textEditor)
       ),
       window.onDidChangeTextEditorVisibleRanges(event =>
-        this.render(event.textEditor)
+        this.onVisibleRangesChange(event.textEditor)
       ),
       workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
       workspace.onDidCloseTextDocument(document =>
@@ -74,6 +76,7 @@ export class BlameController implements Disposable {
   }
 
   dispose(): void {
+    cancelDebounces(this);
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
     for (const file of [...this.records.keys()]) this.clear(file);
   }
@@ -124,7 +127,12 @@ export class BlameController implements Disposable {
     try {
       const lines = await repository.blame(file);
       if (editor.document.isClosed) return;
-      this.records.set(file, { lines, logs: new Map(), decorations: [] });
+      this.records.set(file, {
+        lines,
+        logs: new Map(),
+        loadingLogs: new Set(),
+        decorations: []
+      });
       this.render(editor);
       await this.onSelection(editor);
     } catch (error) {
@@ -192,6 +200,16 @@ export class BlameController implements Disposable {
     }
   }
 
+  @debounce(75)
+  private onSelectionChanged(editor: TextEditor): void {
+    void this.onSelection(editor);
+  }
+
+  @debounce(50)
+  private onVisibleRangesChange(editor: TextEditor): void {
+    this.render(editor);
+  }
+
   private async onSelection(editor: TextEditor): Promise<void> {
     const file = editor.document.uri.fsPath;
     const record = this.records.get(file);
@@ -227,12 +245,21 @@ export class BlameController implements Disposable {
 
     setActive();
 
-    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision))
+    if (
+      record.logs.has(blame.revision) ||
+      record.loadingLogs.has(blame.revision) ||
+      !/^\\d+$/.test(blame.revision)
+    ) {
       return;
+    }
+    record.loadingLogs.add(blame.revision);
     const repository = await this.sourceControlManager.getRepositoryFromUri(
       editor.document.uri
     );
-    if (!repository) return;
+    if (!repository) {
+      record.loadingLogs.delete(blame.revision);
+      return;
+    }
 
     try {
       const entry = await repository.blameLog(file, blame.revision);
@@ -242,6 +269,8 @@ export class BlameController implements Disposable {
       setActive();
     } catch {
       // Blame metadata remains useful when a log lookup is unavailable.
+    } finally {
+      record.loadingLogs.delete(blame.revision);
     }
   }
 
