@@ -18,12 +18,32 @@ suite("blame line mapping", () => {
     );
   });
 
-  test("drops deleted lines and shifts following lines", () => {
+  test("drops consumed lines but preserves and shifts following lines", () => {
+    const shifted = shiftBlameLines(lines, [
+      { startLine: 1, endLine: 2, insertedLineCount: 0 }
+    ]);
+
     assert.deepStrictEqual(
-      shiftBlameLines(lines, [
-        { startLine: 1, endLine: 3, insertedLineCount: 0 }
-      ]).map(x => x.line),
-      [1, 2]
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [2, "2"],
+        [3, "4"]
+      ]
+    );
+  });
+
+  test("replaces a multi-line range without dropping the following line", () => {
+    const shifted = shiftBlameLines(lines, [
+      { startLine: 0, endLine: 2, insertedLineCount: 1 }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "4"]
+      ]
     );
   });
 });
