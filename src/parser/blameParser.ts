@@ -23,8 +23,14 @@ export async function parseBlameXml(content: string): Promise<SvnBlameLine[]> {
         mergeAttrs: true,
         explicitRoot: false,
         explicitArray: false,
-        attrNameProcessors: [name => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())],
-        tagNameProcessors: [name => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())]
+        attrNameProcessors: [
+          name =>
+            name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
+        ],
+        tagNameProcessors: [
+          name =>
+            name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
+        ]
       },
       (err, result) => {
         if (err) {

@@ -55,11 +55,19 @@ export class BlameController implements Disposable {
       commands.registerCommand("svn.blame.show", () => this.showActive()),
       commands.registerCommand("svn.blame.hide", () => this.hideActive()),
       commands.registerCommand("svn.blame.toggle", () => this.toggleActive()),
-      window.onDidChangeActiveTextEditor(editor => void this.onActiveEditor(editor)),
-      window.onDidChangeTextEditorSelection(event => void this.onSelection(event.textEditor)),
-      window.onDidChangeTextEditorVisibleRanges(event => this.render(event.textEditor)),
+      window.onDidChangeActiveTextEditor(
+        editor => void this.onActiveEditor(editor)
+      ),
+      window.onDidChangeTextEditorSelection(
+        event => void this.onSelection(event.textEditor)
+      ),
+      window.onDidChangeTextEditorVisibleRanges(event =>
+        this.render(event.textEditor)
+      ),
       workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
-      workspace.onDidCloseTextDocument(document => this.clear(document.uri.fsPath))
+      workspace.onDidCloseTextDocument(document =>
+        this.clear(document.uri.fsPath)
+      )
     );
 
     void this.onActiveEditor(window.activeTextEditor);
@@ -72,7 +80,11 @@ export class BlameController implements Disposable {
 
   private async onActiveEditor(editor?: TextEditor): Promise<void> {
     if (!editor || editor.document.uri.scheme !== "file") return;
-    if (workspace.getConfiguration("svn", editor.document.uri).get<boolean>("blame.auto")) {
+    if (
+      workspace
+        .getConfiguration("svn", editor.document.uri)
+        .get<boolean>("blame.auto")
+    ) {
       await this.show(editor);
     }
   }
@@ -104,7 +116,9 @@ export class BlameController implements Disposable {
       return;
     }
 
-    const repository = await this.sourceControlManager.getRepositoryFromUri(editor.document.uri);
+    const repository = await this.sourceControlManager.getRepositoryFromUri(
+      editor.document.uri
+    );
     if (!repository) return;
 
     try {
@@ -114,7 +128,9 @@ export class BlameController implements Disposable {
       this.render(editor);
       await this.onSelection(editor);
     } catch (error) {
-      window.showErrorMessage(`SVN blame failed: ${error instanceof Error ? error.message : String(error)}`);
+      window.showErrorMessage(
+        `SVN blame failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -126,13 +142,17 @@ export class BlameController implements Disposable {
     this.records.delete(file);
   }
 
-  private visibleLines(editor: TextEditor, record: BlameRecord): SvnBlameLine[] {
+  private visibleLines(
+    editor: TextEditor,
+    record: BlameRecord
+  ): SvnBlameLine[] {
     if (!editor.visibleRanges.length) return record.lines;
     return record.lines.filter(line => {
       const zeroBased = line.line - 1;
-      return editor.visibleRanges.some(range =>
-        zeroBased >= Math.max(0, range.start.line - VIEWPORT_BUFFER) &&
-        zeroBased <= range.end.line + VIEWPORT_BUFFER
+      return editor.visibleRanges.some(
+        range =>
+          zeroBased >= Math.max(0, range.start.line - VIEWPORT_BUFFER) &&
+          zeroBased <= range.end.line + VIEWPORT_BUFFER
       );
     });
   }
@@ -196,7 +216,12 @@ export class BlameController implements Disposable {
       });
       editor.setDecorations(record.activeDecoration, [
         {
-          range: new Range(blame.line - 1, Number.MAX_SAFE_INTEGER, blame.line - 1, Number.MAX_SAFE_INTEGER),
+          range: new Range(
+            blame.line - 1,
+            Number.MAX_SAFE_INTEGER,
+            blame.line - 1,
+            Number.MAX_SAFE_INTEGER
+          ),
           hoverMessage: hoverText(blame, log)
         }
       ]);
@@ -204,8 +229,11 @@ export class BlameController implements Disposable {
 
     setActive();
 
-    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision)) return;
-    const repository = await this.sourceControlManager.getRepositoryFromUri(editor.document.uri);
+    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision))
+      return;
+    const repository = await this.sourceControlManager.getRepositoryFromUri(
+      editor.document.uri
+    );
     if (!repository) return;
 
     try {

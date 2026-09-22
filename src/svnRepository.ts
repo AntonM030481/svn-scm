@@ -189,7 +189,10 @@ export class Repository {
     return parseBlameXml(result.stdout);
   }
 
-  public async blameLog(file: string, revision: string): Promise<ISvnLogEntry | undefined> {
+  public async blameLog(
+    file: string,
+    revision: string
+  ): Promise<ISvnLogEntry | undefined> {
     if (!/^\\d+$/.test(revision)) {
       return undefined;
     }

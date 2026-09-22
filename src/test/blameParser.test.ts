@@ -12,13 +12,27 @@ suite("blame parser", () => {
 </blame>`);
 
     assert.deepStrictEqual(lines, [
-      { line: 1, revision: "12", author: "alice", date: "2026-09-01T10:00:00.000Z" },
-      { line: 2, revision: "15", author: "bob", date: "2026-09-02T11:00:00.000Z" }
+      {
+        line: 1,
+        revision: "12",
+        author: "alice",
+        date: "2026-09-01T10:00:00.000Z"
+      },
+      {
+        line: 2,
+        revision: "15",
+        author: "bob",
+        date: "2026-09-02T11:00:00.000Z"
+      }
     ]);
   });
 
   test("handles entries without commit metadata", async () => {
-    const lines = await parseBlameXml(`<blame><target path="x"><entry line-number="1"/></target></blame>`);
-    assert.deepStrictEqual(lines, [{ line: 1, revision: "-", author: undefined, date: undefined }]);
+    const lines = await parseBlameXml(
+      `<blame><target path="x"><entry line-number="1"/></target></blame>`
+    );
+    assert.deepStrictEqual(lines, [
+      { line: 1, revision: "-", author: undefined, date: undefined }
+    ]);
   });
 });
