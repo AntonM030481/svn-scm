@@ -54,12 +54,14 @@ export class BlameDecorations implements Disposable {
 
     const visible = lines.filter(line => {
       const zeroBased = line.line - 1;
-      return editor.visibleRanges.length === 0 ||
+      return (
+        editor.visibleRanges.length === 0 ||
         editor.visibleRanges.some(
           range =>
             zeroBased >= Math.max(0, range.start.line - VIEWPORT_BUFFER) &&
             zeroBased <= range.end.line + VIEWPORT_BUFFER
-        );
+        )
+      );
     });
 
     const byRevision = new Map<string, SvnBlameLine[]>();
