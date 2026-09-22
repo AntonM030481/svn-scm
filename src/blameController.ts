@@ -59,6 +59,10 @@ function hoverText(line: SvnBlameLine, log?: string): string {
 export class BlameController implements Disposable {
   private readonly records = new Map<string, BlameRecord>();
   private readonly pendingBlames = new Map<string, PendingBlame>();
+  private readonly visibleRangeTimers = new Map<
+    TextEditor,
+    ReturnType<typeof setTimeout>
+  >();
   private activeLogRequest?: {
     file: string;
     revision: string;
@@ -97,6 +101,10 @@ export class BlameController implements Disposable {
     if (this.disposed) return;
     this.disposed = true;
     cancelDebounces(this);
+    for (const timer of this.visibleRangeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.visibleRangeTimers.clear();
     this.activeLogRequest?.controller.abort();
     this.activeLogRequest = undefined;
     for (const pending of this.pendingBlames.values()) {
@@ -299,9 +307,19 @@ export class BlameController implements Disposable {
     void this.onSelection(editor);
   }
 
-  @debounce(50)
   private onVisibleRangesChange(editor: TextEditor): void {
-    this.render(editor);
+    const existing = this.visibleRangeTimers.get(editor);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      if (this.visibleRangeTimers.get(editor) !== timer) {
+        return;
+      }
+      this.visibleRangeTimers.delete(editor);
+      this.render(editor);
+    }, 50);
+    this.visibleRangeTimers.set(editor, timer);
   }
 
   private async onSelection(editor: TextEditor): Promise<void> {
