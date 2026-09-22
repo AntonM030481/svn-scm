@@ -99,7 +99,7 @@ export class BlameSession implements Disposable {
         endLine: change.range.end.line,
         endCharacter: change.range.end.character,
         insertedLineCount: (change.text.match(/\n/g) ?? []).length,
-        preserveStartLine: this.shouldPreserveStartLine(event, change)
+        startLineShift: this.getStartLineShift(event, change)
       }))
     );
 
@@ -109,31 +109,39 @@ export class BlameSession implements Disposable {
     }
   }
 
-  private shouldPreserveStartLine(
+  private getStartLineShift(
     event: TextDocumentChangeEvent,
     change: TextDocumentChangeEvent["contentChanges"][number]
-  ): boolean {
-    if (
-      event.contentChanges.length !== 1 ||
-      !change.range.isEmpty ||
-      !/^\r?\n/.test(change.text)
-    ) {
-      return false;
+  ): number | undefined {
+    if (event.contentChanges.length !== 1 || !change.range.isEmpty) {
+      return undefined;
     }
 
     const insertedLineCount = (change.text.match(/\n/g) ?? []).length;
-    const lastInsertedLine = change.range.start.line + insertedLineCount;
-    if (
-      insertedLineCount === 0 ||
-      lastInsertedLine >= event.document.lineCount ||
-      event.document.lineAt(change.range.start.line).text.length !==
-        change.range.start.character
-    ) {
-      return false;
+    if (insertedLineCount === 0) {
+      return undefined;
     }
 
-    const insertedTail = change.text.split(/\r?\n/).pop() ?? "";
-    return event.document.lineAt(lastInsertedLine).text === insertedTail;
+    // A newline-terminated insertion at column zero adds complete lines before
+    // the original line, so its old attribution survives but moves down.
+    if (
+      change.range.start.character === 0 &&
+      /\r?\n$/.test(change.text)
+    ) {
+      return insertedLineCount;
+    }
+
+    // An insertion beginning with a newline at EOL leaves the original line
+    // text untouched (including auto-indent payloads such as "\n    ").
+    if (
+      /^\r?\n/.test(change.text) &&
+      event.document.lineAt(change.range.start.line).text.length ===
+        change.range.start.character
+    ) {
+      return 0;
+    }
+
+    return undefined;
   }
 
   public dispose(): void {
