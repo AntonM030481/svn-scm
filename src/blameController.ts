@@ -1,54 +1,27 @@
 import {
   commands,
   Disposable,
-  Range,
+  TextDocument,
   TextDocumentChangeEvent,
   TextEditor,
-  TextEditorDecorationType,
-  ThemeColor,
-  Uri,
   window,
   workspace
 } from "vscode";
+import { BlameSession } from "./blameSession";
+import { Repository } from "./repository";
 import { SourceControlManager } from "./source_control_manager";
-import { SvnBlameLine } from "./parser/blameParser";
-import { shiftBlameLines } from "./blameModel";
+import { SvnCancellationError } from "./svnProcess";
 
-interface BlameRecord {
-  lines: SvnBlameLine[];
-  logs: Map<string, string>;
-  decorations: TextEditorDecorationType[];
-  activeDecoration?: TextEditorDecorationType;
-}
-
-const VIEWPORT_BUFFER = 200;
-
-function iconForRevision(revision: string): Uri {
-  let hash = 0;
-  for (const char of revision) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const hue = hash % 360;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="4" fill="hsl(${hue} 60% 55%)"/></svg>`;
-  return Uri.parse(`data:image/svg+xml,${encodeURIComponent(svg)}`);
-}
-
-function formatDate(value?: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
-}
-
-function hoverText(line: SvnBlameLine, log?: string): string {
-  const parts = [`r${line.revision}`];
-  if (line.author) parts.push(line.author);
-  if (line.date) parts.push(formatDate(line.date));
-  let text = parts.join(" · ");
-  if (log) text += `\n\n${log}`;
-  return text;
+interface PendingBlame {
+  repository?: Repository;
+  controller: AbortController;
 }
 
 export class BlameController implements Disposable {
-  private readonly records = new Map<string, BlameRecord>();
+  private readonly sessions = new Map<string, BlameSession>();
+  private readonly pendingBlame = new Map<string, PendingBlame>();
   private readonly disposables: Disposable[] = [];
+  private disposed = false;
 
   constructor(private readonly sourceControlManager: SourceControlManager) {
     this.disposables.push(
@@ -59,39 +32,69 @@ export class BlameController implements Disposable {
         editor => void this.onActiveEditor(editor)
       ),
       window.onDidChangeTextEditorSelection(
-        event => void this.onSelection(event.textEditor)
+        event =>
+          void this.sessionFor(event.textEditor)?.select(event.textEditor)
       ),
       window.onDidChangeTextEditorVisibleRanges(event =>
-        this.render(event.textEditor)
+        this.sessionFor(event.textEditor)?.render(event.textEditor)
       ),
       workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
+      workspace.onDidSaveTextDocument(document =>
+        this.restartAutoBlame(document)
+      ),
+      workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration("svn.blame.gutter")) {
+          for (const editor of window.visibleTextEditors) {
+            this.sessionFor(editor)?.render(editor);
+          }
+        }
+        if (event.affectsConfiguration("svn.blame.auto")) {
+          void this.onActiveEditor(window.activeTextEditor);
+        }
+      }),
       workspace.onDidCloseTextDocument(document =>
         this.clear(document.uri.fsPath)
+      ),
+      sourceControlManager.onDidCloseRepository(repository =>
+        this.clearRepository(repository)
       )
     );
 
     void this.onActiveEditor(window.activeTextEditor);
   }
 
-  dispose(): void {
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
-    for (const file of [...this.records.keys()]) this.clear(file);
+
+    const files = new Set([
+      ...this.sessions.keys(),
+      ...this.pendingBlame.keys()
+    ]);
+    for (const file of files) this.clear(file);
+  }
+
+  private sessionFor(editor: TextEditor): BlameSession | undefined {
+    return this.sessions.get(editor.document.uri.fsPath);
   }
 
   private async onActiveEditor(editor?: TextEditor): Promise<void> {
     if (!editor || editor.document.uri.scheme !== "file") return;
+
     if (
       workspace
         .getConfiguration("svn", editor.document.uri)
         .get<boolean>("blame.auto")
     ) {
-      await this.show(editor);
+      await this.show(editor, false);
     }
   }
 
   private async showActive(): Promise<void> {
     const editor = window.activeTextEditor;
-    if (editor) await this.show(editor);
+    if (editor) await this.show(editor, true);
   }
 
   private hideActive(): void {
@@ -102,165 +105,169 @@ export class BlameController implements Disposable {
   private async toggleActive(): Promise<void> {
     const editor = window.activeTextEditor;
     if (!editor || editor.document.uri.scheme !== "file") return;
-    if (this.records.has(editor.document.uri.fsPath)) {
-      this.clear(editor.document.uri.fsPath);
+
+    const file = editor.document.uri.fsPath;
+    if (this.sessions.has(file) || this.pendingBlame.has(file)) {
+      this.clear(file);
     } else {
-      await this.show(editor);
+      await this.show(editor, true);
     }
   }
 
-  private async show(editor: TextEditor): Promise<void> {
-    const file = editor.document.uri.fsPath;
-    if (this.records.has(file)) {
-      this.render(editor);
+  private async show(editor: TextEditor, interactive: boolean): Promise<void> {
+    const document = editor.document;
+    const file = document.uri.fsPath;
+
+    if (document.uri.scheme !== "file") return;
+    if (document.isDirty) {
+      if (interactive) {
+        window.showInformationMessage(
+          "Save the file before showing SVN blame."
+        );
+      }
       return;
     }
 
-    const repository = await this.sourceControlManager.getRepositoryFromUri(
-      editor.document.uri
-    );
-    if (!repository) return;
+    const existing = this.sessions.get(file);
+    if (existing) {
+      existing.render(editor);
+      return;
+    }
+    if (this.pendingBlame.has(file)) return;
+
+    const request: PendingBlame = { controller: new AbortController() };
+    const documentVersion = document.version;
+    this.pendingBlame.set(file, request);
 
     try {
-      const lines = await repository.blame(file);
-      if (editor.document.isClosed) return;
-      this.records.set(file, { lines, logs: new Map(), decorations: [] });
-      this.render(editor);
-      await this.onSelection(editor);
+      let repository = await this.sourceControlManager.getRepositoryFromUri(
+        document.uri
+      );
+      if (
+        !repository ||
+        !this.isRequestCurrent(file, request, document, documentVersion)
+      ) {
+        return;
+      }
+
+      request.repository = repository;
+
+      if (!interactive && repository.isInitialStatusPending) {
+        await repository.initialStatusSettled;
+        if (!this.isRequestCurrent(file, request, document, documentVersion)) {
+          return;
+        }
+
+        repository = await this.sourceControlManager.getRepositoryFromUri(
+          document.uri
+        );
+        if (
+          !repository ||
+          !this.isRequestCurrent(file, request, document, documentVersion)
+        ) {
+          return;
+        }
+        request.repository = repository;
+      }
+
+      const lines = await repository.blame(file, request.controller.signal);
+      if (!this.isRequestCurrent(file, request, document, documentVersion)) {
+        return;
+      }
+
+      const session = new BlameSession(repository, lines);
+      this.sessions.set(file, session);
+      session.render(editor);
+      await session.select(editor);
     } catch (error) {
-      window.showErrorMessage(
-        `SVN blame failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  private clear(file: string): void {
-    const record = this.records.get(file);
-    if (!record) return;
-    record.activeDecoration?.dispose();
-    for (const decoration of record.decorations) decoration.dispose();
-    this.records.delete(file);
-  }
-
-  private visibleLines(
-    editor: TextEditor,
-    record: BlameRecord
-  ): SvnBlameLine[] {
-    if (!editor.visibleRanges.length) return record.lines;
-    return record.lines.filter(line => {
-      const zeroBased = line.line - 1;
-      return editor.visibleRanges.some(
-        range =>
-          zeroBased >= Math.max(0, range.start.line - VIEWPORT_BUFFER) &&
-          zeroBased <= range.end.line + VIEWPORT_BUFFER
-      );
-    });
-  }
-
-  private render(editor: TextEditor): void {
-    const record = this.records.get(editor.document.uri.fsPath);
-    if (!record) return;
-
-    for (const decoration of record.decorations) decoration.dispose();
-    record.decorations = [];
-
-    const showGutter = workspace
-      .getConfiguration("svn", editor.document.uri)
-      .get<boolean>("blame.gutter", true);
-    if (!showGutter) return;
-
-    const byRevision = new Map<string, SvnBlameLine[]>();
-    for (const line of this.visibleLines(editor, record)) {
-      const list = byRevision.get(line.revision) ?? [];
-      list.push(line);
-      byRevision.set(line.revision, list);
-    }
-
-    for (const [revision, lines] of byRevision) {
-      const decoration = window.createTextEditorDecorationType({
-        gutterIconPath: iconForRevision(revision),
-        gutterIconSize: "contain"
-      });
-      record.decorations.push(decoration);
-      editor.setDecorations(
-        decoration,
-        lines.map(line => ({
-          range: new Range(line.line - 1, 0, line.line - 1, 0),
-          hoverMessage: hoverText(line, record.logs.get(revision))
-        }))
-      );
-    }
-  }
-
-  private async onSelection(editor: TextEditor): Promise<void> {
-    const file = editor.document.uri.fsPath;
-    const record = this.records.get(file);
-    if (!record) return;
-
-    const selectedLine = editor.selection.active.line + 1;
-    const blame = record.lines.find(line => line.line === selectedLine);
-    record.activeDecoration?.dispose();
-    record.activeDecoration = undefined;
-    if (!blame) return;
-
-    const setActive = () => {
-      if (this.records.get(file) !== record || editor.document.isClosed) return;
-      record.activeDecoration?.dispose();
-      const log = record.logs.get(blame.revision);
-      record.activeDecoration = window.createTextEditorDecorationType({
-        after: {
-          contentText: `  r${blame.revision}${blame.author ? ` · ${blame.author}` : ""}`,
-          color: new ThemeColor("editorCodeLens.foreground"),
-          margin: "0 0 0 2em"
-        }
-      });
-      editor.setDecorations(record.activeDecoration, [
-        {
-          range: new Range(
-            editor.document.lineAt(blame.line - 1).range.end,
-            editor.document.lineAt(blame.line - 1).range.end
-          ),
-          hoverMessage: hoverText(blame, log)
-        }
-      ]);
-    };
-
-    setActive();
-
-    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision))
-      return;
-    const repository = await this.sourceControlManager.getRepositoryFromUri(
-      editor.document.uri
-    );
-    if (!repository) return;
-
-    try {
-      const entry = await repository.blameLog(file, blame.revision);
-      if (!entry || this.records.get(file) !== record) return;
-      record.logs.set(blame.revision, entry.msg || "");
-      this.render(editor);
-      setActive();
-    } catch {
-      // Blame metadata remains useful when a log lookup is unavailable.
+      if (
+        !(error instanceof SvnCancellationError) &&
+        !request.controller.signal.aborted &&
+        this.pendingBlame.get(file) === request
+      ) {
+        window.showErrorMessage(
+          `SVN blame failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    } finally {
+      if (this.pendingBlame.get(file) === request) {
+        this.pendingBlame.delete(file);
+      }
     }
   }
 
   private onDocumentChange(event: TextDocumentChangeEvent): void {
-    const record = this.records.get(event.document.uri.fsPath);
-    if (!record || !event.contentChanges.length) return;
+    const file = event.document.uri.fsPath;
+    const pending = this.pendingBlame.get(file);
+    if (pending) {
+      pending.controller.abort();
+      this.pendingBlame.delete(file);
+    }
 
-    record.lines = shiftBlameLines(
-      record.lines,
-      event.contentChanges.map(change => ({
-        startLine: change.range.start.line,
-        endLine: change.range.end.line,
-        insertedLineCount: (change.text.match(/\n/g) ?? []).length
-      }))
-    );
+    const session = this.sessions.get(file);
+    if (session) {
+      session.applyDocumentChange(
+        event,
+        window.visibleTextEditors.find(
+          editor => editor.document === event.document
+        )
+      );
+    }
 
-    const editor = window.visibleTextEditors.find(
-      value => value.document.uri.fsPath === event.document.uri.fsPath
+    if (!event.document.isDirty) {
+      this.restartAutoBlame(event.document);
+    }
+  }
+
+  private restartAutoBlame(document: TextDocument): void {
+    const editor = window.activeTextEditor;
+    if (
+      editor?.document !== document ||
+      !workspace
+        .getConfiguration("svn", document.uri)
+        .get<boolean>("blame.auto")
+    ) {
+      return;
+    }
+
+    this.clear(document.uri.fsPath);
+    void this.show(editor, false);
+  }
+
+  private isRequestCurrent(
+    file: string,
+    request: PendingBlame,
+    document: TextDocument,
+    initialVersion: number
+  ): boolean {
+    return (
+      !this.disposed &&
+      !request.controller.signal.aborted &&
+      this.pendingBlame.get(file) === request &&
+      !document.isClosed &&
+      !document.isDirty &&
+      document.version === initialVersion
     );
-    if (editor) this.render(editor);
+  }
+
+  private clear(file: string): void {
+    this.pendingBlame.get(file)?.controller.abort();
+    this.pendingBlame.delete(file);
+
+    this.sessions.get(file)?.dispose();
+    this.sessions.delete(file);
+  }
+
+  private clearRepository(repository: Repository): void {
+    const files = new Set<string>();
+
+    for (const [file, session] of this.sessions) {
+      if (session.repository === repository) files.add(file);
+    }
+    for (const [file, request] of this.pendingBlame) {
+      if (request.repository === repository) files.add(file);
+    }
+
+    for (const file of files) this.clear(file);
   }
 }

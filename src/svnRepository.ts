@@ -180,26 +180,33 @@ export class Repository {
     return parseStatusXml(result.stdout);
   }
 
-  public async blame(file: string): Promise<SvnBlameLine[]> {
+  public async blame(
+    file: string,
+    signal?: AbortSignal
+  ): Promise<SvnBlameLine[]> {
     const target = this.removeAbsolutePath(file);
     const result = await this.exec(
       ["blame", "--xml", "-x", "-w --ignore-eol-style", target],
-      { logReason: "blame" }
+      { logReason: "blame", signal }
     );
     return parseBlameXml(result.stdout);
   }
 
   public async blameLog(
     file: string,
-    revision: string
+    revision: string,
+    signal?: AbortSignal
   ): Promise<ISvnLogEntry | undefined> {
     if (!/^\\d+$/.test(revision)) {
       return undefined;
     }
 
     const target = this.removeAbsolutePath(file);
-    const entries = await this.log(revision, revision, 1, target);
-    return entries[0];
+    const result = await this.exec(["log", "--xml", "-r", revision, target], {
+      logReason: "blame-log",
+      signal
+    });
+    return (await parseSvnLog(result.stdout))[0];
   }
 
   public async getStatus(params: {
