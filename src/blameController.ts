@@ -421,7 +421,7 @@ export class BlameController implements Disposable {
         startCharacter: change.range.start.character,
         endLine: change.range.end.line,
         endCharacter: change.range.end.character,
-        insertedLineCount: (change.text.match(/\n/g) ?? []).length
+        insertedText: change.text
       }))
     );
 
