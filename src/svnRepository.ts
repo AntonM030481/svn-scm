@@ -202,10 +202,10 @@ export class Repository {
     }
 
     const target = this.removeAbsolutePath(file);
-    const result = await this.exec(
-      ["log", "--xml", "-r", revision, target],
-      { logReason: "blame-log", signal }
-    );
+    const result = await this.exec(["log", "--xml", "-r", revision, target], {
+      logReason: "blame-log",
+      signal
+    });
     return (await parseSvnLog(result.stdout))[0];
   }
 

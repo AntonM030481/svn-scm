@@ -232,10 +232,7 @@ export class Repository implements IRemoteRepository {
     return Uri.parse(this.repository.info.url);
   }
 
-  public blame(
-    file: string,
-    signal?: AbortSignal
-  ): Promise<SvnBlameLine[]> {
+  public blame(file: string, signal?: AbortSignal): Promise<SvnBlameLine[]> {
     return this.run(
       Operation.Log,
       () => this.repository.blame(file, signal),

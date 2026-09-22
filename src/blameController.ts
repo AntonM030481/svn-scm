@@ -158,7 +158,9 @@ export class BlameController implements Disposable {
     if (document.uri.scheme !== "file") return;
     if (document.isDirty) {
       if (interactive) {
-        window.showInformationMessage("Save the file before showing SVN blame.");
+        window.showInformationMessage(
+          "Save the file before showing SVN blame."
+        );
       }
       return;
     }
@@ -368,7 +370,10 @@ export class BlameController implements Disposable {
       this.render(editor);
       setActive();
     } catch (error) {
-      if (!(error instanceof SvnCancellationError) && !controller.signal.aborted) {
+      if (
+        !(error instanceof SvnCancellationError) &&
+        !controller.signal.aborted
+      ) {
         // Blame metadata remains useful when a log lookup is unavailable.
       }
     } finally {
