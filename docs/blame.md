@@ -12,7 +12,7 @@ When blame is active, the editor gutter groups lines by revision. The active lin
 
 ## Settings
 
-- `svn.blame.auto` automatically enables blame for a versioned file when it becomes active. It is disabled by default because `svn blame` may require repository access and can be expensive on large histories.
+- `svn.blame.auto` automatically enables blame for a versioned file when it becomes active. Startup auto-blame waits until repository discovery is complete. It is disabled by default because `svn blame` may require repository access and can be expensive on large histories.
 - `svn.blame.gutter` controls gutter indicators while blame is active.
 
 ## Architecture and performance
