@@ -14,13 +14,57 @@ suite("blame line mapping", () => {
       shiftBlameLines(lines, [
         {
           startLine: 1,
-          startCharacter: 0,
+          startCharacter: 3,
           endLine: 1,
-          endCharacter: 0,
+          endCharacter: 3,
           insertedLineCount: 2
         }
       ]).map(x => x.line),
       [1, 2, 5, 6]
+    );
+  });
+
+
+  test("moves the original line when new lines are inserted at column zero", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedLineCount: 2
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "2"],
+        [5, "3"],
+        [6, "4"]
+      ]
+    );
+  });
+
+  test("deleting a whole line moves the following line into its place", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedLineCount: 0
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [2, "3"],
+        [3, "4"]
+      ]
     );
   });
 
