@@ -222,7 +222,13 @@ export class BlameController implements Disposable {
     if (!blame) return;
 
     const setActive = () => {
-      if (this.records.get(file) !== record || editor.document.isClosed) return;
+      if (
+        this.records.get(file) !== record ||
+        editor.document.isClosed ||
+        editor.selection.active.line + 1 !== blame.line
+      ) {
+        return;
+      }
       record.activeDecoration?.dispose();
       const log = record.logs.get(blame.revision);
       record.activeDecoration = window.createTextEditorDecorationType({
