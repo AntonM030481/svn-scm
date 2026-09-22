@@ -17,7 +17,7 @@ suite("blame line mapping", () => {
           startCharacter: 3,
           endLine: 1,
           endCharacter: 3,
-          insertedLineCount: 2
+          insertedText: "X\nY\n"
         }
       ]).map(x => x.line),
       [1, 2, 5, 6]
@@ -31,7 +31,7 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 1,
         endCharacter: 0,
-        insertedLineCount: 2
+        insertedText: "X\nY\n"
       }
     ]);
 
@@ -53,7 +53,7 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 2,
         endCharacter: 0,
-        insertedLineCount: 0
+        insertedText: ""
       }
     ]);
 
@@ -74,7 +74,7 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 2,
         endCharacter: 1,
-        insertedLineCount: 0
+        insertedText: ""
       }
     ]);
 
@@ -94,7 +94,49 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 2,
         endCharacter: 0,
-        insertedLineCount: 2
+        insertedText: "X\nY\n"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "3"],
+        [5, "4"]
+      ]
+    );
+  });
+
+
+  test("drops end-line blame when replacement text prefixes that line", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedText: "X\nY"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "4"]
+      ]
+    );
+  });
+
+  test("drops the original line when line-start insertion does not end with newline", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedText: "X\nY"
       }
     ]);
 
@@ -115,7 +157,7 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 2,
         endCharacter: 1,
-        insertedLineCount: 1
+        insertedText: "X\n"
       }
     ]);
 
