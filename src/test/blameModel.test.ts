@@ -52,6 +52,26 @@ suite("blame line mapping", () => {
     );
   });
 
+  test("drops both endpoint attributions when deleting only a newline", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 8,
+        endLine: 2,
+        endCharacter: 0,
+        insertedLineCount: 0
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "4"]
+      ]
+    );
+  });
+
   test("drops attribution for an edited line without shifting other lines", () => {
     const mapped = shiftBlameLines(lines, [
       {
