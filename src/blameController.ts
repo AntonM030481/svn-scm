@@ -38,9 +38,7 @@ export class BlameController implements Disposable {
       window.onDidChangeTextEditorVisibleRanges(event =>
         this.sessionFor(event.textEditor)?.render(event.textEditor)
       ),
-      workspace.onDidChangeTextDocument(event =>
-        this.onDocumentChange(event)
-      ),
+      workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
       workspace.onDidSaveTextDocument(document =>
         this.restartAutoBlame(document)
       ),
@@ -116,10 +114,7 @@ export class BlameController implements Disposable {
     }
   }
 
-  private async show(
-    editor: TextEditor,
-    interactive: boolean
-  ): Promise<void> {
+  private async show(editor: TextEditor, interactive: boolean): Promise<void> {
     const document = editor.document;
     const file = document.uri.fsPath;
 
