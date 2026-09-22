@@ -463,6 +463,22 @@
                 "title": "Update",
                 "category": "SVN",
                 "icon": "$(cloud-download)"
+            },
+            {
+                "command": "svn.blame.show",
+                "title": "Show Blame",
+                "category": "SVN"
+            },
+            {
+                "command": "svn.blame.hide",
+                "title": "Hide Blame",
+                "category": "SVN"
+            },
+            {
+                "command": "svn.blame.toggle",
+                "title": "Toggle Blame",
+                "category": "SVN",
+                "icon": "$(git-commit)"
             }
         ],
         "menus": {
@@ -705,6 +721,18 @@
                 },
                 {
                     "command": "svn.update",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.blame.show",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.blame.hide",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
+                },
+                {
+                    "command": "svn.blame.toggle",
                     "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
                 }
             ],
@@ -1069,6 +1097,11 @@
                     "command": "svn.openChangeHead",
                     "group": "navigation",
                     "when": "config.svn.enabled && svnOpenRepositoryCount != 0 && svnActiveEditorHasChanges && !isInDiffEditor && resourceScheme == file"
+                },
+                {
+                    "command": "svn.blame.toggle",
+                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0 && resourceScheme == file",
+                    "group": "navigation"
                 }
             ],
             "explorer/context": [
@@ -1414,6 +1447,18 @@
                     "type": "boolean",
                     "description": "Set to ignore externals definitions on update (add --ignore-externals)",
                     "default": true
+                },
+                "svn.blame.auto": {
+                    "type": "boolean",
+                    "description": "Automatically show SVN blame when opening a versioned file",
+                    "default": false,
+                    "scope": "resource"
+                },
+                "svn.blame.gutter": {
+                    "type": "boolean",
+                    "description": "Show revision indicators in the editor gutter while SVN blame is active",
+                    "default": true,
+                    "scope": "resource"
                 }
             }
         },
