@@ -124,10 +124,7 @@ export class BlameSession implements Disposable {
 
     // A newline-terminated insertion at column zero adds complete lines before
     // the original line, so its old attribution survives but moves down.
-    if (
-      change.range.start.character === 0 &&
-      /\r?\n$/.test(change.text)
-    ) {
+    if (change.range.start.character === 0 && /\r?\n$/.test(change.text)) {
       return insertedLineCount;
     }
 
