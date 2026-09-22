@@ -27,7 +27,9 @@ export function shiftBlameLines(
 
       const survivesAfterRange =
         zeroBased > change.endLine ||
-        (zeroBased === change.endLine && change.endCharacter === 0);
+        (zeroBased === change.endLine &&
+          change.endCharacter === 0 &&
+          change.startCharacter === 0);
 
       if (!survivesAfterRange) {
         // The original line was touched by the edit. Do not attribute the
