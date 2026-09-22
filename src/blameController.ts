@@ -47,6 +47,27 @@ export class BlameController implements Disposable {
           )
         );
       }),
+      workspace.onDidSaveTextDocument(document => {
+        const editor = window.activeTextEditor;
+        if (
+          editor?.document === document &&
+          workspace
+            .getConfiguration("svn", document.uri)
+            .get<boolean>("blame.auto")
+        ) {
+          void this.show(editor, false);
+        }
+      }),
+      workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration("svn.blame.gutter")) {
+          for (const editor of window.visibleTextEditors) {
+            this.sessionFor(editor)?.render(editor);
+          }
+        }
+        if (event.affectsConfiguration("svn.blame.auto")) {
+          void this.onActiveEditor(window.activeTextEditor);
+        }
+      }),
       workspace.onDidCloseTextDocument(document =>
         this.clear(document.uri.fsPath)
       ),
