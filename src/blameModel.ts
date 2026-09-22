@@ -32,6 +32,7 @@ export function shiftBlameLines(
       const survivesAfterRange =
         zeroBased > change.endLine ||
         (zeroBased === change.endLine &&
+          change.endLine > change.startLine &&
           change.endCharacter === 0 &&
           change.startCharacter === 0);
 
