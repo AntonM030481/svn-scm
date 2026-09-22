@@ -418,7 +418,9 @@ export class BlameController implements Disposable {
       record.lines,
       event.contentChanges.map(change => ({
         startLine: change.range.start.line,
+        startCharacter: change.range.start.character,
         endLine: change.range.end.line,
+        endCharacter: change.range.end.character,
         insertedLineCount: (change.text.match(/\n/g) ?? []).length
       }))
     );
