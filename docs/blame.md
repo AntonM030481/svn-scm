@@ -17,7 +17,7 @@ When blame is active, the editor gutter groups lines by revision. The active lin
 
 ## Architecture and performance
 
-Blame uses the existing `SourceControlManager` repository routing and `Repository.exec()` path. It therefore shares the configured SVN executable, repository credentials, encoding, process handling and output logging with the rest of the extension.
+Blame uses the existing `SourceControlManager` repository routing and `Repository.run()` / base repository execution path, so it shares the configured SVN executable, credential retry/prompt flow, encoding, process handling and output logging with the rest of the extension. `BlameController` coordinates editor/repository lifecycle, each loaded document owns a `BlameSession`, and rendering is isolated in `BlameDecorations`.
 
 Blame is deliberately independent from status refresh. Enabling or using it does not add work to startup status, normal auto-refresh, targeted status refreshes, or remote-status polling.
 
