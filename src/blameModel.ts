@@ -5,7 +5,7 @@ export interface BlameLineChange {
   startCharacter: number;
   endLine: number;
   endCharacter: number;
-  insertedLineCount: number;
+  insertedText: string;
 }
 
 export function shiftBlameLines(
@@ -17,8 +17,10 @@ export function shiftBlameLines(
   for (const change of [...changes].sort((a, b) => b.startLine - a.startLine)) {
     const start = change.startLine + 1;
     const end = change.endLine + 1;
+    const insertedLineCount = (change.insertedText.match(/\n/g) ?? []).length;
+    const insertedEndsWithNewline = change.insertedText.endsWith("\n");
     const removedLineBreaks = change.endLine - change.startLine;
-    const delta = change.insertedLineCount - removedLineBreaks;
+    const delta = insertedLineCount - removedLineBreaks;
     const insertion =
       change.startLine === change.endLine &&
       change.startCharacter === change.endCharacter;
@@ -31,11 +33,12 @@ export function shiftBlameLines(
       if (change.startLine === change.endLine) {
         if (line.line === start) {
           if (insertion) {
-            return [
-              change.startCharacter === 0 && change.insertedLineCount > 0
-                ? { ...line, line: line.line + change.insertedLineCount }
-                : line
-            ];
+            if (change.startCharacter === 0 && insertedLineCount > 0) {
+              return insertedEndsWithNewline
+                ? [{ ...line, line: line.line + insertedLineCount }]
+                : [];
+            }
+            return [line];
           }
           return change.startCharacter > 0 ? [line] : [];
         }
@@ -54,7 +57,12 @@ export function shiftBlameLines(
         if (change.endCharacter !== 0) {
           return [];
         }
-        if (change.startCharacter > 0 && change.insertedLineCount === 0) {
+
+        const untouchedEndLine =
+          change.insertedText.length === 0 ||
+          insertedEndsWithNewline;
+
+        if (!untouchedEndLine || (change.startCharacter > 0 && insertedLineCount === 0)) {
           return [];
         }
         return [{ ...line, line: line.line + delta }];
