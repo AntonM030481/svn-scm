@@ -236,11 +236,16 @@ export class BlameController implements Disposable {
     this.cancelSelection(file);
 
     const record = this.records.get(file);
-    if (!record) return;
+    if (record) {
+      record.activeDecoration?.dispose();
+      for (const decoration of record.decorations) decoration.dispose();
+      this.records.delete(file);
+    }
 
-    record.activeDecoration?.dispose();
-    for (const decoration of record.decorations) decoration.dispose();
-    this.records.delete(file);
+    // Missing generation entries also invalidate any async continuation, while
+    // avoiding one retained path per document closed during a long VS Code session.
+    this.requestGenerations.delete(file);
+    this.selectionGenerations.delete(file);
   }
 
   private clearRepository(repository: Repository): void {
