@@ -16,7 +16,8 @@ suite("blame line mapping", () => {
         startCharacter: 0,
         endLine: 1,
         endCharacter: 0,
-        insertedLineCount: 2
+        insertedLineCount: 2,
+        startLineShift: 2
       }
     ]);
 
@@ -27,6 +28,29 @@ suite("blame line mapping", () => {
         [4, "2"],
         [5, "3"],
         [6, "4"]
+      ]
+    );
+  });
+
+  test("shifts the original line after complete lines are inserted before it", () => {
+    const mapped = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedLineCount: 1,
+        startLineShift: 1
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      mapped.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "2"],
+        [4, "3"],
+        [5, "4"]
       ]
     );
   });
@@ -60,7 +84,7 @@ suite("blame line mapping", () => {
         endLine: 1,
         endCharacter: 8,
         insertedLineCount: 1,
-        preserveStartLine: true
+        startLineShift: 0
       }
     ]);
 
