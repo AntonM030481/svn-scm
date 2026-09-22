@@ -21,3 +21,5 @@ These documents describe the complete current system, not only differences
 from the upstream project. Keep them focused on decisions and workflows that
 are not evident from a single source file. Commands, versions, and supported
 platforms must remain consistent with `package.json` and `.github/workflows/`.
+
+- [SVN blame](blame.md) — per-line revision annotations, lazy history lookup, and performance/lifecycle behavior.
