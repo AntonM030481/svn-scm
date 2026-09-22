@@ -30,6 +30,7 @@ import { enableIncrementalStatusRefresh } from "./incrementalStatus";
 import { enableTargetedStatusLogReasons } from "./svnLogReasons";
 import { DisposableScope, InitializationTransaction } from "./lifecycle";
 import { UnversionedDirectoryContents } from "./unversionedDirectoryContents";
+import { BlameController } from "./blameController";
 
 async function init(
   extensionContext: ExtensionContext,
@@ -80,6 +81,7 @@ async function initializeAttempt(
   enableTargetedStatusLogReasons(sourceControlManager, disposables);
   attempt.add(new UnversionedDirectoryContents(sourceControlManager));
   registerCommands(sourceControlManager, disposables, ready);
+  attempt.add(new BlameController(sourceControlManager));
 
   // Cache-backed consumers seed their state from the initial repository set.
   // The manager is already owned, but its public readiness remains gated until

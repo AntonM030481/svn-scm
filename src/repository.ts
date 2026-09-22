@@ -31,7 +31,8 @@ import {
   SvnUriAction,
   ISvnPathChange,
   IStoredAuth,
-  ISvnListItem
+  ISvnListItem,
+  ISvnLogEntry
 } from "./common/types";
 import {
   cancelDebounces,
@@ -63,6 +64,7 @@ import { svnErrorCodes } from "./svn";
 import SvnError from "./svnError";
 import { SvnCancellationError, waitForSvn } from "./svnProcess";
 import { Repository as BaseRepository } from "./svnRepository";
+import { SvnBlameLine } from "./parser/blameParser";
 import { toSvnUri } from "./uri";
 import {
   anyEvent,
@@ -228,6 +230,17 @@ export class Repository implements IRemoteRepository {
   /** 'svn://repo.x/branches/b1' e.g. */
   get branchRoot(): Uri {
     return Uri.parse(this.repository.info.url);
+  }
+
+  public blame(file: string): Promise<SvnBlameLine[]> {
+    return this.repository.blame(file);
+  }
+
+  public blameLog(
+    file: string,
+    revision: string
+  ): Promise<ISvnLogEntry | undefined> {
+    return this.repository.blameLog(file, revision);
   }
 
   get inputBox(): SourceControlInputBox {

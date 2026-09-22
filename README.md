@@ -139,6 +139,8 @@ validation, and settings that require a refresh or reload.
 | `svn.sourceControl.ignoreOnCommit` | Changelists to ignore on commit | `["ignore-on-commit"]` |
 | `svn.sourceControl.ignoreOnStatusCount` | Changelists to ignore on status count | `["ignore-on-commit"]` |
 | `svn.update.ignoreExternals` | Set to ignore externals definitions on update (add --ignore-externals) | `true` |
+| `svn.blame.auto` | Automatically show SVN blame when opening a versioned file | `false` |
+| `svn.blame.gutter` | Show revision indicators in the editor gutter while SVN blame is active | `true` |
 <!--end-settings-->
 
 ## Limitations
