@@ -99,12 +99,7 @@ export class BlameSession implements Disposable {
         endLine: change.range.end.line,
         endCharacter: change.range.end.character,
         insertedLineCount: (change.text.match(/\n/g) ?? []).length,
-        preserveStartLine:
-          change.range.isEmpty &&
-          /^(?:\r?\n)+$/.test(change.text) &&
-          event.document.lineAt(change.range.start.line).text.length ===
-            change.range.start.character &&
-          event.document.lineAt(change.range.start.line + 1).text.length === 0
+        preserveStartLine: this.shouldPreserveStartLine(event, change)
       }))
     );
 
@@ -112,6 +107,33 @@ export class BlameSession implements Disposable {
       this.render(editor);
       void this.select(editor);
     }
+  }
+
+  private shouldPreserveStartLine(
+    event: TextDocumentChangeEvent,
+    change: TextDocumentChangeEvent["contentChanges"][number]
+  ): boolean {
+    if (
+      event.contentChanges.length !== 1 ||
+      !change.range.isEmpty ||
+      !/^\r?\n/.test(change.text)
+    ) {
+      return false;
+    }
+
+    const insertedLineCount = (change.text.match(/\n/g) ?? []).length;
+    const lastInsertedLine = change.range.start.line + insertedLineCount;
+    if (
+      insertedLineCount === 0 ||
+      lastInsertedLine >= event.document.lineCount ||
+      event.document.lineAt(change.range.start.line).text.length !==
+        change.range.start.character
+    ) {
+      return false;
+    }
+
+    const insertedTail = change.text.split(/\r?\n/).pop() ?? "";
+    return event.document.lineAt(lastInsertedLine).text === insertedTail;
   }
 
   public dispose(): void {
