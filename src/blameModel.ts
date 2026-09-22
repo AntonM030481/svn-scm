@@ -22,7 +22,7 @@ export function shiftBlameLines(
       if (line.line <= start) {
         return [line];
       }
-      if (delta < 0 && line.line <= end - delta) {
+      if (line.line <= end) {
         return [];
       }
       return [{ ...line, line: line.line + delta }];
