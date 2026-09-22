@@ -232,15 +232,26 @@ export class Repository implements IRemoteRepository {
     return Uri.parse(this.repository.info.url);
   }
 
-  public blame(file: string): Promise<SvnBlameLine[]> {
-    return this.repository.blame(file);
+  public blame(file: string, signal?: AbortSignal): Promise<SvnBlameLine[]> {
+    return this.run(
+      Operation.Show,
+      () => this.repository.blame(file, signal),
+      false,
+      signal
+    );
   }
 
   public blameLog(
     file: string,
-    revision: string
+    revision: string,
+    signal?: AbortSignal
   ): Promise<ISvnLogEntry | undefined> {
-    return this.repository.blameLog(file, revision);
+    return this.run(
+      Operation.Log,
+      () => this.repository.blameLog(file, revision, signal),
+      false,
+      signal
+    );
   }
 
   get inputBox(): SourceControlInputBox {

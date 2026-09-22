@@ -271,6 +271,10 @@ suite("Activation transaction", () => {
     const activation = activate(context);
     await new Promise(resolve => setImmediate(resolve));
     assert.ok(provider);
+    assert.ok(
+      !registrations.has("svn.blame.toggle"),
+      "blame must not inspect the active editor before repository discovery completes"
+    );
     let published = false;
     const manager = registrations.get("svn.getSourceControlManager")!().then(
       (result: unknown) => {
@@ -284,6 +288,7 @@ suite("Activation transaction", () => {
     await activation;
     assert.ok(await manager);
     assert.equal(published, true);
+    assert.ok(registrations.has("svn.blame.toggle"));
   });
 
   test("repeated activation owns and unregisters the test command", async () => {

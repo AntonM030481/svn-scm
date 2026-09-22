@@ -11,14 +11,24 @@ import {
   workspace
 } from "vscode";
 import { SourceControlManager } from "./source_control_manager";
+import { Repository } from "./repository";
 import { SvnBlameLine } from "./parser/blameParser";
 import { shiftBlameLines } from "./blameModel";
+import { cancelDebounces, debounce } from "./decorators";
 
 interface BlameRecord {
+  repository: Repository;
   lines: SvnBlameLine[];
   logs: Map<string, string>;
+  loadingLogs: Set<string>;
   decorations: TextEditorDecorationType[];
   activeDecoration?: TextEditorDecorationType;
+}
+
+interface PendingBlame {
+  repository: Repository;
+  controller: AbortController;
+  documentVersion: number;
 }
 
 const VIEWPORT_BUFFER = 200;
@@ -48,7 +58,18 @@ function hoverText(line: SvnBlameLine, log?: string): string {
 
 export class BlameController implements Disposable {
   private readonly records = new Map<string, BlameRecord>();
+  private readonly pendingBlames = new Map<string, PendingBlame>();
+  private readonly visibleRangeTimers = new Map<
+    TextEditor,
+    ReturnType<typeof setTimeout>
+  >();
+  private activeLogRequest?: {
+    file: string;
+    revision: string;
+    controller: AbortController;
+  };
   private readonly disposables: Disposable[] = [];
+  private disposed = false;
 
   constructor(private readonly sourceControlManager: SourceControlManager) {
     this.disposables.push(
@@ -58,15 +79,21 @@ export class BlameController implements Disposable {
       window.onDidChangeActiveTextEditor(
         editor => void this.onActiveEditor(editor)
       ),
-      window.onDidChangeTextEditorSelection(
-        event => void this.onSelection(event.textEditor)
+      window.onDidChangeTextEditorSelection(event =>
+        this.onSelectionChanged(event.textEditor)
       ),
       window.onDidChangeTextEditorVisibleRanges(event =>
-        this.render(event.textEditor)
+        this.onVisibleRangesChange(event.textEditor)
       ),
       workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
       workspace.onDidCloseTextDocument(document =>
         this.clear(document.uri.fsPath)
+      ),
+      sourceControlManager.onDidCloseRepository(repository =>
+        this.onRepositoryClosed(repository)
+      ),
+      sourceControlManager.onDidOpenRepository(
+        () => void this.onActiveEditor(window.activeTextEditor)
       )
     );
 
@@ -74,6 +101,19 @@ export class BlameController implements Disposable {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    cancelDebounces(this);
+    for (const timer of this.visibleRangeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.visibleRangeTimers.clear();
+    this.activeLogRequest?.controller.abort();
+    this.activeLogRequest = undefined;
+    for (const pending of this.pendingBlames.values()) {
+      pending.controller.abort();
+    }
+    this.pendingBlames.clear();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
     for (const file of [...this.records.keys()]) this.clear(file);
   }
@@ -85,7 +125,7 @@ export class BlameController implements Disposable {
         .getConfiguration("svn", editor.document.uri)
         .get<boolean>("blame.auto")
     ) {
-      await this.show(editor);
+      await this.show(editor, false);
     }
   }
 
@@ -109,37 +149,110 @@ export class BlameController implements Disposable {
     }
   }
 
-  private async show(editor: TextEditor): Promise<void> {
+  private async show(editor: TextEditor, notifyDirty = true): Promise<void> {
     const file = editor.document.uri.fsPath;
     if (this.records.has(file)) {
       this.render(editor);
+      return;
+    }
+    if (this.pendingBlames.has(file)) {
+      return;
+    }
+    if (editor.document.isDirty) {
+      if (notifyDirty) {
+        window.showInformationMessage(
+          "Save the file before showing SVN blame."
+        );
+      }
       return;
     }
 
     const repository = await this.sourceControlManager.getRepositoryFromUri(
       editor.document.uri
     );
-    if (!repository) return;
+    if (!repository || this.disposed) return;
+
+    const controller = new AbortController();
+    const pending: PendingBlame = {
+      repository,
+      controller,
+      documentVersion: editor.document.version
+    };
+    this.pendingBlames.set(file, pending);
 
     try {
-      const lines = await repository.blame(file);
-      if (editor.document.isClosed) return;
-      this.records.set(file, { lines, logs: new Map(), decorations: [] });
+      const lines = await repository.blame(file, controller.signal);
+      if (
+        this.disposed ||
+        controller.signal.aborted ||
+        this.pendingBlames.get(file) !== pending ||
+        editor.document.isClosed
+      ) {
+        return;
+      }
+      if (
+        editor.document.isDirty ||
+        editor.document.version !== pending.documentVersion
+      ) {
+        if (notifyDirty) {
+          window.showInformationMessage(
+            "The file changed while SVN blame was running. Save it and show blame again."
+          );
+        }
+        return;
+      }
+
+      this.records.set(file, {
+        repository,
+        lines,
+        logs: new Map(),
+        loadingLogs: new Set(),
+        decorations: []
+      });
       this.render(editor);
       await this.onSelection(editor);
     } catch (error) {
-      window.showErrorMessage(
-        `SVN blame failed: ${error instanceof Error ? error.message : String(error)}`
-      );
+      if (!controller.signal.aborted && !this.disposed) {
+        window.showErrorMessage(
+          `SVN blame failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    } finally {
+      if (this.pendingBlames.get(file) === pending) {
+        this.pendingBlames.delete(file);
+      }
     }
   }
 
   private clear(file: string): void {
+    const pending = this.pendingBlames.get(file);
+    if (pending) {
+      pending.controller.abort();
+      this.pendingBlames.delete(file);
+    }
+    if (this.activeLogRequest?.file === file) {
+      this.activeLogRequest.controller.abort();
+      this.activeLogRequest = undefined;
+    }
+
     const record = this.records.get(file);
     if (!record) return;
     record.activeDecoration?.dispose();
     for (const decoration of record.decorations) decoration.dispose();
     this.records.delete(file);
+  }
+
+  private onRepositoryClosed(repository: Repository): void {
+    for (const [file, pending] of [...this.pendingBlames]) {
+      if (pending.repository === repository) {
+        this.clear(file);
+      }
+    }
+    for (const [file, record] of [...this.records]) {
+      if (record.repository === repository) {
+        this.clear(file);
+      }
+    }
   }
 
   private visibleLines(
@@ -192,6 +305,26 @@ export class BlameController implements Disposable {
     }
   }
 
+  @debounce(75)
+  private onSelectionChanged(editor: TextEditor): void {
+    void this.onSelection(editor);
+  }
+
+  private onVisibleRangesChange(editor: TextEditor): void {
+    const existing = this.visibleRangeTimers.get(editor);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    const timer = setTimeout(() => {
+      if (this.visibleRangeTimers.get(editor) !== timer) {
+        return;
+      }
+      this.visibleRangeTimers.delete(editor);
+      this.render(editor);
+    }, 50);
+    this.visibleRangeTimers.set(editor, timer);
+  }
+
   private async onSelection(editor: TextEditor): Promise<void> {
     const file = editor.document.uri.fsPath;
     const record = this.records.get(file);
@@ -204,7 +337,13 @@ export class BlameController implements Disposable {
     if (!blame) return;
 
     const setActive = () => {
-      if (this.records.get(file) !== record || editor.document.isClosed) return;
+      if (
+        this.records.get(file) !== record ||
+        editor.document.isClosed ||
+        editor.selection.active.line + 1 !== blame.line
+      ) {
+        return;
+      }
       record.activeDecoration?.dispose();
       const log = record.logs.get(blame.revision);
       record.activeDecoration = window.createTextEditorDecorationType({
@@ -227,21 +366,50 @@ export class BlameController implements Disposable {
 
     setActive();
 
-    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision))
+    if (record.logs.has(blame.revision) || !/^\\d+$/.test(blame.revision)) {
       return;
-    const repository = await this.sourceControlManager.getRepositoryFromUri(
-      editor.document.uri
-    );
-    if (!repository) return;
+    }
+
+    const activeRequest = this.activeLogRequest;
+    if (
+      activeRequest?.file === file &&
+      activeRequest.revision === blame.revision
+    ) {
+      return;
+    }
+    activeRequest?.controller.abort();
+
+    const controller = new AbortController();
+    this.activeLogRequest = {
+      file,
+      revision: blame.revision,
+      controller
+    };
+    record.loadingLogs.add(blame.revision);
 
     try {
-      const entry = await repository.blameLog(file, blame.revision);
-      if (!entry || this.records.get(file) !== record) return;
+      const entry = await record.repository.blameLog(
+        file,
+        blame.revision,
+        controller.signal
+      );
+      if (
+        controller.signal.aborted ||
+        !entry ||
+        this.records.get(file) !== record
+      ) {
+        return;
+      }
       record.logs.set(blame.revision, entry.msg || "");
       this.render(editor);
       setActive();
     } catch {
       // Blame metadata remains useful when a log lookup is unavailable.
+    } finally {
+      record.loadingLogs.delete(blame.revision);
+      if (this.activeLogRequest?.controller === controller) {
+        this.activeLogRequest = undefined;
+      }
     }
   }
 
@@ -253,8 +421,10 @@ export class BlameController implements Disposable {
       record.lines,
       event.contentChanges.map(change => ({
         startLine: change.range.start.line,
+        startCharacter: change.range.start.character,
         endLine: change.range.end.line,
-        insertedLineCount: (change.text.match(/\n/g) ?? []).length
+        endCharacter: change.range.end.character,
+        insertedText: change.text
       }))
     );
 

@@ -12,18 +12,157 @@ suite("blame line mapping", () => {
   test("shifts following blame lines after insertion", () => {
     assert.deepStrictEqual(
       shiftBlameLines(lines, [
-        { startLine: 1, endLine: 1, insertedLineCount: 2 }
+        {
+          startLine: 1,
+          startCharacter: 3,
+          endLine: 1,
+          endCharacter: 3,
+          insertedText: "X\nY\n"
+        }
       ]).map(x => x.line),
       [1, 2, 5, 6]
     );
   });
 
-  test("drops deleted lines and shifts following lines", () => {
+  test("moves the original line when new lines are inserted at column zero", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedText: "X\nY\n"
+      }
+    ]);
+
     assert.deepStrictEqual(
-      shiftBlameLines(lines, [
-        { startLine: 1, endLine: 3, insertedLineCount: 0 }
-      ]).map(x => x.line),
-      [1, 2]
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "2"],
+        [5, "3"],
+        [6, "4"]
+      ]
+    );
+  });
+
+  test("deleting a whole line moves the following line into its place", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedText: ""
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [2, "3"],
+        [3, "4"]
+      ]
+    );
+  });
+
+  test("drops consumed lines but preserves and shifts following lines", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 1,
+        insertedText: ""
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [3, "4"]
+      ]
+    );
+  });
+
+  test("preserves an untouched end line when a whole-line edit ends at column zero", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedText: "X\nY\n"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "3"],
+        [5, "4"]
+      ]
+    );
+  });
+
+  test("drops end-line blame when replacement text prefixes that line", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 0,
+        insertedText: "X\nY"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "4"]
+      ]
+    );
+  });
+
+  test("drops the original line when line-start insertion does not end with newline", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 1,
+        endCharacter: 0,
+        insertedText: "X\nY"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [
+        [1, "1"],
+        [4, "3"],
+        [5, "4"]
+      ]
+    );
+  });
+
+  test("replaces a multi-line range without dropping the following line", () => {
+    const shifted = shiftBlameLines(lines, [
+      {
+        startLine: 0,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 1,
+        insertedText: "X\n"
+      }
+    ]);
+
+    assert.deepStrictEqual(
+      shifted.map(x => [x.line, x.revision]),
+      [[3, "4"]]
     );
   });
 });
