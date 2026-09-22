@@ -6,7 +6,7 @@ export interface BlameLineChange {
   endLine: number;
   endCharacter: number;
   insertedLineCount: number;
-  preserveStartLine?: boolean;
+  startLineShift?: number;
 }
 
 export function shiftBlameLines(
@@ -22,11 +22,15 @@ export function shiftBlameLines(
     current = current.flatMap(line => {
       const zeroBased = line.line - 1;
 
-      if (
-        zeroBased < change.startLine ||
-        (zeroBased === change.startLine && change.preserveStartLine)
-      ) {
+      if (zeroBased < change.startLine) {
         return [line];
+      }
+
+      if (
+        zeroBased === change.startLine &&
+        change.startLineShift !== undefined
+      ) {
+        return [{ ...line, line: line.line + change.startLineShift }];
       }
 
       const survivesAfterRange =
