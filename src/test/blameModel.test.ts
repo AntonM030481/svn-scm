@@ -12,7 +12,13 @@ suite("blame line mapping", () => {
   test("shifts following blame lines after insertion", () => {
     assert.deepStrictEqual(
       shiftBlameLines(lines, [
-        { startLine: 1, startCharacter: 0, endLine: 1, endCharacter: 0, insertedLineCount: 2 }
+        {
+          startLine: 1,
+          startCharacter: 0,
+          endLine: 1,
+          endCharacter: 0,
+          insertedLineCount: 2
+        }
       ]).map(x => x.line),
       [1, 2, 5, 6]
     );
@@ -20,7 +26,13 @@ suite("blame line mapping", () => {
 
   test("drops consumed lines but preserves and shifts following lines", () => {
     const shifted = shiftBlameLines(lines, [
-      { startLine: 1, startCharacter: 0, endLine: 2, endCharacter: 1, insertedLineCount: 0 }
+      {
+        startLine: 1,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 1,
+        insertedLineCount: 0
+      }
     ]);
 
     assert.deepStrictEqual(
@@ -57,7 +69,13 @@ suite("blame line mapping", () => {
 
   test("replaces a multi-line range without dropping the following line", () => {
     const shifted = shiftBlameLines(lines, [
-      { startLine: 0, startCharacter: 0, endLine: 2, endCharacter: 1, insertedLineCount: 1 }
+      {
+        startLine: 0,
+        startCharacter: 0,
+        endLine: 2,
+        endCharacter: 1,
+        insertedLineCount: 1
+      }
     ]);
 
     assert.deepStrictEqual(
