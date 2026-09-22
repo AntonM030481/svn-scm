@@ -59,10 +59,12 @@ export function shiftBlameLines(
         }
 
         const untouchedEndLine =
-          change.insertedText.length === 0 ||
-          insertedEndsWithNewline;
+          change.insertedText.length === 0 || insertedEndsWithNewline;
 
-        if (!untouchedEndLine || (change.startCharacter > 0 && insertedLineCount === 0)) {
+        if (
+          !untouchedEndLine ||
+          (change.startCharacter > 0 && insertedLineCount === 0)
+        ) {
           return [];
         }
         return [{ ...line, line: line.line + delta }];

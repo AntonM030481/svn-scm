@@ -108,7 +108,6 @@ suite("blame line mapping", () => {
     );
   });
 
-
   test("drops end-line blame when replacement text prefixes that line", () => {
     const shifted = shiftBlameLines(lines, [
       {
