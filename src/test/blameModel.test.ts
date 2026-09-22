@@ -82,7 +82,6 @@ suite("blame line mapping", () => {
       shifted.map(x => [x.line, x.revision]),
       [
         [1, "1"],
-        [2, "2"],
         [3, "4"]
       ]
     );
@@ -103,7 +102,6 @@ suite("blame line mapping", () => {
       shifted.map(x => [x.line, x.revision]),
       [
         [1, "1"],
-        [2, "2"],
         [4, "3"],
         [5, "4"]
       ]
@@ -123,10 +121,7 @@ suite("blame line mapping", () => {
 
     assert.deepStrictEqual(
       shifted.map(x => [x.line, x.revision]),
-      [
-        [1, "1"],
-        [3, "4"]
-      ]
+      [[3, "4"]]
     );
   });
 });
