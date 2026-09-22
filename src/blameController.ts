@@ -31,7 +31,8 @@ export class BlameController implements Disposable {
         editor => void this.onActiveEditor(editor)
       ),
       window.onDidChangeTextEditorSelection(
-        event => void this.sessionFor(event.textEditor)?.select(event.textEditor)
+        event =>
+          void this.sessionFor(event.textEditor)?.select(event.textEditor)
       ),
       window.onDidChangeTextEditorVisibleRanges(event =>
         this.sessionFor(event.textEditor)?.render(event.textEditor)
@@ -137,7 +138,10 @@ export class BlameController implements Disposable {
       const repository = await this.sourceControlManager.getRepositoryFromUri(
         document.uri
       );
-      if (!repository || !this.isRequestCurrent(file, request, document, documentVersion)) {
+      if (
+        !repository ||
+        !this.isRequestCurrent(file, request, document, documentVersion)
+      ) {
         return;
       }
 

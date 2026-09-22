@@ -1,8 +1,4 @@
-import {
-  Disposable,
-  TextDocumentChangeEvent,
-  TextEditor
-} from "vscode";
+import { Disposable, TextDocumentChangeEvent, TextEditor } from "vscode";
 import { BlameDecorations } from "./blameDecorations";
 import { shiftBlameLines } from "./blameModel";
 import { SvnBlameLine } from "./parser/blameParser";
