@@ -4748,6 +4748,41 @@ __metadata:
   languageName: node
   linkType: hard
 
+"subversion-workbench@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "subversion-workbench@workspace:."
+  dependencies:
+    "@electron/asar": "npm:3.2.10"
+    "@types/mocha": "npm:10"
+    "@types/node": "npm:18"
+    "@types/semver": "npm:^7.8.0"
+    "@types/tmp": "npm:0.2.6"
+    "@types/vscode": "npm:1.86.0"
+    "@types/xml2js": "npm:^0.4.14"
+    "@vscode/iconv-lite-umd": "npm:0.7.1"
+    "@vscode/test-electron": "npm:^3.1.0"
+    "@vscode/vsce": "npm:3.9.2"
+    chardet: "npm:2.2.0"
+    dayjs: "npm:^1.11.23"
+    eslint: "npm:^10.10.0"
+    eslint-config-prettier: "npm:^10.1.8"
+    glob: "npm:13.0.6"
+    jschardet: "npm:3.1.4"
+    minimatch: "npm:10.2.6"
+    mocha: "npm:10"
+    prettier: "npm:3.9.6"
+    semver: "npm:^7.8.5"
+    tmp: "npm:0.2.7"
+    ts-loader: "npm:^9.6.2"
+    typescript: "npm:6.0.2"
+    typescript-eslint: "npm:8.70.0"
+    webpack: "npm:^5.110.3"
+    webpack-cli: "npm:7.2.3"
+    xml2js: "npm:0.6.2"
+  languageName: unknown
+  linkType: soft
+
+
 "supports-color@npm:^7.0.0, supports-color@npm:^7.1.0":
   version: 7.2.0
   resolution: "supports-color@npm:7.2.0"
@@ -4782,40 +4817,6 @@ __metadata:
   checksum: 10c0/6c4032340701a9950865f7ae8ef38578d8d7053f5e10518076e6554a9381fa91bd9c6850193695c141f32b21f979c985db07265a758867bac95de05f7d8aeb39
   languageName: node
   linkType: hard
-
-"subversion-workbench@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "subversion-workbench@workspace:."
-  dependencies:
-    "@electron/asar": "npm:3.2.10"
-    "@types/mocha": "npm:10"
-    "@types/node": "npm:18"
-    "@types/semver": "npm:^7.8.0"
-    "@types/tmp": "npm:0.2.6"
-    "@types/vscode": "npm:1.86.0"
-    "@types/xml2js": "npm:^0.4.14"
-    "@vscode/iconv-lite-umd": "npm:0.7.1"
-    "@vscode/test-electron": "npm:^3.1.0"
-    "@vscode/vsce": "npm:3.9.2"
-    chardet: "npm:2.2.0"
-    dayjs: "npm:^1.11.23"
-    eslint: "npm:^10.10.0"
-    eslint-config-prettier: "npm:^10.1.8"
-    glob: "npm:13.0.6"
-    jschardet: "npm:3.1.4"
-    minimatch: "npm:10.2.6"
-    mocha: "npm:10"
-    prettier: "npm:3.9.6"
-    semver: "npm:^7.8.5"
-    tmp: "npm:0.2.7"
-    ts-loader: "npm:^9.6.2"
-    typescript: "npm:6.0.2"
-    typescript-eslint: "npm:8.70.0"
-    webpack: "npm:^5.110.3"
-    webpack-cli: "npm:7.2.3"
-    xml2js: "npm:0.6.2"
-  languageName: unknown
-  linkType: soft
 
 "table@npm:^6.9.0":
   version: 6.9.0
