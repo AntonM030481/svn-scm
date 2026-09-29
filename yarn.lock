@@ -4782,7 +4782,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-
 "supports-color@npm:^7.0.0, supports-color@npm:^7.1.0":
   version: 7.2.0
   resolution: "supports-color@npm:7.2.0"
