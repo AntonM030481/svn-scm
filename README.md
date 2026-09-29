@@ -40,6 +40,10 @@ unavailable, install the latest GitHub Release manually.
 For manual or offline installation, see
 [Installing from a VSIX](docs/install.md).
 
+VS Code treats the new Marketplace identity as a separate extension. If
+`antonm030481.svn-scm-modern` is still installed, uninstall it before installing
+Subversion Workbench. Existing `svn.*` settings remain compatible.
+
 Disable another SVN SCM extension if it registers the same working copies, to
 avoid duplicate Source Control providers.
 
