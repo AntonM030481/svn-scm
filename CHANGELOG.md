@@ -13,9 +13,6 @@ Marketplace identity and branding release.
   in the README while preserving links to the upstream project and contributors.
 * Preserve the existing `svn.*` command/configuration namespace and runtime
   behavior so current user settings remain compatible.
-* Document that VS Code treats the new identifier as a separate extension:
-  uninstall the previous extension identity before installing 2.25.0 to avoid
-  duplicate SCM providers; no `svn.*` settings migration is required.
 * Declare the existing MIT license in the extension manifest.
 * Update extension-host test lookups, VSIX uninstall instructions, Yarn workspace
   identity, and release documentation for the new package identity.
