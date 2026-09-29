@@ -4783,9 +4783,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"svn-scm-modern@workspace:.":
+"subversion-workbench@workspace:.":
   version: 0.0.0-use.local
-  resolution: "svn-scm-modern@workspace:."
+  resolution: "subversion-workbench@workspace:."
   dependencies:
     "@electron/asar": "npm:3.2.10"
     "@types/mocha": "npm:10"
