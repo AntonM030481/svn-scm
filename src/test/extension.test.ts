@@ -10,7 +10,9 @@ suite("Extension Tests", () => {
   });
 
   test("should be present", () => {
-    assert.ok(vscode.extensions.getExtension("antonm030481.subversion-workbench"));
+    assert.ok(
+      vscode.extensions.getExtension("antonm030481.subversion-workbench")
+    );
   });
 
   // The extension is already activated by vscode before running mocha test framework.

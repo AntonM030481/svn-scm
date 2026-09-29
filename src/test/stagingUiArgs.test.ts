@@ -35,7 +35,9 @@ suite("Staging UI Argument Tests", () => {
   });
 
   test("manifest exposes Git-like folder and group staging actions", () => {
-    const extension = extensions.getExtension("antonm030481.subversion-workbench");
+    const extension = extensions.getExtension(
+      "antonm030481.subversion-workbench"
+    );
     assert.ok(extension);
 
     const menus = extension.packageJSON.contributes.menus as Record<

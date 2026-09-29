@@ -178,7 +178,9 @@ export function destroyAllTempPaths() {
 
 export function activeExtension() {
   return new Promise<void>((resolve, reject) => {
-    const extension = extensions.getExtension("antonm030481.subversion-workbench");
+    const extension = extensions.getExtension(
+      "antonm030481.subversion-workbench"
+    );
     if (!extension) {
       reject();
       return;
