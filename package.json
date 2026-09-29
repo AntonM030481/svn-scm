@@ -8,6 +8,7 @@
         "vscode": "^1.86.0"
     },
     "private": true,
+    "license": "MIT",
     "icon": "images/subversion-workbench.png",
     "homepage": "https://github.com/AntonM030481/svn-scm/blob/master/README.md",
     "repository": {
