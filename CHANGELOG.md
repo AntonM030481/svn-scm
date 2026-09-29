@@ -1,3 +1,23 @@
+# [2.25.0](https://github.com/AntonM030481/svn-scm/compare/v2.24.0...v2.25.0) (2026-09-29)
+
+Marketplace identity and branding release.
+
+### Changes
+
+* Rename the distributable extension to **Subversion Workbench** with the new
+  Marketplace identifier `antonm030481.subversion-workbench`, replacing the
+  removed `svn-scm-modern` identity.
+* Replace the inherited Subversion logo assets with original Workbench branding
+  for the Marketplace icon and Subversion activity view.
+* Make the maintained-fork attribution and non-affiliation statement prominent
+  in the README while preserving links to the upstream project and contributors.
+* Preserve the existing `svn.*` command/configuration namespace and runtime
+  behavior so current user settings remain compatible.
+* Update extension-host test lookups, VSIX uninstall instructions, Yarn workspace
+  identity, and release documentation for the new package identity.
+
+No SVN runtime behavior changes are introduced by this release.
+
 # [2.24.0](https://github.com/AntonM030481/svn-scm/compare/v2.23.0...v2.24.0) (2026-09-22)
 
 Native SVN blame release.
