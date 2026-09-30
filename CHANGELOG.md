@@ -1,3 +1,33 @@
+# [2.24.0](https://github.com/AntonM030481/svn-scm/compare/v2.23.0...v2.24.0) (2026-09-22)
+
+Native SVN blame release.
+
+### Features
+
+* Add native per-line SVN blame for versioned files, with Show / Hide / Toggle
+  commands, revision gutter indicators, active-line author/revision annotation,
+  hover metadata, lazy commit-message loading, opt-in automatic blame, and
+  viewport-limited rendering (#171, #172).
+
+### Bug Fixes
+
+* Route blame and revision-log reads through the existing repository operation
+  wrapper so stored credentials, retries, cancellation, and lifecycle handling
+  match the rest of the extension (#174, #175).
+* Keep blame attribution correct across saved-buffer validation, edits, line
+  insertion/deletion, line joins, Enter/auto-indent, complete-line insertions,
+  undo back to a clean buffer, repository closure, and startup status/routing
+  transitions (#174, #175).
+* Prevent stale or cancelled blame/log requests from restoring decorations or
+  active-line metadata after Hide, document close, selection changes, or
+  extension disposal (#174, #175).
+
+### Maintenance
+
+* Split blame coordination, per-document session state, rendering, parsing, and
+  line-remapping logic into focused components with targeted regression tests
+  and dedicated documentation.
+
 # [2.23.0](https://github.com/AntonM030481/svn-scm/compare/v2.22.2...v2.23.0) (2026-09-19)
 
 Source Control workflow and correctness release.

@@ -88,8 +88,7 @@ async function initializeAttempt(
   await sourceControlManager.initialize();
   attempt.assertActive();
 
-  // Blame needs repository routing to be ready before it evaluates the active
-  // editor, especially when auto-blame is enabled at startup.
+  // Blame auto-start must run only after repository discovery has completed.
   attempt.add(new BlameController(sourceControlManager));
   attempt.add(new SvnProvider(sourceControlManager));
   attempt.add(new RepoLogProvider(sourceControlManager));

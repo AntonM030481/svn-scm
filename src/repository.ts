@@ -234,7 +234,7 @@ export class Repository implements IRemoteRepository {
 
   public blame(file: string, signal?: AbortSignal): Promise<SvnBlameLine[]> {
     return this.run(
-      Operation.Show,
+      Operation.Log,
       () => this.repository.blame(file, signal),
       false,
       signal

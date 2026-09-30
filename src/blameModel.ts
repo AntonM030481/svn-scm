@@ -5,7 +5,9 @@ export interface BlameLineChange {
   startCharacter: number;
   endLine: number;
   endCharacter: number;
-  insertedText: string;
+  insertedLineCount: number;
+  preservesEndLine?: boolean;
+  startLineShift?: number;
 }
 
 export function shiftBlameLines(
@@ -15,59 +17,35 @@ export function shiftBlameLines(
   let current = lines.map(line => ({ ...line }));
 
   for (const change of [...changes].sort((a, b) => b.startLine - a.startLine)) {
-    const start = change.startLine + 1;
-    const end = change.endLine + 1;
-    const insertedLineCount = (change.insertedText.match(/\n/g) ?? []).length;
-    const insertedEndsWithNewline = change.insertedText.endsWith("\n");
     const removedLineBreaks = change.endLine - change.startLine;
-    const delta = insertedLineCount - removedLineBreaks;
-    const insertion =
-      change.startLine === change.endLine &&
-      change.startCharacter === change.endCharacter;
+    const delta = change.insertedLineCount - removedLineBreaks;
 
     current = current.flatMap(line => {
-      if (line.line < start) {
+      const zeroBased = line.line - 1;
+
+      if (zeroBased < change.startLine) {
         return [line];
       }
 
-      if (change.startLine === change.endLine) {
-        if (line.line === start) {
-          if (insertion) {
-            if (change.startCharacter === 0 && insertedLineCount > 0) {
-              return insertedEndsWithNewline
-                ? [{ ...line, line: line.line + insertedLineCount }]
-                : [];
-            }
-            return [line];
-          }
-          return change.startCharacter > 0 ? [line] : [];
-        }
-        return [{ ...line, line: line.line + delta }];
+      if (
+        zeroBased === change.startLine &&
+        change.startLineShift !== undefined
+      ) {
+        return [{ ...line, line: line.line + change.startLineShift }];
       }
 
-      if (line.line === start) {
-        return change.startCharacter > 0 ? [line] : [];
-      }
+      const survivesAfterRange =
+        zeroBased > change.endLine ||
+        (zeroBased === change.endLine &&
+          change.endLine > change.startLine &&
+          change.endCharacter === 0 &&
+          (change.startCharacter === 0 || change.insertedLineCount > 0) &&
+          change.preservesEndLine !== false);
 
-      if (line.line < end) {
+      if (!survivesAfterRange) {
+        // The original line was touched by the edit. Do not attribute the
+        // changed in-memory text to the old revision.
         return [];
-      }
-
-      if (line.line === end) {
-        if (change.endCharacter !== 0) {
-          return [];
-        }
-
-        const untouchedEndLine =
-          change.insertedText.length === 0 || insertedEndsWithNewline;
-
-        if (
-          !untouchedEndLine ||
-          (change.startCharacter > 0 && insertedLineCount === 0)
-        ) {
-          return [];
-        }
-        return [{ ...line, line: line.line + delta }];
       }
 
       return [{ ...line, line: line.line + delta }];

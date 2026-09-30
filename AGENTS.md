@@ -53,6 +53,32 @@ explain the decision in the pull request.
 - Do not leave temporary diagnostics, patch scripts, or validation workflows in
   the final pull request.
 
+## Code Review Rules
+
+### Review quality
+
+- Report only concrete, realistically reachable defects.
+- Before reporting an issue, trace the actual execution path and verify that the problematic state is reachable.
+- Check whether existing code, validation, or tests already handle the case.
+
+### Priorities
+
+Prioritize:
+- functional regressions
+- incorrect behavior
+- resource or lifecycle leaks
+- race conditions
+- incorrect API usage
+- security issues
+- missing regression coverage for realistic bugs
+
+Do not report:
+- purely stylistic issues
+- speculative edge cases without a realistic execution path
+- hypothetical robustness improvements
+- refactoring suggestions unless the current implementation causes a concrete problem
+- issues already enforced reliably by linting, formatting, type checking, or CI
+
 ## Validation
 
 At minimum, run:
