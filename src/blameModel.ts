@@ -6,6 +6,7 @@ export interface BlameLineChange {
   endLine: number;
   endCharacter: number;
   insertedLineCount: number;
+  preservesEndLine?: boolean;
   startLineShift?: number;
 }
 
@@ -38,7 +39,8 @@ export function shiftBlameLines(
         (zeroBased === change.endLine &&
           change.endLine > change.startLine &&
           change.endCharacter === 0 &&
-          change.startCharacter === 0);
+          (change.startCharacter === 0 || change.insertedLineCount > 0) &&
+          change.preservesEndLine !== false);
 
       if (!survivesAfterRange) {
         // The original line was touched by the edit. Do not attribute the

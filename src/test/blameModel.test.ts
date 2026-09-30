@@ -9,6 +9,48 @@ suite("blame line mapping", () => {
     { line: 4, revision: "4" }
   ];
 
+  for (const [text, expected] of [
+    [
+      "X\nY\n",
+      [
+        [1, "1"],
+        [4, "3"],
+        [5, "4"]
+      ]
+    ],
+    [
+      "X\nY",
+      [
+        [1, "1"],
+        [4, "4"]
+      ]
+    ],
+    [
+      "prefix",
+      [
+        [1, "1"],
+        [3, "4"]
+      ]
+    ]
+  ] as const) {
+    test(`maps the untouched end line for replacement ${JSON.stringify(text)}`, () => {
+      const mapped = shiftBlameLines(lines, [
+        {
+          startLine: 1,
+          startCharacter: 0,
+          endLine: 2,
+          endCharacter: 0,
+          insertedLineCount: (text.match(/\n/g) ?? []).length,
+          preservesEndLine: text.endsWith("\n")
+        }
+      ]);
+      assert.deepStrictEqual(
+        mapped.map(x => [x.line, x.revision]),
+        expected
+      );
+    });
+  }
+
   test("shifts untouched lines after insertion at a line boundary", () => {
     const mapped = shiftBlameLines(lines, [
       {
