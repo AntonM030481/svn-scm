@@ -35,6 +35,42 @@ export function getChangelistPickOptions(
   return picks;
 }
 
+export async function inputSwitchChangelist(
+  repository: Repository,
+  canRemove = false
+) {
+  const picks: QuickPickItem[] = getChangelistPickOptions(
+    repository,
+    canRemove
+  );
+
+  const selectedChoice: any = await window.showQuickPick(picks, {
+    placeHolder: "Select an existing changelist or create a new"
+  });
+  if (!selectedChoice) {
+    return;
+  }
+
+  let changelistName;
+
+  if (selectedChoice instanceof RemoveChangeListItem) {
+    return false;
+  } else if (selectedChoice instanceof NewChangeListItem) {
+    const newChangelistName = await window.showInputBox({
+      placeHolder: "Changelist name",
+      prompt: "Please enter a changelist name"
+    });
+    if (!newChangelistName) {
+      return;
+    }
+    changelistName = newChangelistName;
+  } else {
+    changelistName = selectedChoice.label;
+  }
+
+  return changelistName;
+}
+
 export function patchChangelistOptions(repository: Repository) {
   const picks: QuickPickItem[] = [];
 
