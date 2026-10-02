@@ -2,7 +2,6 @@ import * as path from "path";
 import {
   commands,
   ExtensionContext,
-  ExtensionMode,
   OutputChannel,
   Uri,
   window
@@ -14,7 +13,6 @@ import { OpenRepositoryCount } from "./contexts/openRepositoryCount";
 import { configuration } from "./helpers/configuration";
 import { ItemLogProvider } from "./historyView/itemLogProvider";
 import { RepoLogProvider } from "./historyView/repoLogProvider";
-import * as messages from "./messages";
 import { SourceControlManager } from "./source_control_manager";
 import { Svn } from "./svn";
 import { getErrorMessage } from "./svnError";
@@ -103,10 +101,6 @@ async function initializeAttempt(
   await attempt.add(new IsSvn19orGreater(info.version)).initialized;
   attempt.assertActive();
 
-  disposables.push(toDisposable(messages.dispose));
-  if (extensionContext.extensionMode === ExtensionMode.Test) {
-    attempt.add(messages.registerTestCommand());
-  }
   return sourceControlManager;
 }
 
