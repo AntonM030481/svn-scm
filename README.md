@@ -96,7 +96,6 @@ validation, and settings that require a refresh or reload.
 | Config | Description | Default |
 | --- | --- | --- |
 | `svn.autorefresh` | Whether auto refreshing is enabled | `true` |
-| `svn.commit.changes.selectedAll` | Select all files when commit changes | `true` |
 | `svn.commit.checkEmptyMessage` | Check empty message before commit | `true` |
 | `svn.conflicts.autoResolve` | Automatically mark a conflicted file as resolved after saving it without conflict markers. When disabled, ask for confirmation. | `false` |
 | `svn.default.encoding` | Encoding of svn output if the output is not utf-8. When this parameter is null, the encoding is automatically detected. Example: 'windows-1252'. | `null` |
