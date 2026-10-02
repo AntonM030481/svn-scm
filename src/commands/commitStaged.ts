@@ -36,17 +36,6 @@ export function isPathInside(parent: string, child: string): boolean {
   );
 }
 
-async function ensureWorkingCopyLiveStatus(
-  staging: StagingCoordinator,
-  repository: Repository
-): Promise<void> {
-  await Promise.all(
-    staging
-      .repositoriesForWorkingCopy(repository)
-      .map(peer => peer.fullStatus())
-  );
-}
-
 async function needsFullStatus(resources: Resource[]): Promise<boolean> {
   for (const resource of resources) {
     try {
