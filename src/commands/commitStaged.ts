@@ -36,17 +36,6 @@ export function isPathInside(parent: string, child: string): boolean {
   );
 }
 
-async function ensureWorkingCopyLiveStatus(
-  staging: StagingCoordinator,
-  repository: Repository
-): Promise<void> {
-  await Promise.all(
-    staging
-      .repositoriesForWorkingCopy(repository)
-      .map(peer => peer.fullStatus())
-  );
-}
-
 async function needsFullStatus(resources: Resource[]): Promise<boolean> {
   for (const resource of resources) {
     try {
@@ -142,7 +131,7 @@ async function commitEntries(
   staging: StagingCoordinator
 ): Promise<void> {
   if (!entries.length) {
-    await noChangesToCommit();
+    void noChangesToCommit();
     return;
   }
 
@@ -171,11 +160,7 @@ async function commitEntries(
   }
 
   const commitPaths = uniquePaths(paths);
-  const message = await inputCommitMessage(
-    anchor.inputBox.value,
-    false,
-    commitPaths
-  );
+  const message = await inputCommitMessage(anchor.inputBox.value);
   if (message === undefined) {
     return;
   }
@@ -210,20 +195,5 @@ export class CommitStaged extends Command {
         this.staging
       );
     });
-  }
-}
-
-export class CommitAll extends Command {
-  constructor(private readonly staging: StagingCoordinator) {
-    super("svn.commitAll", { repository: true });
-  }
-
-  public async execute(repository: Repository) {
-    await ensureWorkingCopyLiveStatus(this.staging, repository);
-    await commitEntries(
-      repository,
-      this.staging.allCommittableEntriesForWorkingCopy(repository),
-      this.staging
-    );
   }
 }

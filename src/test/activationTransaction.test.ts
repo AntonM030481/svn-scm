@@ -110,11 +110,6 @@ suite("Activation transaction", () => {
         await commands.executeCommand("svn.getSourceControlManager"),
         liveManager
       );
-      assert.ok(
-        (await commands.getCommands(true)).includes(
-          "svn.forceCommitMessageTest"
-        )
-      );
       assert.deepStrictEqual(
         Buffer.from(await workspace.fs.readFile(sentinel)),
         sentinelBytes
@@ -242,7 +237,6 @@ suite("Activation transaction", () => {
     "svnOpenRepositoryCount",
     "isSvn18orGreater",
     "isSvn19orGreater",
-    "svn.forceCommitMessageTest",
     "initialize"
   ]) {
     test(`failure at ${stage} rejects readiness and releases earlier acquisitions`, async () => {
@@ -291,16 +285,6 @@ suite("Activation transaction", () => {
     assert.ok(registrations.has("svn.blame.toggle"));
   });
 
-  test("repeated activation owns and unregisters the test command", async () => {
-    for (let iteration = 0; iteration < 2; iteration++) {
-      await activate(context);
-      assert.ok(registrations.has("svn.forceCommitMessageTest"));
-      disposeContext();
-      assert.equal(registrations.size, 0);
-    }
-    assert.ok(resources.every(resource => resource.disposed === 1));
-  });
-
   for (const failAfterDiscovery of [false, true]) {
     test(`history consumers see discovered repositories; rollback=${failAfterDiscovery}`, async () => {
       let disposed = 0;
@@ -342,12 +326,6 @@ suite("Activation transaction", () => {
       }
     });
   }
-
-  test("production activation does not register the test-only command", async () => {
-    (context as any).extensionMode = ExtensionMode.Production;
-    await activate(context);
-    assert.ok(!registrations.has("svn.forceCommitMessageTest"));
-  });
 
   test("missing SVN recovery retries without registering duplicate bootstrap resources", async () => {
     let attempts = 0;

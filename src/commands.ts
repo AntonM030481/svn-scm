@@ -6,9 +6,7 @@ import { ChangeList } from "./commands/changeList";
 import { Checkout } from "./commands/checkout";
 import { Cleanup } from "./commands/cleanup";
 import { Close } from "./commands/close";
-import { Commit } from "./commands/commit";
-import { CommitAll, CommitStaged } from "./commands/commitStaged";
-import { CommitWithMessage } from "./commands/commitWithMessage";
+import { CommitStaged } from "./commands/commitStaged";
 import { DeleteUnversioned } from "./commands/deleteUnversioned";
 import { FileOpen } from "./commands/fileOpen";
 import { FinishCheckout } from "./commands/finishCheckout";
@@ -65,9 +63,7 @@ export function registerCommands(
   disposables.push(new FileOpen());
   disposables.push(new OpenFile());
   disposables.push(new PromptAuth());
-  disposables.push(new CommitWithMessage());
   disposables.push(new CommitStaged(staging));
-  disposables.push(new CommitAll(staging));
   disposables.push(new Stage(staging));
   disposables.push(new Unstage(staging));
   disposables.push(new StageAll(staging));
@@ -75,7 +71,6 @@ export function registerCommands(
   disposables.push(new Add());
   disposables.push(new ChangeList());
   disposables.push(new Refresh());
-  disposables.push(new Commit());
   disposables.push(new OpenResourceBase());
   disposables.push(new OpenResourceHead());
   disposables.push(new OpenChangeBase());

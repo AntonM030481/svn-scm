@@ -61,13 +61,16 @@ suite("Commands Tests", () => {
     assert.equal(repository.changes.resourceStates.length, 1);
   });
 
-  test("Commit Single File", async function () {
+  test("Commit Single File Through Staging", async function () {
     const repository = sourceControlManager.getRepository(
       checkoutDir
     ) as Repository;
+    await commands.executeCommand("svn.refresh");
+    const resource = repository.changes.resourceStates[0];
+    await commands.executeCommand("svn.stage", resource);
     repository.inputBox.value = "First Commit";
 
-    await commands.executeCommand("svn.commitWithMessage");
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
   });
 
   test("Update", async function () {
@@ -147,7 +150,7 @@ suite("Commands Tests", () => {
     await commands.executeCommand("svn.patch");
   });
 
-  test("Commit Selected File", async function () {
+  test("Commit Changed File Through Staging", async function () {
     const repository = sourceControlManager.getRepository(
       checkoutDir
     ) as Repository;
@@ -156,11 +159,9 @@ suite("Commands Tests", () => {
     assert.equal(repository.changes.resourceStates.length, 1);
 
     const resource = repository.changes.resourceStates[0];
-
-    setTimeout(() => {
-      commands.executeCommand("svn.forceCommitMessageTest", "Second Commit");
-    }, 1000);
-    await commands.executeCommand("svn.commit", resource);
+    await commands.executeCommand("svn.stage", resource);
+    repository.inputBox.value = "Second Commit";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
 
     assert.equal(repository.changes.resourceStates.length, 0);
   });
@@ -191,9 +192,12 @@ suite("Commands Tests", () => {
     );
     await commands.executeCommand("svn.refresh");
 
-    testUtil.overrideNextShowQuickPick(0);
-
-    await commands.executeCommand("svn.commitWithMessage");
+    await commands.executeCommand("svn.refresh");
+    for (const resource of [...repository.changes.resourceStates]) {
+      await commands.executeCommand("svn.stage", resource);
+    }
+    repository.inputBox.value = "Multiple Files Commit";
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
   });
 
   test("New Branch", async function () {

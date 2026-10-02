@@ -150,40 +150,6 @@ export class StagingCoordinator implements Disposable {
     );
   }
 
-  public allCommittableEntriesForWorkingCopy(
-    repository: Repository
-  ): Array<{ repository: Repository; resource: Resource }> {
-    const ignoredChangelists = new Set(
-      configuration.get<string[]>("sourceControl.ignoreOnCommit", [])
-    );
-    const entries: Array<{ repository: Repository; resource: Resource }> = [];
-    const seen = new Set<string>();
-
-    for (const peer of this.repositoriesForWorkingCopy(repository)) {
-      const add = (resource: Resource) => {
-        const key = normalizePath(resource.resourceUri.fsPath);
-        if (!seen.has(key) && resource.type !== Status.CONFLICTED) {
-          seen.add(key);
-          entries.push({ repository: peer, resource });
-        }
-      };
-
-      peer.changes.resourceStates.forEach(add);
-      const staged = this.states.get(peer)?.group.resourceStates ?? [];
-      staged.forEach(add);
-      for (const [changelist, group] of peer.changelists) {
-        if (
-          !isStagingChangelist(changelist) &&
-          !ignoredChangelists.has(changelist)
-        ) {
-          group.resourceStates.forEach(add);
-        }
-      }
-    }
-
-    return entries;
-  }
-
   public async validateStageSelection(
     resources: Resource[]
   ): Promise<Resource[]> {
