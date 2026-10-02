@@ -171,11 +171,7 @@ async function commitEntries(
   }
 
   const commitPaths = uniquePaths(paths);
-  const message = await inputCommitMessage(
-    anchor.inputBox.value,
-    false,
-    commitPaths
-  );
+  const message = await inputCommitMessage(anchor.inputBox.value);
   if (message === undefined) {
     return;
   }
@@ -213,17 +209,3 @@ export class CommitStaged extends Command {
   }
 }
 
-export class CommitAll extends Command {
-  constructor(private readonly staging: StagingCoordinator) {
-    super("svn.commitAll", { repository: true });
-  }
-
-  public async execute(repository: Repository) {
-    await ensureWorkingCopyLiveStatus(this.staging, repository);
-    await commitEntries(
-      repository,
-      this.staging.allCommittableEntriesForWorkingCopy(repository),
-      this.staging
-    );
-  }
-}
