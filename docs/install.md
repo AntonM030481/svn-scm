@@ -21,5 +21,5 @@ steps with a newer release to update manually.
 To remove the extension, use **Uninstall** in the Extensions view or run:
 
 ```sh
-code --uninstall-extension antonm030481.svn-scm-modern
+code --uninstall-extension antonm030481.subversion-workbench
 ```
