@@ -1,11 +1,5 @@
 import * as path from "path";
-import {
-  commands,
-  ExtensionContext,
-  OutputChannel,
-  Uri,
-  window
-} from "vscode";
+import { commands, ExtensionContext, OutputChannel, Uri, window } from "vscode";
 import { registerCommands } from "./commands";
 import { ConstructorPolicy } from "./common/types";
 import { CheckActiveEditor } from "./contexts/checkActiveEditor";

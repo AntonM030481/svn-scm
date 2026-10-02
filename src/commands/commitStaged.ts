@@ -208,4 +208,3 @@ export class CommitStaged extends Command {
     });
   }
 }
-
