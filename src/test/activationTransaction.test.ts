@@ -285,7 +285,6 @@ suite("Activation transaction", () => {
     assert.ok(registrations.has("svn.blame.toggle"));
   });
 
-
   for (const failAfterDiscovery of [false, true]) {
     test(`history consumers see discovered repositories; rollback=${failAfterDiscovery}`, async () => {
       let disposed = 0;
@@ -327,7 +326,6 @@ suite("Activation transaction", () => {
       }
     });
   }
-
 
   test("missing SVN recovery retries without registering duplicate bootstrap resources", async () => {
     let attempts = 0;
