@@ -131,7 +131,7 @@ async function commitEntries(
   staging: StagingCoordinator
 ): Promise<void> {
   if (!entries.length) {
-    await noChangesToCommit();
+    void noChangesToCommit();
     return;
   }
 
