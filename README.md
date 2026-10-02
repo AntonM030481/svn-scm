@@ -50,8 +50,7 @@ repository URL, and choose the parent directory for the new working copy.
 
 The Source Control view separates **Changes** from **Staged Changes**. Stage
 individual files or folders, use **Stage All Changes**, and commit the selected
-set with **Commit Staged**. **Commit All Changes** remains available when staging
-is not needed.
+set with **Commit Staged**. Commits are created only from **Staged Changes**.
 
 When multiple opened workspace folders belong to one physical working copy,
 their visible changes are combined in one Source Control provider and staged
