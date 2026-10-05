@@ -4,12 +4,17 @@ import { shiftBlameLines } from "./blameModel";
 import { SvnBlameLine } from "./parser/blameParser";
 import { Repository } from "./repository";
 import { SvnCancellationError } from "./svnProcess";
+import { ISvnLogEntry } from "./common/types";
 
 export class BlameSession implements Disposable {
   private readonly logs = new Map<string, string>();
   private readonly decorations = new BlameDecorations();
   private selectionGeneration = 0;
-  private pendingLog?: AbortController;
+  private pendingLog?: {
+    revision: string;
+    controller: AbortController;
+    promise: Promise<ISvnLogEntry | undefined>;
+  };
   private disposed = false;
 
   constructor(
@@ -25,10 +30,13 @@ export class BlameSession implements Disposable {
   public async select(editor: TextEditor): Promise<void> {
     if (this.disposed) return;
 
-    this.cancelSelection();
-    const generation = this.selectionGeneration;
+    const generation = ++this.selectionGeneration;
     const selectedLine = editor.selection.active.line + 1;
     const blame = this.lines.find(line => line.line === selectedLine);
+    if (this.pendingLog && this.pendingLog.revision !== blame?.revision) {
+      this.pendingLog.controller.abort();
+      this.pendingLog = undefined;
+    }
 
     this.decorations.clearActive();
     if (!blame) return;
@@ -54,15 +62,24 @@ export class BlameSession implements Disposable {
       return;
     }
 
-    const controller = new AbortController();
-    this.pendingLog = controller;
+    let request = this.pendingLog;
+    if (!request) {
+      const controller = new AbortController();
+      request = {
+        revision: blame.revision,
+        controller,
+        promise: this.repository.blameLog(
+          editor.document.uri.fsPath,
+          blame.revision,
+          controller.signal
+        )
+      };
+      this.pendingLog = request;
+    }
+    const { controller } = request;
 
     try {
-      const entry = await this.repository.blameLog(
-        editor.document.uri.fsPath,
-        blame.revision,
-        controller.signal
-      );
+      const entry = await request.promise;
       if (!entry || controller.signal.aborted || !isCurrent()) return;
 
       this.logs.set(blame.revision, entry.msg || "");
@@ -76,7 +93,7 @@ export class BlameSession implements Disposable {
         // Per-line blame remains useful even if revision details are unavailable.
       }
     } finally {
-      if (this.pendingLog === controller) {
+      if (this.pendingLog === request) {
         this.pendingLog = undefined;
       }
     }
@@ -99,6 +116,8 @@ export class BlameSession implements Disposable {
         endLine: change.range.end.line,
         endCharacter: change.range.end.character,
         insertedLineCount: (change.text.match(/\n/g) ?? []).length,
+        preservesEndLine:
+          change.text.length === 0 || change.text.endsWith("\n"),
         startLineShift: this.getStartLineShift(event, change)
       }))
     );
@@ -151,7 +170,7 @@ export class BlameSession implements Disposable {
 
   private cancelSelection(): void {
     this.selectionGeneration++;
-    this.pendingLog?.abort();
+    this.pendingLog?.controller.abort();
     this.pendingLog = undefined;
   }
 }

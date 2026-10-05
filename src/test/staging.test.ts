@@ -714,7 +714,7 @@ suite("Staging Tests", () => {
     assert.deepStrictEqual(placeholders, [undefined, undefined]);
   });
 
-  test("palette commit routes staged active file through staged finalization", async () => {
+  test("commit staged finalizes staged active file", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
     const repository = sourceControlManager.getRepository(
@@ -733,7 +733,7 @@ suite("Staging Tests", () => {
 
     await window.showTextDocument(Uri.file(file));
     repository.inputBox.value = "palette staged commit";
-    await commands.executeCommand("svn.commit");
+    await commands.executeCommand("svn.commitStaged", repository.sourceControl);
     assert.equal(svn(["status"], checkout.fsPath).trim(), "");
 
     fs.writeFileSync(file, "a2\n");
@@ -753,7 +753,7 @@ suite("Staging Tests", () => {
     await commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
-  test("palette commit refreshes staging membership after external unstage", async () => {
+  test("commit staged does not commit a file externally unstaged", async () => {
     const checkout = await createCheckoutWithFiles();
     await sourceControlManager.tryOpenRepository(checkout.fsPath);
     const repository = sourceControlManager.getRepository(
@@ -788,14 +788,11 @@ suite("Staging Tests", () => {
       );
 
       repository.inputBox.value = "commit after external unstage";
-      setTimeout(() => {
-        void commands.executeCommand(
-          "svn.forceCommitMessageTest",
-          "commit after external unstage"
-        );
-      }, 100);
-      await commands.executeCommand("svn.commit");
-      assert.equal(svn(["status"], checkout.fsPath).trim(), "");
+      await commands.executeCommand(
+        "svn.commitStaged",
+        repository.sourceControl
+      );
+      assert.match(svn(["status"], checkout.fsPath), /^M\s+one[\\/]a\.txt$/m);
     } finally {
       await svnConfiguration.update(
         "autorefresh",

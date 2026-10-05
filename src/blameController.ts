@@ -21,6 +21,14 @@ export class BlameController implements Disposable {
   private readonly sessions = new Map<string, BlameSession>();
   private readonly pendingBlame = new Map<string, PendingBlame>();
   private readonly disposables: Disposable[] = [];
+  private readonly selectionTimers = new Map<
+    TextEditor,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly renderTimers = new Map<
+    TextEditor,
+    ReturnType<typeof setTimeout>
+  >();
   private disposed = false;
 
   constructor(private readonly sourceControlManager: SourceControlManager) {
@@ -31,12 +39,18 @@ export class BlameController implements Disposable {
       window.onDidChangeActiveTextEditor(
         editor => void this.onActiveEditor(editor)
       ),
-      window.onDidChangeTextEditorSelection(
-        event =>
-          void this.sessionFor(event.textEditor)?.select(event.textEditor)
+      window.onDidChangeTextEditorSelection(event =>
+        this.schedule(
+          event.textEditor,
+          this.selectionTimers,
+          75,
+          () => void this.sessionFor(event.textEditor)?.select(event.textEditor)
+        )
       ),
       window.onDidChangeTextEditorVisibleRanges(event =>
-        this.sessionFor(event.textEditor)?.render(event.textEditor)
+        this.schedule(event.textEditor, this.renderTimers, 50, () =>
+          this.sessionFor(event.textEditor)?.render(event.textEditor)
+        )
       ),
       workspace.onDidChangeTextDocument(event => this.onDocumentChange(event)),
       workspace.onDidSaveTextDocument(document =>
@@ -57,6 +71,9 @@ export class BlameController implements Disposable {
       ),
       sourceControlManager.onDidCloseRepository(repository =>
         this.clearRepository(repository)
+      ),
+      sourceControlManager.onDidOpenRepository(
+        () => void this.onActiveEditor(window.activeTextEditor)
       )
     );
 
@@ -66,6 +83,10 @@ export class BlameController implements Disposable {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const timers of [this.selectionTimers, this.renderTimers]) {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    }
 
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
 
@@ -78,6 +99,23 @@ export class BlameController implements Disposable {
 
   private sessionFor(editor: TextEditor): BlameSession | undefined {
     return this.sessions.get(editor.document.uri.fsPath);
+  }
+
+  private schedule(
+    editor: TextEditor,
+    timers: Map<TextEditor, ReturnType<typeof setTimeout>>,
+    delay: number,
+    callback: () => void
+  ): void {
+    if (this.disposed || !this.sessionFor(editor)) return;
+    clearTimeout(timers.get(editor));
+    timers.set(
+      editor,
+      setTimeout(() => {
+        timers.delete(editor);
+        if (!this.disposed && !editor.document.isClosed) callback();
+      }, delay)
+    );
   }
 
   private async onActiveEditor(editor?: TextEditor): Promise<void> {
@@ -251,6 +289,14 @@ export class BlameController implements Disposable {
   }
 
   private clear(file: string): void {
+    for (const timers of [this.selectionTimers, this.renderTimers]) {
+      for (const [editor, timer] of timers) {
+        if (editor.document.uri.fsPath === file) {
+          clearTimeout(timer);
+          timers.delete(editor);
+        }
+      }
+    }
     this.pendingBlame.get(file)?.controller.abort();
     this.pendingBlame.delete(file);
 

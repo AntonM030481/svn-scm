@@ -173,28 +173,10 @@
                 "category": "SVN"
             },
             {
-                "command": "svn.commit",
-                "title": "Commit Selected",
-                "category": "SVN",
-                "icon": "$(check)"
-            },
-            {
-                "command": "svn.commitWithMessage",
-                "title": "Commit Changes",
-                "category": "SVN",
-                "icon": "$(check)"
-            },
-            {
                 "command": "svn.commitStaged",
                 "title": "Commit Staged",
                 "category": "SVN",
                 "icon": "$(check)"
-            },
-            {
-                "command": "svn.commitAll",
-                "title": "Commit All Changes",
-                "category": "SVN",
-                "icon": "$(check-all)"
             },
             {
                 "command": "svn.stage",
@@ -521,19 +503,7 @@
                     "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
                 },
                 {
-                    "command": "svn.commit",
-                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
-                },
-                {
-                    "command": "svn.commitWithMessage",
-                    "when": "false"
-                },
-                {
                     "command": "svn.commitStaged",
-                    "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
-                },
-                {
-                    "command": "svn.commitAll",
                     "when": "config.svn.enabled && svnOpenRepositoryCount != 0"
                 },
                 {
@@ -839,10 +809,6 @@
                     "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
                 },
                 {
-                    "command": "svn.commitAll",
-                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
-                },
-                {
                     "command": "svn.refresh",
                     "group": "navigation",
                     "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/"
@@ -1037,11 +1003,6 @@
                     "group": "1_modification"
                 },
                 {
-                    "command": "svn.commit",
-                    "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
-                    "group": "1_modification"
-                },
-                {
                     "command": "svn.revert",
                     "when": "config.svn.enabled && scmProvider =~ /^svn(?:-[0-9a-f]+)?$/ && scmResourceGroup != staged && scmResourceGroup != unversioned && scmResourceGroup != external && scmResourceGroup != conflicts && scmResourceGroup != remotechanges",
                     "group": "2_modification"
@@ -1134,11 +1095,6 @@
                 "svn.autorefresh": {
                     "type": "boolean",
                     "description": "Whether auto refreshing is enabled",
-                    "default": true
-                },
-                "svn.commit.changes.selectedAll": {
-                    "type": "boolean",
-                    "description": "Select all files when commit changes",
                     "default": true
                 },
                 "svn.commit.checkEmptyMessage": {

@@ -17,9 +17,7 @@ import { enableIncrementalStatusRefresh } from "../incrementalStatus";
 import { PullIncommingChange } from "../commands/pullIncomingChange";
 import { Revert } from "../commands/revert";
 import { Remove } from "../commands/remove";
-import { Commit } from "../commands/commit";
 import { Resolve } from "../commands/resolve";
-import * as messages from "../messages";
 import { DeleteUnversioned } from "../commands/deleteUnversioned";
 import { Repository } from "../repository";
 import { SourceControlManager } from "../source_control_manager";
@@ -944,7 +942,6 @@ suite("Persisted startup status integration", () => {
       const repo = f.open(base);
       const warning = window.showWarningMessage;
       const quickPick = window.showQuickPick;
-      const commitMessage = messages.inputCommitMessage;
       let prompts = 0;
       const unexpectedPrompt = async () => {
         prompts++;
@@ -952,13 +949,12 @@ suite("Persisted startup status integration", () => {
       };
       (window as any).showWarningMessage = unexpectedPrompt;
       (window as any).showQuickPick = unexpectedPrompt;
-      (messages as any).inputCommitMessage = unexpectedPrompt;
       const pending: Promise<unknown>[] = [];
       try {
         await entered.promise;
         selection = repo.getResourceFromFile(directory)!;
         assert.ok(repo.isPreviewResource(selection));
-        for (const ctor of [Revert, Remove, Commit, Resolve]) {
+        for (const ctor of [Revert, Remove, Resolve]) {
           const command = Object.create(ctor.prototype);
           command.runByRepository = async (uris: Uri[], action: any) => [
             await action(repo, uris)
@@ -998,7 +994,6 @@ suite("Persisted startup status integration", () => {
         await Promise.allSettled(pending);
         (window as any).showWarningMessage = warning;
         (window as any).showQuickPick = quickPick;
-        (messages as any).inputCommitMessage = commitMessage;
       }
     });
   }
