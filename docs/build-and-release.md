@@ -24,8 +24,10 @@ node scripts/check-package-size.cjs svn-scm.vsix
 
 `vscode:prepublish` runs the full static check and production build. The
 `.vscodeignore` exclusions leave the webpack bundle, manifest, README,
-changelog, license, styles, icons, and images in the package; sources, tests,
-tooling, and development configuration are excluded.
+license, styles, icons, and images in the package; sources, tests, tooling,
+development configuration, and the full historical `CHANGELOG.md` are excluded.
+Release notes are generated from the repository changelog before packaging, so
+the distributable VSIX does not carry obsolete historical Marketplace identities.
 
 Inspect the file list printed by `vsce` whenever packaging rules or build output
 change.
@@ -60,10 +62,18 @@ do not increase a limit merely to silence a failure.
 
 Releases are driven by tags matching `v*`:
 
-1. update `package.json` to the intended version;
-2. add a matching top section to `CHANGELOG.md`;
-3. merge the release change to `master` with a commit title beginning
+1. update the release branch from the current `master`;
+2. review the complete delta since the previous release tag and make sure the
+   release notes describe all meaningful runtime and user-facing changes;
+3. update `package.json` to the intended version;
+4. add a matching top section to `CHANGELOG.md`;
+5. merge the release change to `master` with a commit title beginning
    `Prepare release `.
+
+For version-changing pull requests, CI verifies that the PR head contains the
+current base commit and that the top changelog version matches `package.json`.
+If `master` moves while a release PR is open, update the release branch, review
+the newly included commits, and rerun CI before merging.
 
 The `Tag release` workflow validates that the package version matches the top
 changelog release, creates `v<package-version>` on that master commit if it
@@ -71,8 +81,9 @@ does not already exist, pushes the tag, and explicitly dispatches the release
 workflow for that tag. The explicit dispatch is required because tag pushes made
 with GitHub's workflow token do not start another workflow automatically. If a
 release attempt fails before a GitHub Release exists, a later validated release
-commit may move that unpublished tag for recovery; once a GitHub Release exists,
-the workflow never moves its tag. The tagging workflow can also be dispatched
+commit may move that unpublished tag for recovery and redispatch the release.
+Once a GitHub Release exists, the workflow leaves its tag unchanged and does not
+dispatch a duplicate release run. The tagging workflow can also be dispatched
 manually from `master` for recovery and has only `contents: write` plus
 `actions: write`.
 

@@ -49,21 +49,24 @@ jobs:
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
 
       - name: Create or recover release tag
+        id: release_tag
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo "run_release=true" >> "$GITHUB_OUTPUT"
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
               echo "$RELEASE_TAG is already published; leaving it unchanged"
+              echo "run_release=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
 
             git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
             CURRENT_TAG_SHA=$(git rev-list -n 1 "$RELEASE_TAG")
             if [ "$CURRENT_TAG_SHA" = "$GITHUB_SHA" ]; then
-              echo "$RELEASE_TAG already points at this release commit"
+              echo "$RELEASE_TAG already points at this unpublished release commit"
               exit 0
             fi
 
@@ -77,6 +80,7 @@ jobs:
           git push origin "$RELEASE_TAG"
 
       - name: Run release workflow
+        if: steps.release_tag.outputs.run_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run release.yml --ref "$RELEASE_TAG"

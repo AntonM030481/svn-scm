@@ -17,6 +17,7 @@ src/**
 svn-scm.vsix
 *.vsix
 AGENTS.md
+CHANGELOG.md
 docs/**
 scripts/**
 package-budgets.json
