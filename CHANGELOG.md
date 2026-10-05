@@ -1,3 +1,22 @@
+# [2.25.0](https://github.com/AntonM030481/svn-scm/compare/v2.24.0...v2.25.0) (2026-10-05)
+
+Marketplace identity, blame stabilization, and staged-only commit release.
+
+### Changes
+
+* Rename the distributable extension to **Subversion Workbench** with the new
+  Marketplace identifier `antonm030481.subversion-workbench`.
+* Replace inherited Subversion logo assets with original Workbench branding and
+  make maintained-fork attribution and non-affiliation explicit.
+* Preserve the existing `svn.*` command/configuration namespace and user settings
+  while changing only the extension's Marketplace identity.
+* Complete native SVN blame startup and interaction fixes.
+* Remove the legacy direct-commit flows. Commits now use the standard VS Code SCM
+  input and operate only on **Staged Changes**.
+* Declare the existing MIT license in the extension manifest.
+* Update extension-host tests, VSIX uninstall instructions, Yarn workspace
+  identity, and release documentation for the new package identity.
+
 # [2.24.0](https://github.com/AntonM030481/svn-scm/compare/v2.23.0...v2.24.0) (2026-09-22)
 
 Native SVN blame release.

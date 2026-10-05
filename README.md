@@ -1,4 +1,7 @@
-# SVN source control for Visual Studio Code
+# Subversion Workbench for Visual Studio Code
+
+> Independent maintained fork of [JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm).
+> Subversion Workbench is not affiliated with or endorsed by the original publisher.
 
 Modern Subversion integration for everyday development in VS Code, including
 large working copies and multi-root workspaces.
@@ -30,8 +33,9 @@ On Windows, TortoiseSVN users must install **Command Line Tools** and make
 
 ## Installation
 
-Install **SVN** from the VS Code Extensions view. The Marketplace identifier is
-`antonm030481.svn-scm-modern`.
+The distinct Marketplace identity for this maintained fork is
+`antonm030481.subversion-workbench`. When Marketplace installation is
+unavailable, install the latest GitHub Release manually.
 
 For manual or offline installation, see
 [Installing from a VSIX](docs/install.md).
@@ -160,8 +164,13 @@ validation, and settings that require a refresh or reload.
 
 ## Project history
 
-This project is a maintained fork of
-[JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm). See the
+Subversion Workbench is an independent maintained fork of
+[JohnstonCode/svn-scm](https://github.com/JohnstonCode/svn-scm), with its own
+Marketplace identity and branding. It is not affiliated with or endorsed by the
+original publisher. See the
 [original contributors](https://github.com/JohnstonCode/svn-scm/graphs/contributors).
-Prebuilt VSIX packages remain available from
+
+The existing `svn.*` command and configuration namespace is intentionally kept
+for compatibility with current users and settings. Prebuilt VSIX packages remain
+available from
 [GitHub Releases](https://github.com/AntonM030481/svn-scm/releases/latest).

@@ -92,6 +92,24 @@ Do not move or reuse a published version tag. If a release fails, fix the cause
 on a new commit and create the appropriate new version according to the impact
 of the change.
 
+## Marketplace identity
+
+The GitHub repository remains `AntonM030481/svn-scm`, but the distributable
+extension uses the distinct product identity **Subversion Workbench** and
+Marketplace identifier `antonm030481.subversion-workbench`.
+
+This project is an independent maintained fork of `JohnstonCode/svn-scm`.
+Keep that attribution and non-affiliation statement prominent in Marketplace
+documentation. Do not reuse the removed `svn-scm-modern` Marketplace identity
+or inherited upstream logo assets. The product name and logo must remain
+visually distinct from the original extension to avoid Marketplace search
+confusion.
+
+The existing `svn.*` commands, configuration keys, URI schemes, and SCM
+provider behavior are compatibility surfaces and are not part of the Marketplace
+branding. Do not rename them solely for branding; such a migration would be a
+separate breaking-change decision.
+
 ## Publishing scope
 
 The automated distribution contract is a validated VSIX attached to a tagged
